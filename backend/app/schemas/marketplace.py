@@ -15,6 +15,7 @@ MarketplaceOpportunityType = Literal[
     "retailer",
     "project",
     "partnership",
+    "rfq",
 ]
 
 MarketplaceOpportunityStatus = Literal["open", "in_review", "claimed", "closed"]

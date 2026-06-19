@@ -122,7 +122,12 @@ export default function BuyerFinderPage() {
         )}
       </div>
 
-      {!productId ? (
+      {!productsLoading && productList.length === 0 ? (
+        <EmptyState
+          title="No products in catalog"
+          description="Add products to your client catalog, then return here to find matching buyers."
+        />
+      ) : !productId ? (
         <EmptyState
           title="Select a product"
           description="Choose a product above to view or generate buyer recommendations."

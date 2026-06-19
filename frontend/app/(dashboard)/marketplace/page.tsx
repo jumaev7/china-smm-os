@@ -19,8 +19,8 @@ import {
   MarketplaceOpportunityItem,
   MarketplaceOpportunityStatus,
   MarketplaceOpportunityType,
-  tenantsApi,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth-store";
 import { cn } from "@/lib/utils";
 import {
   EmptyState,
@@ -42,6 +42,7 @@ const TYPE_LABELS: Record<MarketplaceOpportunityType, string> = {
   retailer: "Retailer",
   project: "Project",
   partnership: "Partnership",
+  rfq: "RFQ",
 };
 
 const STATUS_STYLES: Record<MarketplaceOpportunityStatus, string> = {
@@ -69,6 +70,8 @@ function fmtValue(v: number | string | null | undefined): string {
 
 export default function MarketplacePage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const defaultTenantId = user?.tenant_id ?? "";
   const [filterCountry, setFilterCountry] = useState("");
   const [filterIndustry, setFilterIndustry] = useState("");
   const [filterType, setFilterType] = useState<MarketplaceOpportunityType | "">("");
@@ -80,12 +83,6 @@ export default function MarketplacePage() {
   const [newIndustry, setNewIndustry] = useState("");
   const [newType, setNewType] = useState<MarketplaceOpportunityType>("distributor");
   const [newValue, setNewValue] = useState("");
-
-  const { data: tenantsData } = useQuery({
-    queryKey: ["tenants-marketplace"],
-    queryFn: () => tenantsApi.list({ limit: 20 }).then((r) => r.data),
-  });
-  const defaultTenantId = tenantsData?.items?.[0]?.id ?? "";
 
   const {
     data: overview,
@@ -471,7 +468,7 @@ export default function MarketplacePage() {
               </div>
               {!defaultTenantId && (
                 <p className="text-[10px] text-amber-700">
-                  Create a tenant first to express interest or claim manually.
+                  Sign in as a factory tenant to express interest or claim manually.
                 </p>
               )}
             </div>

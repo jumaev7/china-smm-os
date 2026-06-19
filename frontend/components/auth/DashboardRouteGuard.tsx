@@ -5,7 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin-auth-store";
 import { useAuth } from "@/lib/auth-store";
-import { evaluateRouteAccess, hasActiveTenantSession } from "@/lib/route-permissions";
+import {
+  evaluateRouteAccess,
+  hasActiveTenantSession,
+} from "@/lib/route-permissions";
 import {
   AUTH_HYDRATION_FAILSAFE_MS,
   forceAuthHydrationFinish,
@@ -127,12 +130,7 @@ export function DashboardRouteGuard({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!access.redirectTo) return;
-    // Avoid login redirect loops when a tenant session is already present.
-    if (
-      access.redirectTo.startsWith("/login") &&
-      (isTenant || hasActiveTenantSession())
-    ) {
-      router.replace("/dashboard");
+    if (access.redirectTo.startsWith("/login") && hasActiveTenantSession() && !isTenant) {
       return;
     }
     router.replace(access.redirectTo);

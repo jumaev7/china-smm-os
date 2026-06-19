@@ -59,7 +59,6 @@ export const ADMIN_PLATFORM_NAV_PATHS = [
 
 /** Internal pilot / platform ops — admin session only, hidden from tenants. */
 export const PLATFORM_PILOT_PATHS = [
-  "/pilot-readiness",
   "/pilot-demo-mode",
   "/pilot-demo",
   "/pilot-sales-demo",
@@ -75,7 +74,6 @@ export const PLATFORM_PILOT_PATHS = [
   "/customer-portal-v2",
   "/customer-portal",
   "/tenants",
-  "/revenue-forecast",
   "/ai-command-center",
   "/operator-tasks",
   "/audit",
@@ -169,6 +167,8 @@ export const TENANT_BUSINESS_PATHS = [
   "/demo-tour",
   "/value-demo",
   "/executive-demo",
+  "/revenue-forecast",
+  "/pilot-readiness",
 ] as const;
 
 export const EXECUTIVE_COPILOT_PATH = "/executive-copilot";
@@ -497,6 +497,10 @@ export function evaluateRouteAccess(pathname: string, ctx: RouteAuthContext): Ro
 
   if (isTenantBusinessPath(pathname)) {
     if (adminCanAccessTenantBusinessRoutes(readyCtx)) return { allowed: true };
+
+    if (!ctx.isTenantAuthenticated && hasActiveTenantSession()) {
+      return { allowed: false, reason: "loading" };
+    }
 
     if (!ctx.isTenantAuthenticated) {
       return {

@@ -14,7 +14,6 @@ import {
   XCircle,
 } from "lucide-react";
 import { pilotReadinessApi, PilotReadinessStatus } from "@/lib/api";
-import { AdminAuthGuard } from "@/components/auth/AdminAuthGuard";
 import { cn } from "@/lib/utils";
 import { ErrorState } from "@/components/ui/PageStates";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
@@ -61,11 +60,7 @@ function ScoreRing({ score }: { score: number }) {
 }
 
 export default function PilotReadinessPage() {
-  return (
-    <AdminAuthGuard requireAdmin>
-      <PilotReadinessPageContent />
-    </AdminAuthGuard>
-  );
+  return <PilotReadinessPageContent />;
 }
 
 function PilotReadinessPageContent() {

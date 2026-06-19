@@ -2793,7 +2793,8 @@ export type MarketplaceOpportunityType =
   | "wholesaler"
   | "retailer"
   | "project"
-  | "partnership";
+  | "partnership"
+  | "rfq";
 
 export type MarketplaceOpportunityStatus = "open" | "in_review" | "claimed" | "closed";
 
@@ -10469,7 +10470,7 @@ export interface PilotReadinessOverview {
 }
 
 export const pilotReadinessApi = {
-  overview: () => adminApi.get<PilotReadinessOverview>("/pilot-readiness/overview"),
+  overview: () => pickActiveSessionClient().get<PilotReadinessOverview>("/pilot-readiness/overview"),
 };
 
 export type PilotDemoModeStepStatus = "pending" | "active" | "complete" | "blocked";

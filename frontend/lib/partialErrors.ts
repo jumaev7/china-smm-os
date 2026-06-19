@@ -34,7 +34,10 @@ export function isRawBackendErrorMessage(raw: string): boolean {
 }
 
 function isApiPartialSectionToken(token: string): boolean {
-  return API_PARTIAL_SECTIONS.has(token.trim().toLowerCase());
+  const normalized = token.trim().toLowerCase();
+  if (API_PARTIAL_SECTIONS.has(normalized)) return true;
+  // Backend safe_section names (e.g. marketplace_integrations) — never show raw in UI.
+  return /^[a-z][a-z0-9_]*$/.test(normalized);
 }
 
 /** Map one partial-error token to a safe display line. */

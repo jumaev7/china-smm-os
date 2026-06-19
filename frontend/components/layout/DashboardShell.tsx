@@ -537,6 +537,7 @@ const SECTION_LABEL_FALLBACK: Record<string, string> = {
   "nav.sectionTenantGrowth": "Growth",
   "nav.sectionTenantTools": "Tools & Analytics",
   "nav.sectionPlatformAdmin": "Platform Admin",
+  "nav.settings": "Settings",
 
 };
 

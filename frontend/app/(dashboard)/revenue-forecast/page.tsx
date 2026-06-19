@@ -26,7 +26,6 @@ import {
   LoadingState,
   PartialErrorsBanner,
 } from "@/components/ui/PageStates";
-import { AdminAuthGuard } from "@/components/auth/AdminAuthGuard";
 import { useTranslation } from "@/lib/I18nProvider";
 import {
   isOverviewLoading,
@@ -78,11 +77,7 @@ function ForecastCard({ row }: { row: RevenueForecastPeriod }) {
 }
 
 export default function RevenueForecastPage() {
-  return (
-    <AdminAuthGuard requireAdmin>
-      <RevenueForecastPageContent />
-    </AdminAuthGuard>
-  );
+  return <RevenueForecastPageContent />;
 }
 
 function RevenueForecastPageContent() {

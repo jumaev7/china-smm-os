@@ -14,6 +14,7 @@ from app.models.client import Client
 from app.models.content import ContentItem
 from app.models.content_factory import ContentFactory, ContentFactoryItem
 from app.models.crm_lead import CrmLead
+from app.models.product import Product
 from app.models.tenant import Tenant
 from app.services.tenant_auth_service import DEMO_TENANT_NAME, DEMO_USER_EMAIL
 
@@ -32,11 +33,13 @@ async def ensure_demo_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dic
         content_count = await _seed_content(db, client.id)
         crm_count = await _seed_crm_leads(db, client.id)
         factory_count = await _seed_content_factory(db, client.id)
+        product_count = await _seed_products(db, client.id)
         counts = {
             "clients": 1,
             "content": content_count,
             "crm_leads": crm_count,
             "content_factory_items": factory_count,
+            "products": product_count,
         }
         await db.commit()
         logger.info("%s tenant=%s counts=%s", MARKER, tenant_id, counts)
@@ -195,3 +198,42 @@ async def _seed_content_factory(db: AsyncSession, client_id: uuid.UUID) -> int:
         ))
     await db.flush()
     return existing_items + 2
+
+
+async def _seed_products(db: AsyncSession, client_id: uuid.UUID) -> int:
+    count = int(
+        (await db.execute(
+            select(func.count()).select_from(Product).where(Product.client_id == client_id),
+        )).scalar() or 0,
+    )
+    if count >= 2:
+        return count
+
+    samples = [
+        (
+            "Smart CNC Precision Lathe XL-500",
+            "CNC Machinery",
+            "High-precision CNC lathe for export markets — MOQ 5 units.",
+            Decimal("28500"),
+        ),
+        (
+            "Industrial Ceramic Tile Series A",
+            "Building Materials",
+            "Premium glazed ceramic tiles for wholesale distributors.",
+            Decimal("12.50"),
+        ),
+    ]
+    for name, category, description, unit_price in samples:
+        db.add(Product(
+            id=uuid.uuid4(),
+            client_id=client_id,
+            name=name,
+            category=category,
+            description=f"{MARKER} {description}",
+            unit_price=unit_price,
+            currency="USD",
+            moq=5,
+            active=True,
+        ))
+    await db.flush()
+    return count + len(samples)

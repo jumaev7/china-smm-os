@@ -132,10 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) {
       clearTenantState(setUser, setTenantName, setPermissions);
       finishHydration();
-      return;
     }
-
-    finishHydration();
   }, [finishHydration]);
 
   useEffect(() => {
