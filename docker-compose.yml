@@ -1,0 +1,74 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    command: postgres -c max_connections=200
+    environment:
+      POSTGRES_DB: china_smm_os
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      # Pin volume name so data survives compose project renames (existing: china-smm-os_pgdata)
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/china_smm_os
+      APP_ENV: development
+      DB_POOL_SIZE: "20"
+      DB_MAX_OVERFLOW: "20"
+      DB_POOL_TIMEOUT: "60"
+      DB_PROBE_CONCURRENCY: "2"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      CORS_ORIGINS: http://localhost:3000
+      # MEDIA_BASE_URL must be reachable from the user's browser (not from inside Docker).
+      # Port 8000 is published to the host, so localhost:8000 works.
+      MEDIA_BASE_URL: http://localhost:8000
+      # Telegram bot — set these or put them in backend/.env
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID:-}
+      PUBLIC_APP_URL: http://localhost:3000
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+      # Named volume — uploaded media survives container restarts and rebuilds
+      - media_storage:/app/media_storage
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      target: dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      # Keep Next.js dev/build cache inside Docker — avoids stale host .next breaking CSS/JS assets (404).
+      - frontend_next_cache:/app/.next
+    command: sh -c "npm install --legacy-peer-deps --include=dev && npm run dev -- -H 0.0.0.0 -p 3000"
+
+volumes:
+  pgdata:
+    name: china-smm-os_pgdata
+  frontend_node_modules:
+  frontend_next_cache:
+  # Named Docker volume — media files persist across `docker compose down` / `up`
+  media_storage:

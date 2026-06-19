@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+!.env.example
+
+# Node
+node_modules/
+.next/
+out/
+.env.local
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Storage
+media_storage/
+*.sqlite3
+
+# Alembic
+migrations/versions/*.py
+!migrations/versions/.gitkeep

@@ -1,0 +1,21 @@
+# Development overrides — hot reload for both backend and frontend.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+version: "3.9"
+
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+      - media_storage:/app/media_storage
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+    command: npm run dev
