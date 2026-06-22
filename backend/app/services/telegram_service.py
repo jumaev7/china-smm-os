@@ -419,6 +419,18 @@ async def _find_or_create_client(db: AsyncSession, telegram_user_id: int, sender
     return client
 
 
+def _score_linked_group_client(client: Client) -> int:
+    """Prefer tenant-linked named clients over auto-created buffer placeholders."""
+    score = 0
+    if client.tenant_id:
+        score += 100
+    if resolve_group_workflow_mode(client) == "auto_create_from_media":
+        score += 50
+    if not (client.company_name or "").startswith("Telegram Group:"):
+        score += 25
+    return score
+
+
 async def _find_or_create_client_for_group(
     db: AsyncSession,
     chat_id: int,
@@ -432,7 +444,14 @@ async def _find_or_create_client_for_group(
         result = await db.execute(
             select(Client).where(Client.telegram_group_id == group_id)
         )
-        client = result.scalar_one_or_none()
+        matches = list(result.scalars().all())
+        if len(matches) > 1:
+            logger.warning(
+                "Telegram Group: %d clients share telegram_group_id=%s — picking best match",
+                len(matches),
+                group_id,
+            )
+        client = max(matches, key=_score_linked_group_client) if matches else None
         if client:
             if title and client.telegram_group_title != title:
                 client.telegram_group_title = title
