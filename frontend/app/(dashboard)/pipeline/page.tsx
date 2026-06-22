@@ -29,12 +29,23 @@ import {
   normalizeList,
   type ContentStatus,
 } from "@/lib/api";
-import { PLATFORM_CONFIG } from "@/lib/utils";
+import { PLATFORM_CONFIG, cn } from "@/lib/utils";
 import { formatScheduledLocal } from "@/lib/datetime";
 import { ClientReviewStatusBadge } from "@/components/content/ClientReviewStatus";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
+import { ActionBar, PageHeader, PageShell } from "@/components/ui/design-system";
 
 const PLATFORMS = ["instagram", "facebook", "tiktok", "telegram", "linkedin"];
+
+const STAGE_DOT: Record<PipelineStage, string> = {
+  draft: "bg-slate-400",
+  internal_review: "bg-sky-400",
+  client_review: "bg-amber-400",
+  approved: "bg-emerald-400",
+  scheduled: "bg-violet-400",
+  published: "bg-emerald-400",
+  failed: "bg-red-400",
+};
 
 function confirmAction(message: string): boolean {
   return window.confirm(message);
@@ -54,30 +65,33 @@ function PipelineCard({
   const thumb = card.thumbnail_url || card.media_url;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm space-y-2 text-xs">
+    <div className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm space-y-2 text-xs dark-tenant:border-white/[0.08] dark-tenant:bg-surface-dark-card dark-tenant:shadow-dark-card transition-all hover:border-violet-500/20">
       {thumb ? (
-        <div className="rounded overflow-hidden bg-gray-100 aspect-video max-h-24">
+        <div className="rounded-lg overflow-hidden bg-gray-100 dark-tenant:bg-surface-dark-elevated aspect-video max-h-24 border border-gray-100 dark-tenant:border-white/[0.04]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={thumb} alt="" className="w-full h-full object-cover" />
         </div>
       ) : null}
-      <p className="font-medium text-gray-900 line-clamp-2">
+      <p className="font-medium text-gray-900 dark-tenant:text-slate-100 line-clamp-2 leading-snug">
         {card.caption_preview || "Untitled content"}
       </p>
-      <p className="text-gray-500">{card.client_name}</p>
+      <p className="text-gray-500 dark-tenant:text-slate-500 text-[11px]">{card.client_name}</p>
       {card.campaign_name ? (
-        <p className="text-[10px] text-violet-700">{card.campaign_name}</p>
+        <p className="text-[10px] text-violet-400">{card.campaign_name}</p>
       ) : null}
       <div className="flex flex-wrap gap-1">
         {card.platforms.map((p) => (
-          <span key={p} className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-600 capitalize">
+          <span
+            key={p}
+            className="text-[9px] px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-600 dark-tenant:bg-white/[0.04] dark-tenant:text-slate-400 dark-tenant:border dark-tenant:border-white/[0.06] capitalize"
+          >
             {PLATFORM_CONFIG[p as keyof typeof PLATFORM_CONFIG]?.label ?? p}
           </span>
         ))}
       </div>
       {card.scheduled_for ? (
-        <p className="text-[10px] text-gray-500 flex items-center gap-1">
-          <Calendar size={10} />
+        <p className="text-[10px] text-gray-500 dark-tenant:text-slate-500 flex items-center gap-1">
+          <Calendar size={10} className="text-violet-400" />
           {formatScheduledLocal(card.scheduled_for)}
         </p>
       ) : null}
@@ -96,10 +110,10 @@ function PipelineCard({
         />
       ) : null}
 
-      <div className="flex flex-wrap gap-1 pt-1 border-t border-gray-100">
+      <div className="flex flex-wrap gap-1 pt-2 border-t border-gray-100 dark-tenant:border-white/[0.06]">
         <Link
           href={`/content/${card.id}`}
-          className="text-[10px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 inline-flex items-center gap-0.5"
+          className="text-[10px] px-2 py-1 rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 dark-tenant:border-white/[0.08] dark-tenant:text-slate-400 dark-tenant:hover:text-slate-200 dark-tenant:hover:bg-white/[0.04] inline-flex items-center gap-0.5 transition-colors"
         >
           Open
           <ExternalLink size={10} />
@@ -108,7 +122,7 @@ function PipelineCard({
           <button
             type="button"
             disabled={busy}
-            className="text-[10px] px-2 py-1 rounded border border-brand-200 text-brand-800 hover:bg-brand-50"
+            className="text-[10px] px-2 py-1 rounded-md border border-sky-500/25 text-sky-400 hover:bg-sky-500/10 transition-colors disabled:opacity-50"
             onClick={() => onTransition("internal_review")}
           >
             Internal review
@@ -118,7 +132,7 @@ function PipelineCard({
           <button
             type="button"
             disabled={busy}
-            className="text-[10px] px-2 py-1 rounded border border-sky-200 text-sky-800 hover:bg-sky-50 inline-flex items-center gap-0.5"
+            className="text-[10px] px-2 py-1 rounded-md border border-amber-500/25 text-amber-400 hover:bg-amber-500/10 inline-flex items-center gap-0.5 transition-colors disabled:opacity-50"
             onClick={() => {
               if (confirmAction("Send this content to client review?")) onTransition("client_review");
             }}
@@ -131,7 +145,7 @@ function PipelineCard({
           <button
             type="button"
             disabled={busy}
-            className="text-[10px] px-2 py-1 rounded border border-emerald-200 text-emerald-800 hover:bg-emerald-50 inline-flex items-center gap-0.5"
+            className="text-[10px] px-2 py-1 rounded-md border border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/10 inline-flex items-center gap-0.5 transition-colors disabled:opacity-50"
             onClick={() => {
               if (confirmAction("Approve this content?")) onTransition("approved");
             }}
@@ -144,7 +158,7 @@ function PipelineCard({
           <button
             type="button"
             disabled={busy}
-            className="text-[10px] px-2 py-1 rounded border border-violet-200 text-violet-800 hover:bg-violet-50"
+            className="text-[10px] px-2 py-1 rounded-md border border-violet-500/25 text-violet-400 hover:bg-violet-500/10 transition-colors disabled:opacity-50"
             onClick={() => {
               const raw = window.prompt("Schedule for (YYYY-MM-DDTHH:mm local):");
               if (!raw) return;
@@ -159,7 +173,7 @@ function PipelineCard({
           <button
             type="button"
             disabled={busy}
-            className="text-[10px] px-2 py-1 rounded border border-amber-200 text-amber-800 hover:bg-amber-50 inline-flex items-center gap-0.5"
+            className="text-[10px] px-2 py-1 rounded-md border border-amber-500/25 text-amber-400 hover:bg-amber-500/10 inline-flex items-center gap-0.5 transition-colors disabled:opacity-50"
             onClick={() => {
               if (confirmAction("Retry publishing this content?")) onRetry();
             }}
@@ -172,7 +186,7 @@ function PipelineCard({
           <button
             type="button"
             disabled={busy}
-            className="text-[10px] px-2 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+            className="text-[10px] px-2 py-1 rounded-md border border-white/[0.08] text-slate-500 hover:bg-white/[0.04] inline-flex items-center gap-0.5 transition-colors disabled:opacity-50"
             onClick={() => {
               if (confirmAction("Move back to draft?")) onTransition("draft");
             }}
@@ -278,26 +292,35 @@ export default function PipelinePage() {
       />
     );
   } else if (board && board.total === 0) {
-    body = <EmptyState title="Pipeline is empty" description="Create content or adjust filters." />;
+    body = (
+      <EmptyState
+        title="Pipeline is empty"
+        description="Create content or adjust filters to see items on the board."
+      />
+    );
   } else if (board) {
     body = (
-      <div className="overflow-x-auto pb-4">
-        <div className="flex gap-3 min-w-max">
+      <div className="overflow-x-auto pb-4 -mx-1 px-1">
+        <div className="flex gap-4 min-w-max">
           {PIPELINE_STAGES.map((stage) => {
             const cards = board.stages[stage] ?? [];
+            const dotColor = STAGE_DOT[stage] ?? STAGE_DOT.draft;
             return (
               <div key={stage} className="w-72 shrink-0">
-                <div className="flex items-center justify-between mb-2 px-1">
-                  <p className="text-xs font-semibold text-gray-800">
-                    {PIPELINE_STAGE_LABELS[stage]}
-                  </p>
-                  <span className="text-[10px] text-gray-400 tabular-nums bg-gray-100 px-1.5 py-0.5 rounded-full">
+                <div className="flex items-center justify-between mb-3 px-1">
+                  <div className="flex items-center gap-2">
+                    <span className={cn("w-2 h-2 rounded-full", dotColor)} />
+                    <p className="text-xs font-semibold text-gray-800 dark-tenant:text-slate-200 tracking-wide">
+                      {PIPELINE_STAGE_LABELS[stage]}
+                    </p>
+                  </div>
+                  <span className="text-[10px] text-gray-400 dark-tenant:text-slate-500 tabular-nums bg-gray-100 dark-tenant:bg-white/[0.04] border border-gray-200/80 dark-tenant:border-white/[0.06] px-2 py-0.5 rounded-full">
                     {board.counts[stage] ?? cards.length}
                   </span>
                 </div>
-                <div className="space-y-2 min-h-[120px] rounded-lg bg-gray-50/80 p-2 border border-gray-100">
+                <div className="space-y-2.5 min-h-[140px] rounded-xl bg-gray-50/80 border border-gray-100 p-2.5 dark-tenant:bg-surface-dark-elevated/50 dark-tenant:border-white/[0.06]">
                   {cards.length === 0 ? (
-                    <p className="text-[10px] text-gray-400 text-center py-6">Empty</p>
+                    <p className="text-[10px] text-gray-400 dark-tenant:text-slate-600 text-center py-8">No items</p>
                   ) : (
                     cards.map((card) => (
                       <PipelineCard
@@ -319,29 +342,26 @@ export default function PipelinePage() {
   }
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-            <Columns3 size={22} className="text-teal-600" />
-            Pipeline
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Content production & approval board — no auto-publish on move
-          </p>
-        </div>
-        <button
-          type="button"
-          className="btn-secondary text-sm flex items-center gap-1.5"
-          onClick={() => refetch()}
-          disabled={isFetching}
-        >
-          {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          Refresh
-        </button>
-      </div>
+    <PageShell wide>
+      <PageHeader
+        title="Pipeline"
+        subtitle="Content production & approval board — no auto-publish on move"
+        icon={Columns3}
+        iconClassName="text-violet-400"
+        actions={
+          <button
+            type="button"
+            className="btn-secondary text-sm flex items-center gap-1.5"
+            onClick={() => refetch()}
+            disabled={isFetching}
+          >
+            {isFetching ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Refresh
+          </button>
+        }
+      />
 
-      <div className="flex flex-wrap gap-3">
+      <ActionBar>
         <select
           className="input text-sm min-w-[160px]"
           value={clientId}
@@ -383,11 +403,13 @@ export default function PipelinePage() {
           ))}
         </select>
         {board ? (
-          <span className="text-sm text-gray-500 self-center tabular-nums">{board.total} items</span>
+          <span className="text-sm text-gray-500 dark-tenant:text-slate-500 self-center tabular-nums ml-auto">
+            {board.total} items
+          </span>
         ) : null}
-      </div>
+      </ActionBar>
 
       {body}
-    </div>
+    </PageShell>
   );
 }

@@ -7,7 +7,7 @@ export function KpiCard({
   value,
   href,
   icon: Icon,
-  iconClassName = "bg-brand-50 text-brand-600",
+  iconClassName = "bg-brand-50 text-brand-600 dark-tenant:bg-violet-500/15 dark-tenant:text-violet-400",
   sub,
   trend,
   className,
@@ -27,12 +27,12 @@ export function KpiCard({
         <div className="min-w-0 flex-1">
           <p className="kpi-label">{label}</p>
           <p className="kpi-value mt-1.5">{value}</p>
-          {sub && <p className="text-[11px] text-gray-500 mt-1 truncate">{sub}</p>}
+          {sub && <p className="text-[11px] text-gray-500 mt-1 truncate dark-tenant:text-slate-500">{sub}</p>}
           {trend && (
             <p
               className={cn(
                 "text-[11px] font-medium mt-1",
-                trend.positive ? "text-success-700" : "text-gray-500",
+                trend.positive ? "text-success-700 dark-tenant:text-emerald-400" : "text-gray-500 dark-tenant:text-slate-500",
               )}
             >
               {trend.value}
@@ -60,7 +60,7 @@ export function KpiCard({
 
   const cardClass = cn(
     "card-premium p-5 relative group transition-all duration-200",
-    href && "hover:shadow-card-hover hover:border-brand-200/60 cursor-pointer",
+    href && "hover:shadow-card-hover hover:border-brand-200/60 dark-tenant:hover:border-violet-500/30 dark-tenant:hover:shadow-glow cursor-pointer",
     className,
   );
 

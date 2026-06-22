@@ -12259,6 +12259,29 @@ export const adminAuthApi = {
       "/admin-auth/platform/tenants",
       { params },
     ),
+  createClientAccount: (body: {
+    company_name: string;
+    owner_email: string;
+    owner_name?: string;
+    phone?: string;
+    wechat?: string;
+    whatsapp?: string;
+    country?: string;
+    industry?: string;
+    plan?: string;
+    locale?: string;
+  }) =>
+    adminApi.post<{
+      tenant_id: string;
+      user_id: string;
+      client_id: string;
+      company_name: string;
+      login_email: string;
+      temporary_password: string;
+      login_url: string;
+      seed_counts: Record<string, number>;
+      message: string;
+    }>("/admin-auth/platform/tenants/create-client", body),
   platformBilling: () =>
     adminApi.get<{
       total_tenants: number;

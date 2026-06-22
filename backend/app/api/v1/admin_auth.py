@@ -21,6 +21,8 @@ from app.schemas.admin_auth import (
 )
 from app.schemas.admin_rbac import (
     AdminAuditLogListResponse,
+    AdminCreateClientAccountRequest,
+    AdminCreateClientAccountResponse,
     AdminPermissionsResponse,
     AdminPlatformAnalyticsResponse,
     AdminPlatformBillingResponse,
@@ -33,6 +35,7 @@ from app.schemas.admin_rbac import (
     AdminUserListResponse,
     AdminUserUpdateRequest,
 )
+from app.services.admin_client_provisioning_service import AdminClientProvisioningService
 from app.services.admin_auth_service import AdminAuthService
 from app.services.admin_rbac_service import AdminRbacService, CurrentAdminUser
 from app.services.admin_security_service import AdminSecurityService
@@ -205,6 +208,32 @@ async def admin_platform_tenants(
     db: AsyncSession = Depends(get_db),
 ):
     return await AdminRbacService.platform_tenants(db, admin, skip=skip, limit=limit)
+
+
+@router.post(
+    "/platform/tenants/create-client",
+    response_model=AdminCreateClientAccountResponse,
+    status_code=201,
+)
+async def admin_create_client_account(
+    body: AdminCreateClientAccountRequest,
+    admin: CurrentAdminUser = Depends(require_admin_permission("tenants.manage")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AdminClientProvisioningService.create_client_account(
+        db,
+        admin,
+        company_name=body.company_name,
+        owner_email=body.owner_email,
+        owner_name=body.owner_name,
+        phone=body.phone,
+        wechat=body.wechat,
+        whatsapp=body.whatsapp,
+        country=body.country,
+        industry=body.industry,
+        plan=body.plan,
+        locale=body.locale,
+    )
 
 
 @router.get("/platform/billing", response_model=AdminPlatformBillingResponse)

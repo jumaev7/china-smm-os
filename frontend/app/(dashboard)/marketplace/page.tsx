@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
 import {
   ArrowRightLeft,
+  Filter,
   Globe,
   Handshake,
   Loader2,
@@ -30,9 +31,14 @@ import {
 } from "@/components/ui/PageStates";
 import { DashboardSkeleton } from "@/components/ui/Skeleton";
 import {
+  ActionBar,
   ExecutiveKpiBar,
   PageHeader,
+  PageSection,
   PageShell,
+  SectionCard,
+  StatTile,
+  StatusBadge,
 } from "@/components/ui/design-system";
 
 const TYPE_LABELS: Record<MarketplaceOpportunityType, string> = {
@@ -45,11 +51,14 @@ const TYPE_LABELS: Record<MarketplaceOpportunityType, string> = {
   rfq: "RFQ",
 };
 
-const STATUS_STYLES: Record<MarketplaceOpportunityStatus, string> = {
-  open: "bg-emerald-100 text-emerald-900 border-emerald-200",
-  in_review: "bg-amber-100 text-amber-900 border-amber-200",
-  claimed: "bg-indigo-100 text-indigo-900 border-indigo-200",
-  closed: "bg-gray-100 text-gray-700 border-gray-200",
+const STATUS_VARIANT: Record<
+  MarketplaceOpportunityStatus,
+  "success" | "warning" | "info" | "neutral"
+> = {
+  open: "success",
+  in_review: "warning",
+  claimed: "info",
+  closed: "neutral",
 };
 
 function fmtDt(iso?: string | null): string {
@@ -198,8 +207,9 @@ export default function MarketplacePage() {
     <PageShell wide className="space-y-6">
       <PageHeader
         title="Marketplace & Lead Exchange"
-        subtitle="Discover and exchange buyer opportunities across factory partners — manual participation only."
+        subtitle="Discover and exchange high-value buyer opportunities across factory partners — manual participation only."
         icon={Store}
+        iconClassName="text-teal-400"
         actions={
           <button
             type="button"
@@ -221,22 +231,21 @@ export default function MarketplacePage() {
         ]}
       />
 
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 px-4 py-2 flex items-start gap-2 text-xs text-emerald-900">
-        <Shield className="w-4 h-4 shrink-0 mt-0.5" />
+      <div className="rounded-xl border border-emerald-200/80 bg-emerald-50/40 px-4 py-3 flex items-start gap-2 text-xs text-emerald-900 dark-tenant:border-emerald-500/20 dark-tenant:bg-emerald-500/10 dark-tenant:text-emerald-200">
+        <Shield className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark-tenant:text-emerald-400" />
         <span>{overview.safety_notice}</span>
       </div>
 
       {(overview.errors?.length ?? 0) > 0 && <PartialErrorsBanner errors={overview.errors} />}
 
       {integrationDegraded.length > 0 && (
-        <p className="text-xs text-amber-800">
+        <p className="text-xs text-amber-800 dark-tenant:text-amber-300">
           {integrationDegraded.length} integration probe(s) degraded — exchange still available.
         </p>
       )}
 
       {showCreate && (
-        <div className="card p-4 space-y-3">
-          <p className="text-sm font-semibold">Register buyer opportunity</p>
+        <SectionCard title="Register buyer opportunity" icon={Store} iconClassName="text-teal-400">
           <div className="grid sm:grid-cols-2 gap-3">
             <input
               className="input text-sm"
@@ -289,64 +298,45 @@ export default function MarketplacePage() {
             {createMut.isPending ? <Loader2 className="w-4 h-4 animate-spin inline" /> : null}
             Create opportunity
           </button>
-        </div>
+        </SectionCard>
       )}
 
-      <section>
-        <h2 className="text-sm font-semibold text-gray-900 mb-3">Marketplace Overview</h2>
+      <PageSection title="Marketplace pulse" description="Participation and exchange activity at a glance">
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-          <div className="card p-4">
-            <p className="text-[10px] uppercase text-gray-400">Total</p>
-            <p className="text-2xl font-semibold tabular-nums">{overview.total_opportunities}</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-[10px] uppercase text-gray-400">Open</p>
-            <p className="text-2xl font-semibold tabular-nums">{overview.open_opportunities}</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-[10px] uppercase text-gray-400">In review</p>
-            <p className="text-2xl font-semibold tabular-nums">{overview.in_review}</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-[10px] uppercase text-gray-400">Claimed</p>
-            <p className="text-2xl font-semibold tabular-nums">{overview.claimed}</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-[10px] uppercase text-gray-400">Interests</p>
-            <p className="text-2xl font-semibold tabular-nums">{overview.total_interests}</p>
-          </div>
-          <div className="card p-4">
-            <p className="text-[10px] uppercase text-gray-400">Claims</p>
-            <p className="text-2xl font-semibold tabular-nums">{overview.total_claims}</p>
-          </div>
-          <div className="card p-4 col-span-2">
-            <p className="text-[10px] uppercase text-gray-400">Avg value</p>
-            <p className="text-2xl font-semibold tabular-nums">
-              {fmtValue(overview.average_estimated_value)}
-            </p>
-          </div>
+          <StatTile label="Total" value={overview.total_opportunities} tone="neutral" />
+          <StatTile label="Open" value={overview.open_opportunities} tone="success" />
+          <StatTile label="In review" value={overview.in_review} tone="warning" />
+          <StatTile label="Claimed" value={overview.claimed} tone="violet" />
+          <StatTile label="Interests" value={overview.total_interests} tone="sky" />
+          <StatTile label="Claims" value={overview.total_claims} tone="info" />
+          <StatTile
+            label="Avg value"
+            value={fmtValue(overview.average_estimated_value)}
+            tone="brand"
+            className="col-span-2"
+          />
         </div>
-      </section>
+      </PageSection>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <section className="lg:col-span-2 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-gray-900">Opportunity Feed</h2>
-            <div className="flex flex-wrap gap-2">
+          <PageSection title="Opportunity feed" description="Browse and filter listed buyer opportunities">
+            <ActionBar>
+              <Filter size={14} className="text-slate-400 shrink-0" />
               <input
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1"
+                className="input text-xs min-w-[120px] w-auto"
                 placeholder="Country"
                 value={filterCountry}
                 onChange={(e) => setFilterCountry(e.target.value)}
               />
               <input
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1"
+                className="input text-xs min-w-[120px] w-auto"
                 placeholder="Industry"
                 value={filterIndustry}
                 onChange={(e) => setFilterIndustry(e.target.value)}
               />
               <select
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1"
+                className="input text-xs min-w-[140px] w-auto"
                 value={filterType}
                 onChange={(e) =>
                   setFilterType(e.target.value as MarketplaceOpportunityType | "")
@@ -359,52 +349,51 @@ export default function MarketplacePage() {
                   </option>
                 ))}
               </select>
-            </div>
-          </div>
+            </ActionBar>
+          </PageSection>
+
           {oppsLoading ? (
             <LoadingState label="Loading opportunities…" />
           ) : opps.length === 0 ? (
             <EmptyState title="No opportunities" description="List a buyer opportunity to get started." />
           ) : (
-            <div className="card overflow-hidden">
+            <div className="card-premium overflow-hidden">
               <table className="w-full text-xs">
-                <thead className="bg-gray-50 text-gray-500">
+                <thead className="bg-gray-50/80 text-gray-500 dark-tenant:bg-surface-dark-elevated/80 dark-tenant:text-slate-400">
                   <tr>
-                    <th className="text-left p-2">Opportunity</th>
-                    <th className="text-left p-2">Market</th>
-                    <th className="text-left p-2">Value</th>
-                    <th className="text-left p-2">Status</th>
+                    <th className="text-left p-2.5 font-medium">Opportunity</th>
+                    <th className="text-left p-2.5 font-medium">Market</th>
+                    <th className="text-left p-2.5 font-medium">Value</th>
+                    <th className="text-left p-2.5 font-medium">Status</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gray-50 dark-tenant:divide-white/[0.04]">
                   {opps.map((o: MarketplaceOpportunityItem) => (
                     <tr
                       key={o.id}
                       className={cn(
-                        "border-t border-gray-100 cursor-pointer hover:bg-gray-50/80",
-                        selected?.id === o.id && "bg-brand-50/40",
+                        "cursor-pointer transition-colors hover:bg-gray-50/60 dark-tenant:hover:bg-white/[0.02]",
+                        selected?.id === o.id &&
+                          "bg-brand-50/40 dark-tenant:bg-violet-500/10",
                       )}
                       onClick={() => setSelectedId(o.id)}
                     >
-                      <td className="p-2">
-                        <p className="font-medium text-gray-900">{o.title}</p>
-                        <p className="text-gray-500">{o.buyer_company}</p>
+                      <td className="p-2.5">
+                        <p className="font-medium text-gray-900 dark-tenant:text-slate-100">{o.title}</p>
+                        <p className="text-gray-500 dark-tenant:text-slate-500">{o.buyer_company}</p>
                       </td>
-                      <td className="p-2 text-gray-600">
+                      <td className="p-2.5 text-gray-600 dark-tenant:text-slate-400">
                         {[o.country, o.industry, TYPE_LABELS[o.opportunity_type]]
                           .filter(Boolean)
                           .join(" · ")}
                       </td>
-                      <td className="p-2 tabular-nums">{fmtValue(o.estimated_value)}</td>
-                      <td className="p-2">
-                        <span
-                          className={cn(
-                            "text-[10px] px-2 py-0.5 rounded-full border capitalize",
-                            STATUS_STYLES[o.status],
-                          )}
-                        >
+                      <td className="p-2.5 tabular-nums text-gray-800 dark-tenant:text-slate-200">
+                        {fmtValue(o.estimated_value)}
+                      </td>
+                      <td className="p-2.5">
+                        <StatusBadge variant={STATUS_VARIANT[o.status]} className="capitalize text-[10px]">
                           {o.status.replace("_", " ")}
-                        </span>
+                        </StatusBadge>
                       </td>
                     </tr>
                   ))}
@@ -414,33 +403,38 @@ export default function MarketplacePage() {
           )}
         </section>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-900">Opportunity Detail</h2>
+        <SectionCard title="Opportunity detail" icon={TrendingUp} iconClassName="text-violet-400">
           {!selected ? (
             <EmptyState title="Select an opportunity" />
           ) : (
-            <div className="card p-4 space-y-3 text-sm">
-              <p className="font-semibold text-gray-900">{selected.title}</p>
-              <p className="text-gray-600">{selected.description || "No description."}</p>
-              <dl className="space-y-1 text-xs text-gray-600">
-                <div className="flex justify-between">
-                  <dt>Buyer</dt>
-                  <dd className="font-medium text-gray-900">{selected.buyer_company}</dd>
+            <div className="space-y-3 text-sm">
+              <p className="font-semibold text-gray-900 dark-tenant:text-slate-100">{selected.title}</p>
+              <p className="text-gray-600 dark-tenant:text-slate-400 text-xs">
+                {selected.description || "No description."}
+              </p>
+              <dl className="space-y-2 text-xs">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-500 dark-tenant:text-slate-500">Buyer</dt>
+                  <dd className="font-medium text-gray-900 dark-tenant:text-slate-100 text-right">
+                    {selected.buyer_company}
+                  </dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt>Rank score</dt>
-                  <dd className="tabular-nums">{selected.rank_score}/100</dd>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-500 dark-tenant:text-slate-500">Rank score</dt>
+                  <dd className="tabular-nums text-gray-900 dark-tenant:text-slate-200">
+                    {selected.rank_score}/100
+                  </dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt>Participation</dt>
-                  <dd>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-500 dark-tenant:text-slate-500">Participation</dt>
+                  <dd className="text-gray-700 dark-tenant:text-slate-300 text-right">
                     {selected.view_count} views · {selected.interest_count} interests ·{" "}
                     {selected.claim_count} claims
                   </dd>
                 </div>
-                <div className="flex justify-between">
-                  <dt>Updated</dt>
-                  <dd>{fmtDt(selected.updated_at)}</dd>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-500 dark-tenant:text-slate-500">Updated</dt>
+                  <dd className="text-gray-700 dark-tenant:text-slate-300">{fmtDt(selected.updated_at)}</dd>
                 </div>
               </dl>
               <div className="flex flex-wrap gap-2 pt-2">
@@ -467,132 +461,125 @@ export default function MarketplacePage() {
                 </button>
               </div>
               {!defaultTenantId && (
-                <p className="text-[10px] text-amber-700">
+                <p className="text-[10px] text-amber-700 dark-tenant:text-amber-400">
                   Sign in as a factory tenant to express interest or claim manually.
                 </p>
               )}
             </div>
           )}
-        </section>
+        </SectionCard>
       </div>
 
-      <section>
-        <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1">
-          <TrendingUp size={14} />
-          Opportunity Ranking
-        </h2>
+      <PageSection title="Opportunity ranking" description="Top-ranked opportunities by strategy">
         <div className="grid md:grid-cols-3 gap-4">
           {(["best_opportunities", "newest_opportunities", "strategic_opportunities"] as const).map(
             (key) => (
-              <div key={key} className="card p-4">
-                <p className="text-xs font-semibold text-gray-700 mb-2 capitalize">
-                  {key.replace(/_/g, " ")}
-                </p>
+              <SectionCard
+                key={key}
+                title={key.replace(/_/g, " ")}
+                icon={TrendingUp}
+                iconClassName="text-emerald-400"
+                className="capitalize"
+              >
                 <ul className="space-y-2 text-xs">
                   {(topOpps?.[key] ?? []).slice(0, 5).map((row) => (
                     <li key={row.opportunity_id} className="flex justify-between gap-2">
-                      <span className="text-gray-900 truncate">{row.title}</span>
-                      <span className="text-gray-500 shrink-0 tabular-nums">{row.rank_score}</span>
+                      <span className="text-gray-900 dark-tenant:text-slate-200 truncate">{row.title}</span>
+                      <span className="text-gray-500 dark-tenant:text-slate-500 shrink-0 tabular-nums">
+                        {row.rank_score}
+                      </span>
                     </li>
                   ))}
                 </ul>
-              </div>
+              </SectionCard>
             ),
           )}
         </div>
-      </section>
+      </PageSection>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <section>
-          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1">
-            <Globe size={14} />
-            Marketplace Insights
-          </h2>
-          <div className="card p-4 space-y-4 text-xs">
+        <SectionCard title="Marketplace insights" icon={Globe} iconClassName="text-sky-400">
+          <div className="space-y-4 text-xs">
             <div>
-              <p className="font-medium text-gray-700 mb-1">Top countries</p>
+              <p className="font-medium text-gray-700 dark-tenant:text-slate-300 mb-1">Top countries</p>
               <ul className="space-y-1">
                 {(insights?.top_countries ?? []).slice(0, 5).map((s) => (
-                  <li key={s.label} className="flex justify-between">
+                  <li key={s.label} className="flex justify-between text-gray-700 dark-tenant:text-slate-300">
                     <span>{s.label}</span>
-                    <span className="text-gray-500">{s.count}</span>
+                    <span className="text-gray-500 dark-tenant:text-slate-500">{s.count}</span>
                   </li>
                 ))}
               </ul>
             </div>
             <div>
-              <p className="font-medium text-gray-700 mb-1">Top industries</p>
+              <p className="font-medium text-gray-700 dark-tenant:text-slate-300 mb-1">Top industries</p>
               <ul className="space-y-1">
                 {(insights?.top_industries ?? []).slice(0, 5).map((s) => (
-                  <li key={s.label} className="flex justify-between">
+                  <li key={s.label} className="flex justify-between text-gray-700 dark-tenant:text-slate-300">
                     <span>{s.label}</span>
-                    <span className="text-gray-500">{s.count}</span>
+                    <span className="text-gray-500 dark-tenant:text-slate-500">{s.count}</span>
                   </li>
                 ))}
               </ul>
             </div>
             <div>
-              <p className="font-medium text-gray-700 mb-1">Most active tenants</p>
+              <p className="font-medium text-gray-700 dark-tenant:text-slate-300 mb-1">Most active tenants</p>
               <ul className="space-y-1">
                 {(insights?.most_active_tenants ?? []).map((t) => (
-                  <li key={t.tenant_id} className="flex justify-between">
+                  <li key={t.tenant_id} className="flex justify-between text-gray-700 dark-tenant:text-slate-300">
                     <span>{t.tenant_name}</span>
-                    <span className="text-gray-500">{t.activity_count}</span>
+                    <span className="text-gray-500 dark-tenant:text-slate-500">{t.activity_count}</span>
                   </li>
                 ))}
               </ul>
             </div>
           </div>
-        </section>
+        </SectionCard>
 
-        <section>
-          <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1">
-            <ArrowRightLeft size={14} />
-            Activity Feed
-          </h2>
-          <div className="card p-4 max-h-64 overflow-y-auto">
+        <SectionCard title="Activity feed" icon={ArrowRightLeft} iconClassName="text-violet-400">
+          <div className="max-h-64 overflow-y-auto">
             <ul className="space-y-2 text-xs">
               {(activity?.items ?? []).map((a) => (
-                <li key={`${a.activity_type}-${a.id}`} className="border-b border-gray-50 pb-2">
-                  <span className="capitalize font-medium text-gray-800">{a.activity_type}</span>
-                  <span className="text-gray-600"> — {a.opportunity_title}</span>
+                <li
+                  key={`${a.activity_type}-${a.id}`}
+                  className="border-b border-gray-50 dark-tenant:border-white/[0.04] pb-2"
+                >
+                  <span className="capitalize font-medium text-gray-800 dark-tenant:text-slate-200">
+                    {a.activity_type}
+                  </span>
+                  <span className="text-gray-600 dark-tenant:text-slate-400"> — {a.opportunity_title}</span>
                   {a.tenant_label && (
-                    <span className="text-gray-400"> ({a.tenant_label})</span>
+                    <span className="text-gray-400 dark-tenant:text-slate-500"> ({a.tenant_label})</span>
                   )}
-                  <p className="text-[10px] text-gray-400">{fmtDt(a.occurred_at)}</p>
+                  <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">{fmtDt(a.occurred_at)}</p>
                 </li>
               ))}
             </ul>
           </div>
-        </section>
+        </SectionCard>
       </div>
 
-      <section className="card p-4">
-        <p className="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1">
-          <Handshake size={12} />
-          Integrations (read-only probes)
-        </p>
+      <SectionCard title="Integrations" icon={Handshake} iconClassName="text-brand-600 dark-tenant:text-violet-400">
+        <p className="text-[10px] text-gray-500 dark-tenant:text-slate-500 -mt-2 mb-1">Read-only probes</p>
         <div className="flex flex-wrap gap-2">
-          <Link href="/buyer-discovery" className="text-xs text-brand-700 hover:underline">
-            Buyer Discovery
-          </Link>
-          <Link href="/buyer-intelligence" className="text-xs text-brand-700 hover:underline">
-            Buyer Intelligence
-          </Link>
-          <Link href="/deal-risk" className="text-xs text-brand-700 hover:underline">
-            Deal Risk
-          </Link>
-          <Link href="/revenue-forecast" className="text-xs text-brand-700 hover:underline">
-            Revenue Forecast
-          </Link>
-          <Link href="/factory-platform" className="text-xs text-brand-700 hover:underline">
-            Factory Platform
-          </Link>
-          <Link href="/customer-portal" className="text-xs text-brand-700 hover:underline">
-            Customer Portal
-          </Link>
+          {[
+            { href: "/buyer-discovery", label: "Buyer Discovery" },
+            { href: "/buyer-intelligence", label: "Buyer Intelligence" },
+            { href: "/deal-risk", label: "Deal Risk" },
+            { href: "/revenue-forecast", label: "Revenue Forecast" },
+            { href: "/factory-platform", label: "Factory Platform" },
+            { href: "/customer-portal", label: "Customer Portal" },
+          ].map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className="text-xs text-brand-700 hover:text-brand-900 dark-tenant:text-violet-400 dark-tenant:hover:text-violet-300 px-2 py-1 rounded-lg border border-gray-100 dark-tenant:border-white/[0.06] hover:bg-gray-50 dark-tenant:hover:bg-white/[0.04] transition-colors"
+            >
+              {label}
+            </Link>
+          ))}
         </div>
-      </section>
+      </SectionCard>
     </PageShell>
   );
 }

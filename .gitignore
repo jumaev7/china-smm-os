@@ -16,6 +16,7 @@ env/
 # Node
 node_modules/
 .next/
+frontend/.next/
 out/
 .env.local
 !.env.example

@@ -32,22 +32,40 @@ import { resolveNavAudience } from "@/lib/nav-access";
 import { computeSessionAwareAuthReady } from "@/lib/session-sync";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
+import {
+  ExecutiveKpiBar,
+  PageHeader,
+  PageShell,
+  PageSection,
+  SectionCard,
+  StatTile,
+  StatusBadge,
+} from "@/components/ui/design-system";
 
 type BillingTab = "overview" | "plans" | "licenses";
 
-const STATUS_STYLES: Record<string, string> = {
+const STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
+  trial: "info",
+  active: "success",
+  suspended: "warning",
+  expired: "neutral",
+  cancelled: "danger",
+};
+
+const INVOICE_VARIANT: Record<string, "success" | "warning" | "danger" | "neutral"> = {
+  draft: "neutral",
+  unpaid: "warning",
+  paid: "success",
+  cancelled: "danger",
+};
+
+/** Admin billing table — unchanged light styles */
+const ADMIN_STATUS_STYLES: Record<string, string> = {
   trial: "bg-sky-100 text-sky-800 border-sky-200",
   active: "bg-emerald-100 text-emerald-800 border-emerald-200",
   suspended: "bg-amber-100 text-amber-800 border-amber-200",
   expired: "bg-gray-100 text-gray-700 border-gray-200",
   cancelled: "bg-red-100 text-red-800 border-red-200",
-};
-
-const INVOICE_STYLES: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  unpaid: "bg-orange-100 text-orange-800",
-  paid: "bg-emerald-100 text-emerald-800",
-  cancelled: "bg-red-100 text-red-700",
 };
 
 const TABS: { id: BillingTab; label: string }[] = [
@@ -80,24 +98,29 @@ function UsageBar({
   const pct = metric.utilization_pct;
   const nearLimit = pct != null && pct >= 80;
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       <div className="flex justify-between text-xs">
-        <span className="text-gray-600">{label}</span>
-        <span className="tabular-nums text-gray-800">
+        <span className="text-gray-600 dark-tenant:text-slate-400">{label}</span>
+        <span className="tabular-nums text-gray-800 dark-tenant:text-slate-200">
           {metric.current}
           {metric.limit != null ? ` / ${metric.limit}` : " / ∞"}
           {pct != null ? ` (${pct}%)` : ""}
         </span>
       </div>
       {pct != null ? (
-        <div className="h-1.5 rounded-full bg-gray-200 overflow-hidden">
+        <div className="h-1.5 rounded-full bg-gray-200 dark-tenant:bg-white/[0.06] overflow-hidden">
           <div
-            className={cn("h-full rounded-full", nearLimit ? "bg-orange-500" : "bg-brand-600")}
+            className={cn(
+              "h-full rounded-full transition-all",
+              nearLimit
+                ? "bg-orange-500 dark-tenant:bg-orange-400"
+                : "bg-brand-600 dark-tenant:bg-violet-500",
+            )}
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
       ) : (
-        <div className="h-1.5 rounded-full bg-gray-100" />
+        <div className="h-1.5 rounded-full bg-gray-100 dark-tenant:bg-white/[0.04]" />
       )}
     </div>
   );
@@ -120,27 +143,33 @@ function PlanCard({
   return (
     <div
       className={cn(
-        "card p-4 flex flex-col border-2 transition-colors",
-        isCurrent ? "border-brand-500 bg-brand-50/30" : "border-transparent",
+        "card-premium p-5 flex flex-col border-2 transition-all duration-200",
+        isCurrent
+          ? "border-brand-500 bg-brand-50/30 dark-tenant:border-violet-500/40 dark-tenant:bg-violet-500/10 dark-tenant:shadow-glow"
+          : "border-transparent hover:border-gray-200 dark-tenant:hover:border-white/[0.08]",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="font-semibold text-gray-900">{plan.name}</h3>
-          <p className="text-xs text-gray-500 uppercase tracking-wide mt-0.5">{plan.code}</p>
+          <h3 className="font-semibold text-gray-900 dark-tenant:text-slate-100">{plan.name}</h3>
+          <p className="text-xs text-gray-500 dark-tenant:text-slate-500 uppercase tracking-wide mt-0.5">
+            {plan.code}
+          </p>
         </div>
         {isCurrent && (
-          <span className="text-[10px] px-2 py-0.5 rounded-full bg-brand-100 text-brand-800 font-medium">
+          <StatusBadge variant="info" className="text-[10px]">
             Current
-          </span>
+          </StatusBadge>
         )}
       </div>
-      <p className="text-2xl font-semibold text-gray-900 mt-3 tabular-nums">
+      <p className="text-2xl font-semibold text-gray-900 dark-tenant:text-slate-100 mt-3 tabular-nums">
         {fmtMoney(plan.monthly_price)}
-        <span className="text-sm font-normal text-gray-500">/mo</span>
+        <span className="text-sm font-normal text-gray-500 dark-tenant:text-slate-500">/mo</span>
       </p>
-      <p className="text-xs text-gray-500 mt-1">{fmtMoney(plan.yearly_price)}/yr billed annually</p>
-      <ul className="mt-4 space-y-1 text-xs text-gray-600 flex-1">
+      <p className="text-xs text-gray-500 dark-tenant:text-slate-500 mt-1">
+        {fmtMoney(plan.yearly_price)}/yr billed annually
+      </p>
+      <ul className="mt-4 space-y-1.5 text-xs text-gray-600 dark-tenant:text-slate-400 flex-1">
         <li>Users: {plan.max_users ?? "Unlimited"}</li>
         <li>Leads: {plan.max_leads ?? "Unlimited"}</li>
         <li>Buyers: {plan.max_buyers ?? "Unlimited"}</li>
@@ -164,7 +193,13 @@ function PlanCard({
 function BillingTabs({ tab, isAdmin }: { tab: BillingTab; isAdmin: boolean }) {
   const router = useRouter();
   return (
-    <div className="flex flex-wrap gap-1 border-b border-gray-200 pb-1">
+    <div
+      className={cn(
+        "inline-flex flex-wrap gap-1 rounded-xl border border-gray-200/90 bg-white p-1",
+        "dark-tenant:border-white/[0.08] dark-tenant:bg-surface-dark-elevated/60",
+      )}
+      role="tablist"
+    >
       {TABS.map(({ id, label }) => {
         const href = id === "overview" ? "/billing" : `/billing?tab=${id}`;
         const active = tab === id;
@@ -172,12 +207,14 @@ function BillingTabs({ tab, isAdmin }: { tab: BillingTab; isAdmin: boolean }) {
           <button
             key={id}
             type="button"
+            role="tab"
+            aria-selected={active}
             onClick={() => router.push(href)}
             className={cn(
-              "px-3 py-1.5 text-sm rounded-t-lg border-b-2 -mb-px transition-colors",
+              "px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-150",
               active
-                ? "border-brand-600 text-brand-700 font-medium bg-brand-50/50"
-                : "border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50",
+                ? "bg-brand-600 text-white shadow-sm dark-tenant:bg-violet-600 dark-tenant:shadow-glow"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark-tenant:text-slate-400 dark-tenant:hover:bg-white/[0.04] dark-tenant:hover:text-slate-200",
             )}
           >
             {label}
@@ -356,7 +393,7 @@ function AdminBillingPage({ tab }: { tab: BillingTab }) {
                       </td>
                       <td className="px-4 py-3 text-xs">{s.plan_name ?? s.plan_code}</td>
                       <td className="px-4 py-3">
-                        <span className={cn("text-[10px] px-2 py-0.5 rounded-full border font-medium", STATUS_STYLES[s.status])}>
+                        <span className={cn("text-[10px] px-2 py-0.5 rounded-full border font-medium", ADMIN_STATUS_STYLES[s.status])}>
                           {s.status}
                         </span>
                       </td>
@@ -467,9 +504,9 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
 
   if (!tenantId) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
+      <PageShell>
         <ErrorState error={new Error("Tenant session required")} />
-      </div>
+      </PageShell>
     );
   }
 
@@ -483,25 +520,22 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
   const usage = summary?.usage_summary;
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <CreditCard size={20} className="text-amber-600" />
-          Subscription & Billing
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Plan management, usage limits, and invoice records — architecture only, no payment processing.
-        </p>
-      </div>
+    <PageShell>
+      <PageHeader
+        title="Subscription & Billing"
+        subtitle="Plan management, usage limits, and invoice records — architecture only, no payment processing."
+        icon={CreditCard}
+        iconClassName="text-amber-400"
+      />
 
       <BillingTabs tab={tab} isAdmin={false} />
 
-      <div className="card p-3 border-amber-100 bg-amber-50/50 text-xs text-amber-900 flex items-start gap-2">
-        <AlertCircle size={14} className="shrink-0 mt-0.5" />
+      <div className="rounded-xl border border-amber-200/80 bg-amber-50/40 px-4 py-3 text-xs text-amber-900 dark-tenant:border-amber-500/20 dark-tenant:bg-amber-500/10 dark-tenant:text-amber-200 flex items-start gap-2">
+        <AlertCircle size={14} className="shrink-0 mt-0.5 text-amber-600 dark-tenant:text-amber-400" />
         <span>
           No real payment providers, card storage, or automatic charges. Invoices are draft records only.
           {" "}
-          <Link href="/billing/legacy" className="underline hover:text-amber-950">
+          <Link href="/billing/legacy" className="underline hover:text-amber-950 dark-tenant:hover:text-amber-100">
             Legacy client post billing
           </Link>
         </span>
@@ -510,10 +544,10 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
       {tab === "overview" && pilotBilling && (
         <div
           className={cn(
-            "card p-3 text-xs flex items-center justify-between gap-2 border",
+            "card-premium p-3 text-xs flex items-center justify-between gap-2 border",
             pilotBilling.billing_ready
-              ? "border-emerald-200 bg-emerald-50/50 text-emerald-900"
-              : "border-amber-200 bg-amber-50/50 text-amber-900",
+              ? "border-emerald-200/80 bg-emerald-50/40 text-emerald-900 dark-tenant:border-emerald-500/20 dark-tenant:bg-emerald-500/10 dark-tenant:text-emerald-200"
+              : "border-amber-200/80 bg-amber-50/40 text-amber-900 dark-tenant:border-amber-500/20 dark-tenant:bg-amber-500/10 dark-tenant:text-amber-200",
           )}
         >
           <div className="flex items-center gap-2">
@@ -528,15 +562,14 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
               {pilotBilling.readiness_score}%
             </span>
           </div>
-          <Link href="/pilot-onboarding" className="text-brand-700 hover:underline whitespace-nowrap">
+          <Link href="/pilot-onboarding" className="text-brand-700 hover:underline dark-tenant:text-violet-400 whitespace-nowrap">
             Open onboarding →
           </Link>
         </div>
       )}
 
       {tab === "plans" && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-gray-900">Available Plans</h2>
+        <PageSection title="Available plans" description="Choose a subscription tier for your factory workspace">
           {planItems.length === 0 ? (
             <EmptyState title="No plans available" description="Contact your platform administrator." />
           ) : (
@@ -552,25 +585,24 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
               ))}
             </div>
           )}
-        </section>
+        </PageSection>
       )}
 
       {tab === "licenses" && (
-        <section className="card p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-gray-900">Your Subscription</h2>
+        <SectionCard title="Your subscription" icon={Shield} iconClassName="text-violet-400">
           {activeSub ? (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-medium">
+                <p className="text-sm font-medium text-gray-900 dark-tenant:text-slate-100">
                   {activeSub.plan_name ?? activeSub.plan_code} — {activeSub.billing_cycle}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-gray-500 dark-tenant:text-slate-500">
                   Started {format(parseISO(activeSub.starts_at), "dd MMM yyyy")}
                   {activeSub.expires_at && ` · Expires ${format(parseISO(activeSub.expires_at), "dd MMM yyyy")}`}
                 </p>
-                <span className={cn("inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full border font-medium", STATUS_STYLES[activeSub.status])}>
+                <StatusBadge variant={STATUS_VARIANT[activeSub.status] ?? "neutral"} className="mt-1 text-[10px]">
                   {activeSub.status}
-                </span>
+                </StatusBadge>
               </div>
               <div className="flex flex-wrap gap-2">
                 {activeSub.status !== "active" && activeSub.status !== "cancelled" && (
@@ -611,7 +643,7 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
               description="Choose a plan on the Plans tab to start a trial subscription."
             />
           )}
-        </section>
+        </SectionCard>
       )}
 
       {tab === "overview" && (
@@ -619,53 +651,62 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
           <ErrorState error={summaryErr} onRetry={() => refetchSummary()} />
         ) : summary ? (
           <>
-            <section className="card p-4 space-y-3">
-              <h2 className="text-sm font-semibold text-gray-900">Current Plan</h2>
+            {summary.status && (
+              <ExecutiveKpiBar
+                items={[
+                  { label: "Plan", value: summary.plan?.name ?? "Free" },
+                  { label: "Monthly", value: fmtMoney(summary.monthly_price) },
+                  { label: "Status", value: summary.status },
+                  {
+                    label: "Renewal",
+                    value: summary.next_renewal
+                      ? format(parseISO(summary.next_renewal), "dd MMM yyyy")
+                      : "—",
+                  },
+                ]}
+              />
+            )}
+
+            <SectionCard title="Current plan" icon={CreditCard} iconClassName="text-amber-400">
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <StatTile label="Plan" value={summary.plan?.name ?? "Free"} tone="brand" />
+                <StatTile label="Monthly price" value={fmtMoney(summary.monthly_price)} tone="neutral" />
                 <div>
-                  <p className="text-[10px] uppercase text-gray-400">Plan</p>
-                  <p className="text-lg font-semibold">{summary.plan?.name ?? "Free"}</p>
-                  <p className="text-xs text-gray-500">{summary.plan?.code}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase text-gray-400">Monthly price</p>
-                  <p className="text-lg font-semibold tabular-nums">{fmtMoney(summary.monthly_price)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase text-gray-400">Status</p>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 dark-tenant:text-slate-500 mb-1">
+                    Status
+                  </p>
                   {summary.status ? (
-                    <span className={cn("text-xs px-2 py-0.5 rounded-full border font-medium", STATUS_STYLES[summary.status])}>
+                    <StatusBadge variant={STATUS_VARIANT[summary.status] ?? "neutral"}>
                       {summary.status}
-                    </span>
+                    </StatusBadge>
                   ) : (
-                    <p className="text-sm text-gray-500">No active subscription</p>
+                    <p className="text-sm text-gray-500 dark-tenant:text-slate-500">No active subscription</p>
                   )}
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase text-gray-400">Next renewal</p>
-                  <p className="text-sm font-medium">
-                    {summary.next_renewal
+                <StatTile
+                  label="Next renewal"
+                  value={
+                    summary.next_renewal
                       ? format(parseISO(summary.next_renewal), "dd MMM yyyy")
-                      : "—"}
-                  </p>
-                </div>
+                      : "—"
+                  }
+                  tone="info"
+                />
               </div>
-            </section>
+            </SectionCard>
 
             {usage && (
-              <section className="card p-4 space-y-3">
-                <h2 className="text-sm font-semibold text-gray-900">Usage Summary</h2>
+              <SectionCard title="Usage summary" icon={TrendingUp} iconClassName="text-emerald-400">
                 <div className="grid sm:grid-cols-2 gap-4">
                   <UsageBar label="Users" metric={usage.users} />
                   <UsageBar label="Leads" metric={usage.leads} />
                   <UsageBar label="Buyers" metric={usage.buyers} />
                   <UsageBar label="Deals" metric={usage.deals} />
                 </div>
-              </section>
+              </SectionCard>
             )}
 
-            <section className="space-y-3">
-              <h2 className="text-sm font-semibold text-gray-900">Plan Comparison</h2>
+            <PageSection title="Plan comparison" description="Upgrade or switch subscription tiers">
               <div className="grid sm:grid-cols-3 gap-4">
                 {planItems.map((plan) => (
                   <PlanCard
@@ -677,41 +718,42 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
                   />
                 ))}
               </div>
-            </section>
+            </PageSection>
 
-            <section className="card overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100">
-                <h2 className="text-sm font-semibold text-gray-800">Invoice History</h2>
-              </div>
-              <div className="overflow-x-auto">
+            <SectionCard title="Invoice history" icon={CreditCard} iconClassName="text-sky-400">
+              <div className="overflow-x-auto -mx-1">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50 text-xs text-gray-500">
+                    <tr className="border-b border-gray-100 dark-tenant:border-white/[0.06] bg-gray-50/80 dark-tenant:bg-surface-dark-elevated/80 text-xs text-gray-500 dark-tenant:text-slate-400">
                       <th className="text-left px-4 py-2.5">Date</th>
                       <th className="text-left px-4 py-2.5">Due</th>
                       <th className="text-right px-4 py-2.5">Amount</th>
                       <th className="text-left px-4 py-2.5">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-gray-50 dark-tenant:divide-white/[0.04]">
                     {invoiceItems.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">
+                        <td colSpan={4} className="px-4 py-8 text-center text-gray-400 dark-tenant:text-slate-500 text-sm">
                           No invoices yet.
                         </td>
                       </tr>
                     ) : (
                       invoiceItems.map((inv) => (
-                        <tr key={inv.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-xs">{format(parseISO(inv.invoice_date), "dd MMM yyyy")}</td>
-                          <td className="px-4 py-3 text-xs">{format(parseISO(inv.due_date), "dd MMM yyyy")}</td>
-                          <td className="px-4 py-3 text-xs text-right tabular-nums">
+                        <tr key={inv.id} className="hover:bg-gray-50/60 dark-tenant:hover:bg-white/[0.02]">
+                          <td className="px-4 py-3 text-xs text-gray-800 dark-tenant:text-slate-300">
+                            {format(parseISO(inv.invoice_date), "dd MMM yyyy")}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-800 dark-tenant:text-slate-300">
+                            {format(parseISO(inv.due_date), "dd MMM yyyy")}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-right tabular-nums text-gray-900 dark-tenant:text-slate-100">
                             {fmtMoney(inv.amount)} {inv.currency}
                           </td>
                           <td className="px-4 py-3">
-                            <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium", INVOICE_STYLES[inv.status])}>
+                            <StatusBadge variant={INVOICE_VARIANT[inv.status] ?? "neutral"} className="text-[10px]">
                               {inv.status}
-                            </span>
+                            </StatusBadge>
                           </td>
                         </tr>
                       ))
@@ -719,20 +761,16 @@ function TenantBillingPage({ tab, tenantId }: { tab: BillingTab; tenantId: strin
                   </tbody>
                 </table>
               </div>
-            </section>
+            </SectionCard>
 
-            <section className="card p-4 border-brand-100 bg-brand-50/20">
-              <h2 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-                <TrendingUp size={16} className="text-brand-600" />
-                Upgrade Plan
-              </h2>
-              <p className="text-sm text-gray-600 mt-2">
+            <SectionCard title="Upgrade plan" icon={TrendingUp} iconClassName="text-violet-400">
+              <p className="text-sm text-gray-600 dark-tenant:text-slate-400 -mt-2">
                 Select a plan in the comparison above or open the Plans tab. Upgrades create a trial subscription and draft invoice.
               </p>
-            </section>
+            </SectionCard>
           </>
         ) : null
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -70,6 +70,22 @@ module.exports = {
           700: "#1d4ed8",
           800: "#1e40af",
         },
+        surface: {
+          dark: {
+            page: "#0b0f1a",
+            elevated: "#0f1524",
+            card: "#141b2d",
+            cardHover: "#1a2236",
+            border: "rgba(255, 255, 255, 0.08)",
+            borderStrong: "rgba(255, 255, 255, 0.12)",
+          },
+        },
+        violet: {
+          400: "#a78bfa",
+          500: "#8b5cf6",
+          600: "#7c3aed",
+          700: "#6d28d9",
+        },
       },
       fontFamily: {
         sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
@@ -83,6 +99,8 @@ module.exports = {
         "card-hover": "0 4px 12px -2px rgb(15 26 46 / 0.08), 0 2px 6px -2px rgb(15 26 46 / 0.04)",
         elevated: "0 8px 24px -4px rgb(15 26 46 / 0.12)",
         sidebar: "2px 0 12px -2px rgb(15 26 46 / 0.08)",
+        glow: "0 0 24px -4px rgb(99 102 241 / 0.15)",
+        "dark-card": "0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.2)",
       },
       animation: {
         "fade-in": "fadeIn 0.35s ease-out",
@@ -100,5 +118,9 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    function ({ addVariant }) {
+      addVariant("dark-tenant", '[data-tenant-theme="dark"] &');
+    },
+  ],
 };

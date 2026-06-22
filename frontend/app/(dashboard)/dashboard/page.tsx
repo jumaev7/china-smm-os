@@ -74,6 +74,10 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import {
+  dashboardMetricLabelClass,
+  dashboardMetricValueClass,
+} from "@/lib/dashboardMetricStyles";
+import {
   EmptyState,
   ErrorState,
   LoadingState,
@@ -449,9 +453,29 @@ export default function DashboardPage() {
         title={t("dashboard.title")}
         subtitle={t("dashboard.subtitle")}
         icon={LayoutDashboard}
+        iconClassName={gates.tenantWidgetsEnabled ? "text-violet-400" : "text-brand-600"}
       />
 
       <PartialErrorsBanner errors={overview.errors} />
+
+      {gates.tenantWidgetsEnabled && !executiveSummary && (
+        <ExecutiveKpiBar
+          healthScore={
+            overview.content_ready > 0 || overview.active_deals > 0
+              ? Math.min(100, 50 + overview.content_ready * 5 + overview.active_deals * 3)
+              : 50
+          }
+          healthLabel={t("dashboard.businessHealth")}
+          items={[
+            { label: t("dashboard.kpiInbox"), value: overview.inbox_new, hint: t("dashboard.newItems") },
+            { label: t("dashboard.kpiTasks"), value: overview.tasks_open, hint: t("dashboard.open") },
+            { label: t("dashboard.kpiContent"), value: overview.content_ready, hint: t("dashboard.contentScheduled", { count: overview.content_scheduled }) },
+            { label: t("dashboard.pipeline"), value: overview.active_deals, hint: `${formatPipeline(overview.pipeline_value)} UZS` },
+            { label: t("dashboard.mrr"), value: `$${overview.mrr.toLocaleString(undefined, { maximumFractionDigits: 0 })}` },
+            { label: t("dashboard.invoices"), value: overview.invoices_unpaid, hint: t("dashboard.unpaid") },
+          ]}
+        />
+      )}
 
       {executiveSummaryError && (
         <DashboardWidgetUnavailable title={t("dashboard.widgetExecutiveSummary")} />
@@ -499,12 +523,14 @@ export default function DashboardPage() {
               <div
                 key={label}
                 className={cn(
-                  "rounded-lg border px-3 py-2 text-xs",
-                  ok ? "border-emerald-100 bg-emerald-50/50" : "border-amber-100 bg-amber-50/50",
+                  "dashboard-metric-tile text-xs",
+                  ok ? "dashboard-metric-tile--success" : "dashboard-metric-tile--warning",
                 )}
               >
-                <p className="text-[10px] text-gray-500">{label}</p>
-                <p className="font-medium capitalize text-gray-900">{translateSystemStatus(t, value)}</p>
+                <p className={dashboardMetricLabelClass("muted")}>{label}</p>
+                <p className={cn(dashboardMetricValueClass("neutral", "body"), "capitalize")}>
+                  {translateSystemStatus(t, value)}
+                </p>
               </div>
             ))}
           </div>
@@ -540,25 +566,25 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-2 gap-3">
             <Link
               href="/audit?severity=critical"
-              className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-red-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {auditOverview.summary.critical}
               </p>
-              <p className="text-[10px] text-red-600">{t("dashboard.criticalIssues")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.criticalIssues")}</p>
             </Link>
             <Link
               href="/audit?severity=warning"
-              className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-amber-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {auditOverview.summary.warning}
               </p>
-              <p className="text-[10px] text-amber-600">{t("dashboard.warnings")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--warning">{t("dashboard.warnings")}</p>
             </Link>
           </div>
           {auditOverview.summary.total === 0 && (
-            <p className="text-[10px] text-emerald-600">{t("dashboard.allChecksPassed")}</p>
+            <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.allChecksPassed")}</p>
           )}
         </div>
       )}
@@ -569,7 +595,7 @@ export default function DashboardPage() {
           value={overview.inbox_new}
           href="/inbox"
           icon={Inbox}
-          iconClassName="bg-sky-50 text-sky-600"
+          iconClassName={gates.tenantWidgetsEnabled ? "bg-sky-500/15 text-sky-400" : "bg-sky-50 text-sky-600"}
           sub={t("dashboard.newItems")}
         />
         <KpiCard
@@ -577,7 +603,7 @@ export default function DashboardPage() {
           value={overview.tasks_open}
           href="/tasks"
           icon={ListTodo}
-          iconClassName="bg-violet-50 text-violet-600"
+          iconClassName={gates.tenantWidgetsEnabled ? "bg-violet-500/15 text-violet-400" : "bg-violet-50 text-violet-600"}
           sub={t("dashboard.open")}
         />
         <KpiCard
@@ -585,7 +611,7 @@ export default function DashboardPage() {
           value={overview.content_ready}
           href="/content"
           icon={FileText}
-          iconClassName="bg-emerald-50 text-emerald-600"
+          iconClassName={gates.tenantWidgetsEnabled ? "bg-emerald-500/15 text-emerald-400" : "bg-emerald-50 text-emerald-600"}
           sub={t("dashboard.contentScheduled", { count: overview.content_scheduled })}
         />
         <KpiCard
@@ -593,7 +619,7 @@ export default function DashboardPage() {
           value={overview.active_deals}
           href="/crm/deals"
           icon={Briefcase}
-          iconClassName="bg-indigo-50 text-indigo-600"
+          iconClassName={gates.tenantWidgetsEnabled ? "bg-indigo-500/15 text-indigo-400" : "bg-indigo-50 text-indigo-600"}
           sub={`${formatPipeline(overview.pipeline_value)} UZS`}
         />
         <KpiCard
@@ -601,14 +627,14 @@ export default function DashboardPage() {
           value={`$${overview.mrr.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
           href="/billing"
           icon={TrendingUp}
-          iconClassName="bg-amber-50 text-amber-600"
+          iconClassName={gates.tenantWidgetsEnabled ? "bg-amber-500/15 text-amber-400" : "bg-amber-50 text-amber-600"}
         />
         <KpiCard
           label={t("dashboard.invoices")}
           value={overview.invoices_unpaid}
           href="/crm/deals"
           icon={CreditCard}
-          iconClassName="bg-red-50 text-red-600"
+          iconClassName={gates.tenantWidgetsEnabled ? "bg-red-500/15 text-red-400" : "bg-red-50 text-red-600"}
           sub={t("dashboard.unpaid")}
         />
       </div>
@@ -659,39 +685,39 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Link
               href="/sales-agent?priority=high"
-              className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-red-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {agentSummary.high_priority_count}
               </p>
-              <p className="text-[10px] text-red-600">{t("dashboard.highPriority")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.highPriority")}</p>
             </Link>
             <Link
               href="/sales-agent"
-              className="rounded-lg border border-orange-100 bg-orange-50/50 px-3 py-2 hover:bg-orange-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-orange-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--orange">
                 {agentSummary.overdue_followups}
               </p>
-              <p className="text-[10px] text-orange-600">{t("dashboard.overdueFollowUps")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--orange">{t("dashboard.overdueFollowUps")}</p>
             </Link>
             <Link
               href="/sales-agent?type=payment_reminder"
-              className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-amber-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {agentSummary.unpaid_invoices}
               </p>
-              <p className="text-[10px] text-amber-600">{t("dashboard.unpaidInvoices")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--warning">{t("dashboard.unpaidInvoices")}</p>
             </Link>
             <Link
               href="/sales-agent?type=risk_warning"
-              className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-violet-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {agentSummary.risky_deals}
               </p>
-              <p className="text-[10px] text-violet-600">{t("dashboard.riskyDeals")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.riskyDeals")}</p>
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">
@@ -716,25 +742,25 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            <Link href="/lead-intelligence" className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors">
-              <p className="text-lg font-semibold text-red-800 tabular-nums">{leadIntelSummary.hot_leads}</p>
-              <p className="text-[10px] text-red-600">{t("dashboard.leadHot")}</p>
+            <Link href="/lead-intelligence" className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">{leadIntelSummary.hot_leads}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.leadHot")}</p>
             </Link>
-            <Link href="/lead-intelligence" className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors">
-              <p className="text-lg font-semibold text-violet-800 tabular-nums">{leadIntelSummary.qualified_leads}</p>
-              <p className="text-[10px] text-violet-600">{t("dashboard.leadQualified")}</p>
+            <Link href="/lead-intelligence" className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">{leadIntelSummary.qualified_leads}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.leadQualified")}</p>
             </Link>
-            <Link href="/lead-intelligence" className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors">
-              <p className="text-lg font-semibold text-emerald-800 tabular-nums">{leadIntelSummary.nurturing_leads}</p>
-              <p className="text-[10px] text-emerald-600">{t("dashboard.leadNurturing")}</p>
+            <Link href="/lead-intelligence" className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">{leadIntelSummary.nurturing_leads}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.leadNurturing")}</p>
             </Link>
-            <Link href="/lead-intelligence" className="rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2 hover:bg-sky-50 transition-colors">
-              <p className="text-lg font-semibold text-sky-800 tabular-nums">{leadIntelSummary.cold_leads}</p>
-              <p className="text-[10px] text-sky-600">{t("dashboard.leadCold")}</p>
+            <Link href="/lead-intelligence" className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--link">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">{leadIntelSummary.cold_leads}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--sky">{t("dashboard.leadCold")}</p>
             </Link>
-            <Link href="/lead-intelligence" className="rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2 hover:bg-gray-50 transition-colors">
-              <p className="text-lg font-semibold text-gray-800 tabular-nums">{leadIntelSummary.inactive_leads}</p>
-              <p className="text-[10px] text-gray-600">{t("dashboard.leadInactive")}</p>
+            <Link href="/lead-intelligence" className="dashboard-metric-tile dashboard-metric-tile--neutral dashboard-metric-tile--link">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--neutral">{leadIntelSummary.inactive_leads}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--neutral">{t("dashboard.leadInactive")}</p>
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">
@@ -761,39 +787,39 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <Link
               href="/revenue-attribution"
-              className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-emerald-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {Math.round(Number(revenueAttributionSummary.total_revenue) || 0).toLocaleString()}
               </p>
-              <p className="text-[10px] text-emerald-600">{t("customerPortal.totalRevenue")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("customerPortal.totalRevenue")}</p>
             </Link>
             <Link
               href="/revenue-attribution"
-              className="rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2 hover:bg-sky-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-sky-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {revenueAttributionSummary.deals_won}
               </p>
-              <p className="text-[10px] text-sky-600">{t("customerPortal.dealsWon")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--sky">{t("customerPortal.dealsWon")}</p>
             </Link>
             <Link
               href="/revenue-attribution"
-              className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-violet-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {revenueAttributionSummary.conversion_rate}%
               </p>
-              <p className="text-[10px] text-violet-600">{t("customerPortal.conversion")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("customerPortal.conversion")}</p>
             </Link>
             <Link
               href="/revenue-attribution"
-              className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--link"
             >
-              <p className="text-sm font-semibold text-amber-900 truncate">
+              <p className="dashboard-metric-value dashboard-metric-value--sm dashboard-metric-value--warning truncate">
                 {revenueAttributionSummary.best_source_label ?? "—"}
               </p>
-              <p className="text-[10px] text-amber-600">{t("dashboard.bestSource")}</p>
+              <p className="dashboard-metric-label dashboard-metric-label--warning">{t("dashboard.bestSource")}</p>
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">
@@ -818,66 +844,66 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-4 py-2">
-              <p className="text-[10px] text-indigo-600">{t("dashboard.businessHealth")}</p>
-              <p className="text-2xl font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--hero">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">{t("dashboard.businessHealth")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--xl dashboard-metric-value--indigo">
                 {executiveSummary.business_health_score}
               </p>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 flex-1 min-w-0">
               <Link
                 href="/executive-copilot"
-                className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2 hover:bg-blue-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--info dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-blue-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--info">
                   {executiveSummary.hot_leads}
                 </p>
-                <p className="text-[10px] text-blue-600">{t("dashboard.hotLeads")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--info">{t("dashboard.hotLeads")}</p>
               </Link>
               <Link
                 href="/executive-copilot"
-                className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-emerald-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                   {executiveSummary.opportunities}
                 </p>
-                <p className="text-[10px] text-emerald-600">{t("dashboard.opportunities")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.opportunities")}</p>
               </Link>
               <Link
                 href="/executive-copilot"
-                className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-red-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                   {executiveSummary.risk_count}
                 </p>
-                <p className="text-[10px] text-red-600">{t("executive.risks")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--danger">{t("executive.risks")}</p>
               </Link>
               <Link
                 href="/operator-tasks"
-                className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-amber-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                   {executiveSummary.overdue_tasks}
                 </p>
-                <p className="text-[10px] text-amber-600">{t("executive.overdueTasks")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--warning">{t("executive.overdueTasks")}</p>
               </Link>
               <Link
                 href="/unified-inbox"
-                className="rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2 hover:bg-sky-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-sky-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                   {executiveSummary.active_conversations}
                 </p>
-                <p className="text-[10px] text-sky-600">{t("executive.conversations")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--sky">{t("executive.conversations")}</p>
               </Link>
               <Link
                 href="/revenue"
-                className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-violet-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                   {Math.round(executiveSummary.closed_revenue).toLocaleString()}
                 </p>
-                <p className="text-[10px] text-violet-600">{t("executive.closedRevenue")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--violet">{t("executive.closedRevenue")}</p>
               </Link>
             </div>
           </div>
@@ -913,57 +939,57 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-4 py-2">
-              <p className="text-[10px] text-brand-600">{t("dashboard.departmentHealth")}</p>
-              <p className="text-2xl font-semibold text-brand-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--brand dashboard-metric-tile--hero">
+              <p className="dashboard-metric-label dashboard-metric-label--brand">{t("dashboard.departmentHealth")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--xl dashboard-metric-value--brand">
                 {salesDepartmentSummary.business_health_score}
               </p>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 flex-1 min-w-0">
               <Link
                 href="/sales-department-v3"
-                className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-red-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                   {salesDepartmentSummary.priority_leads}
                 </p>
-                <p className="text-[10px] text-red-600">{t("dashboard.priorityLeads")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.priorityLeads")}</p>
               </Link>
               <Link
                 href="/sales-department-v3"
-                className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-emerald-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                   {salesDepartmentSummary.active_opportunities}
                 </p>
-                <p className="text-[10px] text-emerald-600">{t("dashboard.opportunities")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.opportunities")}</p>
               </Link>
               <Link
                 href="/sales-department-v3"
-                className="rounded-lg border border-orange-100 bg-orange-50/50 px-3 py-2 hover:bg-orange-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-orange-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--orange">
                   {salesDepartmentSummary.open_risks}
                 </p>
-                <p className="text-[10px] text-orange-600">{t("dashboard.openRisks")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--orange">{t("dashboard.openRisks")}</p>
               </Link>
               <Link
                 href="/operator-tasks"
-                className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-violet-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                   {salesDepartmentSummary.overdue_actions}
                 </p>
-                <p className="text-[10px] text-violet-600">{t("dashboard.overdueActions")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.overdueActions")}</p>
               </Link>
               <Link
                 href="/revenue"
-                className="rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2 hover:bg-sky-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-sky-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                   {formatPipeline(salesDepartmentSummary.pipeline_value)}
                 </p>
-                <p className="text-[10px] text-sky-600">{t("dashboard.pipelineUzs")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--sky">{t("dashboard.pipelineUzs")}</p>
               </Link>
             </div>
           </div>
@@ -999,48 +1025,48 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-4 py-2">
-              <p className="text-[10px] text-indigo-600">{t("dashboard.teamHealth")}</p>
-              <p className="text-2xl font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--hero">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">{t("dashboard.teamHealth")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--xl dashboard-metric-value--indigo">
                 {multiAgentSummary.department_health}
               </p>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1 min-w-0">
               <Link
                 href="/multi-agent"
-                className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-red-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                   {multiAgentSummary.hot_leads}
                 </p>
-                <p className="text-[10px] text-red-600">{t("dashboard.hotLeads")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.hotLeads")}</p>
               </Link>
               <Link
                 href="/multi-agent"
-                className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-emerald-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                   {multiAgentSummary.active_opportunities}
                 </p>
-                <p className="text-[10px] text-emerald-600">{t("dashboard.opportunities")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.opportunities")}</p>
               </Link>
               <Link
                 href="/multi-agent"
-                className="rounded-lg border border-orange-100 bg-orange-50/50 px-3 py-2 hover:bg-orange-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-orange-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--orange">
                   {multiAgentSummary.open_risks}
                 </p>
-                <p className="text-[10px] text-orange-600">{t("dashboard.openRisks")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--orange">{t("dashboard.openRisks")}</p>
               </Link>
               <Link
                 href="/operator-tasks"
-                className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+                className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
               >
-                <p className="text-lg font-semibold text-violet-800 tabular-nums">
+                <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                   {multiAgentSummary.overdue_actions}
                 </p>
-                <p className="text-[10px] text-violet-600">{t("dashboard.overdue")}</p>
+                <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.overdue")}</p>
               </Link>
             </div>
           </div>
@@ -1073,21 +1099,21 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid sm:grid-cols-3 gap-3">
-            <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-2">
-              <p className="text-[10px] text-brand-600">{t("dashboard.expected30d")}</p>
-              <p className="text-lg font-semibold text-brand-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--brand">
+              <p className="dashboard-metric-label dashboard-metric-label--brand">{t("dashboard.expected30d")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--brand">
                 {formatPipeline(revenueForecastSummary.expected_30d)}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2">
-              <p className="text-[10px] text-emerald-600">{t("dashboard.bestCase")}</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success">
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.bestCase")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {formatPipeline(revenueForecastSummary.best_case_30d)}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2">
-              <p className="text-[10px] text-red-600">{t("dashboard.worstCase")}</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.worstCase")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {formatPipeline(revenueForecastSummary.worst_case_30d)}
               </p>
             </div>
@@ -1121,25 +1147,25 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">{t("dashboard.leadHot")}</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">{buyerIntelSummary.hot_buyers}</p>
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">{t("dashboard.leadHot")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">{buyerIntelSummary.hot_buyers}</p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">{t("dashboard.strategic")}</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">{t("dashboard.strategic")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {buyerIntelSummary.strategic_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">{t("dashboard.highPotential")}</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.highPotential")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {buyerIntelSummary.high_potential_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-orange-100 bg-orange-50/50 px-2 py-2">
-              <p className="text-[10px] text-orange-700">{t("dashboard.atRisk")}</p>
-              <p className="text-lg font-semibold text-orange-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--orange">{t("dashboard.atRisk")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--orange">
                 {buyerIntelSummary.at_risk_buyers}
               </p>
             </div>
@@ -1174,33 +1200,33 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-            <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-2 py-2">
-              <p className="text-[10px] text-brand-700">{t("dashboard.totalBuyers")}</p>
-              <p className="text-lg font-semibold text-brand-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--brand dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--brand">{t("dashboard.totalBuyers")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--brand">
                 {buyerAcquisitionSummary.total_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">{t("dashboard.strategic")}</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">{t("dashboard.strategic")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {buyerAcquisitionSummary.strategic_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">{t("dashboard.highPotential")}</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.highPotential")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {buyerAcquisitionSummary.high_potential_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">{t("dashboard.marketplace")}</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">{t("dashboard.marketplace")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {buyerAcquisitionSummary.marketplace_opportunities}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">{t("dashboard.networkOpps")}</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.networkOpps")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {buyerAcquisitionSummary.network_opportunities}
               </p>
             </div>
@@ -1238,35 +1264,35 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-800">{t("deal.readiness")}</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("deal.readiness")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {dealRoomV2Widget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-2 py-2">
-              <p className="text-[10px] text-brand-700">{t("deal.activeDeals")}</p>
-              <p className="text-lg font-semibold text-brand-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--brand dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--brand">{t("deal.activeDeals")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--brand">
                 {dealRoomV2Widget.active_deal_rooms}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">{t("deal.pipeline")}</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("deal.pipeline")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {dealRoomV2Widget.total_pipeline_value.toLocaleString(undefined, {
                   maximumFractionDigits: 0,
                 })}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-800">{t("dashboard.healthAvg")}</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">{t("dashboard.healthAvg")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {dealRoomV2Widget.average_health_score}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">{t("deal.highRisk")}</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">{t("deal.highRisk")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {dealRoomV2Widget.high_risk_deals}
               </p>
             </div>
@@ -1302,37 +1328,37 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-800">{t("revenue.readiness")}</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("revenue.readiness")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {revenueEngineWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-2 py-2">
-              <p className="text-[10px] text-brand-700">{t("deal.pipeline")}</p>
-              <p className="text-lg font-semibold text-brand-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--brand dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--brand">{t("deal.pipeline")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--brand">
                 {revenueEngineWidget.total_pipeline_value.toLocaleString(undefined, {
                   maximumFractionDigits: 0,
                 })}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">{t("dashboard.forecast")}</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.forecast")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {revenueEngineWidget.forecasted_revenue.toLocaleString(undefined, {
                   maximumFractionDigits: 0,
                 })}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-800">{t("revenue.activeDeals")}</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">{t("revenue.activeDeals")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {revenueEngineWidget.active_deals}
               </p>
             </div>
-            <div className="rounded-lg border border-cyan-100 bg-cyan-50/50 px-2 py-2">
-              <p className="text-[10px] text-cyan-800">{t("dashboard.health")}</p>
-              <p className="text-lg font-semibold text-cyan-900 capitalize">
+            <div className="dashboard-metric-tile dashboard-metric-tile--cyan dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--cyan">{t("dashboard.health")}</p>
+              <p className={cn(dashboardMetricValueClass("cyan", "lg"), "capitalize")}>
                 {translateHealthStatus(t, revenueEngineWidget.health_status)}
               </p>
             </div>
@@ -1368,33 +1394,33 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-            <div className="rounded-lg border border-cyan-100 bg-cyan-50/50 px-2 py-2">
-              <p className="text-[10px] text-cyan-800">{t("revenue.readiness")}</p>
-              <p className="text-lg font-semibold text-cyan-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--cyan dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--cyan">{t("revenue.readiness")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--cyan">
                 {buyerAcquisitionEngineWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-brand-100 bg-brand-50/50 px-2 py-2">
-              <p className="text-[10px] text-brand-700">{t("dashboard.totalBuyers")}</p>
-              <p className="text-lg font-semibold text-brand-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--brand dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--brand">{t("dashboard.totalBuyers")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--brand">
                 {buyerAcquisitionEngineWidget.total_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">{t("dashboard.matched")}</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">{t("dashboard.matched")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {buyerAcquisitionEngineWidget.matched_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-800">{t("dashboard.activePipeline")}</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">{t("dashboard.activePipeline")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {buyerAcquisitionEngineWidget.active_pipeline_leads}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">{t("dashboard.avgMatch")}</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">{t("dashboard.avgMatch")}</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {buyerAcquisitionEngineWidget.average_match_score}
               </p>
             </div>
@@ -1427,39 +1453,39 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-center">
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-800">Profile score</p>
-              <p className="text-lg font-semibold text-amber-950 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Profile score</p>
+              <p className={dashboardMetricValueClass("warning", "lg")}>
                 {factoryPerformanceSummary.profile_score}
               </p>
             </div>
-            <div className="rounded-lg border border-orange-100 bg-orange-50/50 px-2 py-2">
-              <p className="text-[10px] text-orange-800">Catalog</p>
-              <p className="text-lg font-semibold text-orange-950 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--orange">Catalog</p>
+              <p className={dashboardMetricValueClass("orange", "lg")}>
                 {factoryPerformanceSummary.catalog_score ?? 0}
               </p>
             </div>
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Buyers</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">Buyers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {factoryPerformanceSummary.total_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Opportunities</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Opportunities</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {factoryPerformanceSummary.active_opportunities}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">Marketplace</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Marketplace</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {factoryPerformanceSummary.marketplace_visibility}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Acquisition</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Acquisition</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {factoryPerformanceSummary.buyer_acquisition_score}
               </p>
             </div>
@@ -1493,27 +1519,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Discovered</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Discovered</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {buyerDiscoverySummary.total_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">High potential</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">High potential</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {buyerDiscoverySummary.high_potential}
               </p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Strategic</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Strategic</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {buyerDiscoverySummary.strategic}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Pipeline opps</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Pipeline opps</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {buyerDiscoverySummary.pipeline_opportunity}
               </p>
             </div>
@@ -1546,27 +1572,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">Profiles</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Profiles</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {buyerNetworkSummary.total_profiles}
               </p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Strategic</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Strategic</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {buyerNetworkSummary.strategic_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Active</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Active</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {buyerNetworkSummary.active_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-gray-50/50 px-2 py-2">
-              <p className="text-[10px] text-gray-600">Underutilized</p>
-              <p className="text-lg font-semibold text-gray-800 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--neutral dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--neutral">Underutilized</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--neutral">
                 {buyerNetworkSummary.underutilized}
               </p>
             </div>
@@ -1599,27 +1625,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Listed</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">Listed</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {marketplaceSummary.total_opportunities}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Open</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Open</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {marketplaceSummary.open_opportunities}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Interests</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Interests</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {marketplaceSummary.total_interests}
               </p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Claims</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Claims</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {marketplaceSummary.total_claims}
               </p>
             </div>
@@ -1647,27 +1673,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Readiness</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {pilotDemoWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Journey</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Journey</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {pilotDemoWidget.metrics.demo_buyers} buyers
               </p>
             </div>
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Presentation</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Presentation</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {pilotDemoWidget.summary.estimated_presentation_minutes}m
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Revenue demo</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Revenue demo</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 ${pilotDemoWidget.metrics.demo_revenue_usd.toLocaleString()}
               </p>
             </div>
@@ -1699,27 +1725,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Readiness</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {pilotLaunchValidationWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Admin flow</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Admin flow</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {pilotLaunchValidationWidget.admin_flow_ready}/{pilotLaunchValidationWidget.admin_flow_total}
               </p>
             </div>
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Tenant flow</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Tenant flow</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {pilotLaunchValidationWidget.tenant_flow_ready}/{pilotLaunchValidationWidget.tenant_flow_total}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Blockers</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Blockers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {pilotLaunchValidationWidget.blocker_count}
               </p>
             </div>
@@ -1752,27 +1778,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Readiness</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {pilotSalesDemoWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Buyers</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Buyers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {pilotSalesDemoWidget.buyers_found}
               </p>
             </div>
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Pipeline</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Pipeline</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 ${pilotSalesDemoWidget.pipeline_value_usd.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">Deal rooms</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Deal rooms</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {pilotSalesDemoWidget.deal_rooms}
               </p>
             </div>
@@ -1808,27 +1834,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-fuchsia-100 bg-fuchsia-50/50 px-2 py-2">
-              <p className="text-[10px] text-fuchsia-700">Readiness</p>
-              <p className="text-lg font-semibold text-fuchsia-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--fuchsia dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--fuchsia">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--fuchsia">
                 {pilotLaunchOverview.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">QA passed</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">QA passed</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {pilotLaunchOverview.qa_pass_count}/{pilotLaunchOverview.qa_total}
               </p>
             </div>
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Smoke OK</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Smoke OK</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {pilotLaunchOverview.smoke_ok_count}/{pilotLaunchOverview.smoke_total}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Blocked</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Blocked</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {pilotLaunchOverview.checklist_blocked}
               </p>
             </div>
@@ -1862,27 +1888,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">In progress</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">In progress</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {pilotOnboardingSummary.in_progress}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Blocked</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Blocked</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {pilotOnboardingSummary.blocked}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Pilot ready</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Pilot ready</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {pilotOnboardingSummary.pilot_ready}
               </p>
             </div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50/50 px-2 py-2">
-              <p className="text-[10px] text-gray-600">Avg readiness</p>
-              <p className="text-lg font-semibold text-gray-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--neutral dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--neutral">Avg readiness</p>
+              <p className={dashboardMetricValueClass("neutral", "lg")}>
                 {pilotOnboardingSummary.average_readiness_score}%
               </p>
             </div>
@@ -1915,27 +1941,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Readiness</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {firstPilotClientWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Blockers</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Blockers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {firstPilotClientWidget.blocker_count}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Critical</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Critical</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {firstPilotClientWidget.critical_blocker_count}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Launch</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Launch</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {firstPilotClientWidget.launch_ready ? "Ready" : "Pending"}
               </p>
             </div>
@@ -1971,26 +1997,26 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Readiness</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {realFactoryPilotWidget.readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">Checklist</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Checklist</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {realFactoryPilotWidget.checklist_progress}%
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Blockers</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Blockers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {realFactoryPilotWidget.blocker_count}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Status</p>
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Status</p>
               <p className="text-sm font-semibold text-emerald-900 capitalize">
                 {realFactoryPilotWidget.status.replace(/_/g, " ")}
               </p>
@@ -2027,27 +2053,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-2 py-2">
-              <p className="text-[10px] text-slate-700">Readiness</p>
-              <p className="text-lg font-semibold text-slate-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--slate dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--slate">Readiness</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--slate">
                 {productionDeploymentWidget.production_readiness_score}%
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Blockers</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Blockers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {productionDeploymentWidget.blocker_count}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Critical</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Critical</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {productionDeploymentWidget.critical_finding_count}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Deploy</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Deploy</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {productionDeploymentWidget.deployment_ready ? "Ready" : "Pending"}
               </p>
             </div>
@@ -2080,27 +2106,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Pending review</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Pending review</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {factoryPartnerSummary.pending_review}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Approved</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Approved</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {factoryPartnerSummary.approved}
               </p>
             </div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50/50 px-2 py-2">
-              <p className="text-[10px] text-gray-600">Draft</p>
-              <p className="text-lg font-semibold text-gray-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--neutral dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--neutral">Draft</p>
+              <p className={dashboardMetricValueClass("neutral", "lg")}>
                 {factoryPartnerSummary.draft}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Rejected</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Rejected</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {factoryPartnerSummary.rejected}
               </p>
             </div>
@@ -2132,27 +2158,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Buyers</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">Buyers</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {customerPortalV2Summary.active_buyers}
               </p>
             </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Opportunities</p>
-              <p className="text-lg font-semibold text-indigo-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--indigo dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--indigo">Opportunities</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--indigo">
                 {customerPortalV2Summary.active_opportunities}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Open deals</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Open deals</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {customerPortalV2Summary.open_deals}
               </p>
             </div>
-            <div className="rounded-lg border border-violet-100 bg-violet-50/50 px-2 py-2">
-              <p className="text-[10px] text-violet-700">Profile %</p>
-              <p className="text-lg font-semibold text-violet-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Profile %</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {customerPortalV2Summary.profile_completeness}
               </p>
             </div>
@@ -2180,27 +2206,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Active</p>
-              <p className="text-lg font-semibold text-teal-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--teal dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--teal">Active</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--teal">
                 {customerPortalSummary.active_accounts}
               </p>
             </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Pending</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Pending</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {customerPortalSummary.pending_accounts}
               </p>
             </div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50/50 px-2 py-2">
-              <p className="text-[10px] text-gray-600">Suspended</p>
-              <p className="text-lg font-semibold text-gray-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--neutral dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--neutral">Suspended</p>
+              <p className={dashboardMetricValueClass("neutral", "lg")}>
                 {customerPortalSummary.suspended_accounts}
               </p>
             </div>
-            <div className="rounded-lg border border-slate-100 bg-slate-50/50 px-2 py-2">
-              <p className="text-[10px] text-slate-700">Total</p>
-              <p className="text-lg font-semibold text-slate-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--slate dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--slate">Total</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--slate">
                 {customerPortalSummary.total_accounts}
               </p>
             </div>
@@ -2232,27 +2258,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">MRR</p>
-              <p className="text-lg font-semibold text-amber-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--warning">MRR</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 ${subscriptionBillingSummary.mrr.toLocaleString()}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Active</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Active</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {subscriptionBillingSummary.active_subscriptions}
               </p>
             </div>
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">Trial</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Trial</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {subscriptionBillingSummary.trial_subscriptions}
               </p>
             </div>
-            <div className="rounded-lg border border-orange-100 bg-orange-50/50 px-2 py-2">
-              <p className="text-[10px] text-orange-700">Near limit</p>
-              <p className="text-lg font-semibold text-orange-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--orange">Near limit</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--orange">
                 {subscriptionBillingSummary.tenants_near_limit}
               </p>
             </div>
@@ -2279,27 +2305,27 @@ export default function DashboardPage() {
             </Link>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Healthy</p>
-              <p className="text-lg font-semibold text-emerald-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--success">Healthy</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {dealRiskSummary.healthy_deals}
               </p>
             </div>
-            <div className="rounded-lg border border-orange-100 bg-orange-50/50 px-2 py-2">
-              <p className="text-[10px] text-orange-700">At risk</p>
-              <p className="text-lg font-semibold text-orange-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--orange dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--orange">At risk</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--orange">
                 {dealRiskSummary.at_risk_deals}
               </p>
             </div>
-            <div className="rounded-lg border border-red-100 bg-red-50/50 px-2 py-2">
-              <p className="text-[10px] text-red-700">Critical</p>
-              <p className="text-lg font-semibold text-red-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Critical</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {dealRiskSummary.critical_deals}
               </p>
             </div>
-            <div className="rounded-lg border border-sky-100 bg-sky-50/50 px-2 py-2">
-              <p className="text-[10px] text-sky-700">High close %</p>
-              <p className="text-lg font-semibold text-sky-900 tabular-nums">
+            <div className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--compact">
+              <p className="dashboard-metric-label dashboard-metric-label--sky">High close %</p>
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {dealRiskSummary.high_close_probability_deals}
               </p>
             </div>
@@ -2331,57 +2357,57 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-3">
             <Link
               href="/crm"
-              className="rounded-lg border border-blue-100 bg-blue-50/50 px-3 py-2 hover:bg-blue-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--info dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-blue-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--info">
                 {salesManagerSummary.hot_leads}
               </p>
-              <p className="text-[10px] text-blue-600">Hot leads</p>
+              <p className="dashboard-metric-label dashboard-metric-label--info">Hot leads</p>
             </Link>
             <Link
               href="/sales-manager"
-              className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-emerald-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {salesManagerSummary.opportunities_count}
               </p>
-              <p className="text-[10px] text-emerald-600">Opportunities</p>
+              <p className="dashboard-metric-label dashboard-metric-label--success">Opportunities</p>
             </Link>
             <Link
               href="/sales-manager"
-              className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-red-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {salesManagerSummary.risks_count}
               </p>
-              <p className="text-[10px] text-red-600">Risks</p>
+              <p className="dashboard-metric-label dashboard-metric-label--danger">Risks</p>
             </Link>
             <Link
               href="/operator-tasks"
-              className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-amber-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {salesManagerSummary.overdue_tasks}
               </p>
-              <p className="text-[10px] text-amber-600">Overdue tasks</p>
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Overdue tasks</p>
             </Link>
             <Link
               href="/unified-inbox"
-              className="rounded-lg border border-sky-100 bg-sky-50/50 px-3 py-2 hover:bg-sky-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--sky dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-sky-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--sky">
                 {salesManagerSummary.inbox_activity.open_conversations}
               </p>
-              <p className="text-[10px] text-sky-600">Conversations</p>
+              <p className="dashboard-metric-label dashboard-metric-label--sky">Conversations</p>
             </Link>
             <Link
               href="/proposals"
-              className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-violet-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {salesManagerSummary.active_proposals}
               </p>
-              <p className="text-[10px] text-violet-600">Proposals</p>
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Proposals</p>
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">
@@ -2408,48 +2434,48 @@ export default function DashboardPage() {
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
             <Link
               href="/workflows"
-              className="rounded-lg border border-brand-100 bg-brand-50/50 px-3 py-2 hover:bg-brand-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--brand dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-brand-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--brand">
                 {workflowSummary.active_recommendations}
               </p>
-              <p className="text-[10px] text-brand-600">Active</p>
+              <p className="dashboard-metric-label dashboard-metric-label--brand">Active</p>
             </Link>
             <Link
               href="/workflows"
-              className="rounded-lg border border-red-100 bg-red-50/50 px-3 py-2 hover:bg-red-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--danger dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-red-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--danger">
                 {workflowSummary.high_priority}
               </p>
-              <p className="text-[10px] text-red-600">High priority</p>
+              <p className="dashboard-metric-label dashboard-metric-label--danger">High priority</p>
             </Link>
             <Link
               href="/workflows"
-              className="rounded-lg border border-amber-100 bg-amber-50/50 px-3 py-2 hover:bg-amber-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--warning dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-amber-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--warning">
                 {workflowSummary.follow_up_workflows}
               </p>
-              <p className="text-[10px] text-amber-600">Follow-ups</p>
+              <p className="dashboard-metric-label dashboard-metric-label--warning">Follow-ups</p>
             </Link>
             <Link
               href="/workflows"
-              className="rounded-lg border border-violet-100 bg-violet-50/50 px-3 py-2 hover:bg-violet-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--violet dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-violet-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--violet">
                 {workflowSummary.proposal_workflows}
               </p>
-              <p className="text-[10px] text-violet-600">Proposals</p>
+              <p className="dashboard-metric-label dashboard-metric-label--violet">Proposals</p>
             </Link>
             <Link
               href="/workflows"
-              className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 hover:bg-emerald-50 transition-colors"
+              className="dashboard-metric-tile dashboard-metric-tile--success dashboard-metric-tile--link"
             >
-              <p className="text-lg font-semibold text-emerald-800 tabular-nums">
+              <p className="dashboard-metric-value dashboard-metric-value--lg dashboard-metric-value--success">
                 {workflowSummary.crm_cleanup_workflows}
               </p>
-              <p className="text-[10px] text-emerald-600">CRM cleanup</p>
+              <p className="dashboard-metric-label dashboard-metric-label--success">CRM cleanup</p>
             </Link>
           </div>
           <p className="text-[10px] text-gray-400">
@@ -2633,21 +2659,21 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 text-center">
-        <div className="card p-3">
-          <p className="text-lg font-semibold text-gray-900">{overview.clients_waiting_materials}</p>
-          <p className="text-[10px] text-gray-500">Clients waiting materials</p>
+        <div className="card-premium p-4">
+          <p className="text-lg font-semibold text-navy-900 dark-tenant:text-slate-100 tabular-nums">{overview.clients_waiting_materials}</p>
+          <p className="text-[10px] text-gray-500 dark-tenant:text-slate-500 mt-1">Clients waiting materials</p>
         </div>
-        <div className="card p-3">
-          <p className="text-lg font-semibold text-gray-900">{overview.content_scheduled}</p>
-          <p className="text-[10px] text-gray-500">Content scheduled</p>
+        <div className="card-premium p-4">
+          <p className="text-lg font-semibold text-navy-900 dark-tenant:text-slate-100 tabular-nums">{overview.content_scheduled}</p>
+          <p className="text-[10px] text-gray-500 dark-tenant:text-slate-500 mt-1">Content scheduled</p>
         </div>
-        <div className="card p-3">
-          <p className="text-lg font-semibold text-emerald-700">{overview.won_deals}</p>
-          <p className="text-[10px] text-gray-500">Won deals</p>
+        <div className="card-premium p-4">
+          <p className="text-lg font-semibold text-emerald-700 dark-tenant:text-emerald-400 tabular-nums">{overview.won_deals}</p>
+          <p className="text-[10px] text-gray-500 dark-tenant:text-slate-500 mt-1">Won deals</p>
         </div>
-        <div className="card p-3">
-          <p className="text-lg font-semibold text-gray-500">{overview.lost_deals}</p>
-          <p className="text-[10px] text-gray-500">Lost deals</p>
+        <div className="card-premium p-4">
+          <p className="text-lg font-semibold text-gray-500 dark-tenant:text-slate-400 tabular-nums">{overview.lost_deals}</p>
+          <p className="text-[10px] text-gray-500 dark-tenant:text-slate-500 mt-1">Lost deals</p>
         </div>
       </div>
     </PageShell>

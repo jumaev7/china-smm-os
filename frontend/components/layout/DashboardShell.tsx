@@ -429,39 +429,32 @@ const NAV_SECTIONS: NavSection[] = [
 
 const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
   {
-    sectionKey: "nav.sectionTenantDashboard",
-    items: [{ href: "/dashboard", icon: LayoutDashboard, labelKey: "nav.dashboard" }],
-  },
-  {
-    sectionKey: "nav.sectionTenantContent",
+    sectionKey: "nav.sectionTenantOverview",
     items: [
-      { href: "/content", icon: FileText, labelKey: "nav.content" },
-      { href: "/content-factory", icon: Factory, labelKey: "nav.contentFactory" },
-      { href: "/media-library", icon: Images, labelKey: "nav.mediaLibrary" },
-      { href: "/publishing", icon: Radio, labelKey: "nav.publishing" },
+      { href: "/dashboard", icon: LayoutDashboard, labelKey: "nav.dashboard" },
+      { href: "/executive-copilot", icon: Bot, labelKey: "nav.aiAssistant" },
     ],
   },
   {
-    sectionKey: "nav.calendar",
-    items: [{ href: "/calendar", icon: Calendar, labelKey: "nav.calendar" }],
+    sectionKey: "nav.sectionContent",
+    items: [
+      { href: "/content", icon: FileText, labelKey: "nav.content" },
+      { href: "/pipeline", icon: Columns3, labelKey: "nav.pipeline" },
+      { href: "/content-factory", icon: Factory, labelKey: "nav.contentFactory" },
+      { href: "/media-library", icon: Images, labelKey: "nav.mediaLibrary" },
+      { href: "/publishing", icon: Radio, labelKey: "nav.publishing" },
+      { href: "/calendar", icon: Calendar, labelKey: "nav.calendar" },
+    ],
   },
   {
-    sectionKey: "nav.crm",
+    sectionKey: "nav.sectionTenantSales",
     items: [
       { href: "/crm", icon: Contact, labelKey: "nav.crm" },
       { href: "/leads", icon: Contact, labelKey: "nav.leads" },
       { href: "/customers", icon: Users, labelKey: "nav.customers" },
       { href: "/deals", icon: Briefcase, labelKey: "nav.deals" },
       { href: "/proposals", icon: FileSignature, labelKey: "nav.proposals" },
-    ],
-  },
-  {
-    sectionKey: "nav.buyers",
-    items: [{ href: "/buyers", icon: Building2, labelKey: "nav.buyers" }],
-  },
-  {
-    sectionKey: "nav.sectionCommunications",
-    items: [
+      { href: "/buyers", icon: Building2, labelKey: "nav.buyers" },
       { href: "/communications", icon: MessagesSquare, labelKey: "nav.communications" },
       { href: "/communications/inbox", icon: InboxIcon, labelKey: "nav.communicationsInbox" },
       { href: "/communications/followups", icon: CalendarClock, labelKey: "nav.communicationsFollowups" },
@@ -471,7 +464,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    sectionKey: "nav.sectionTenantGrowth",
+    sectionKey: "nav.sectionTenantAnalytics",
     items: [
       { href: "/growth-center", icon: BarChart3, labelKey: "nav.growthCenter" },
       { href: "/export-growth", icon: Globe, labelKey: "nav.exportGrowth" },
@@ -479,11 +472,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    sectionKey: "nav.aiAssistant",
-    items: [{ href: "/executive-copilot", icon: Bot, labelKey: "nav.aiAssistant" }],
-  },
-  {
-    sectionKey: "nav.settings",
+    sectionKey: "nav.sectionTenantSettings",
     items: [
       { href: "/tenant-users", icon: Users, labelKey: "nav.tenantUsers" },
       { href: "/billing", icon: CreditCard, labelKey: "nav.billing" },
@@ -531,10 +520,12 @@ const SECTION_LABEL_FALLBACK: Record<string, string> = {
   "nav.sectionTenantDashboard": "Dashboard",
   "nav.sectionTenantOverview": "Overview",
   "nav.sectionTenantMarket": "Market & Outreach",
-  "nav.sectionTenantSales": "Sales",
+  "nav.sectionTenantSales": "Sales & Buyers",
   "nav.sectionTenantMessages": "Messages",
-  "nav.sectionTenantContent": "Content",
+  "nav.sectionTenantContent": "Content & Publishing",
   "nav.sectionTenantGrowth": "Growth",
+  "nav.sectionTenantAnalytics": "Analytics",
+  "nav.sectionTenantSettings": "Settings & Billing",
   "nav.sectionTenantTools": "Tools & Analytics",
   "nav.sectionPlatformAdmin": "Platform Admin",
   "nav.settings": "Settings",
@@ -628,15 +619,37 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
 
 
+  const isTenantNav = navAudience === "tenant";
+
   return (
 
-    <div data-dashboard-shell className="flex h-screen overflow-hidden bg-slate-50">
+    <div
+      data-dashboard-shell
+      data-tenant-theme={isTenantNav ? "dark" : undefined}
+      className={cn(
+        "flex h-screen overflow-hidden",
+        isTenantNav ? "bg-surface-dark-page" : "bg-slate-50",
+      )}
+    >
 
-      <aside className="w-60 shrink-0 border-r border-navy-800/20 bg-navy-900 flex flex-col shadow-sidebar">
+      <aside className={cn(
+        "w-60 shrink-0 flex flex-col shadow-sidebar",
+        isTenantNav
+          ? "border-r border-white/[0.06] bg-[#070b14]"
+          : "border-r border-navy-800/20 bg-navy-900",
+      )}>
 
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-white/10">
+        <div className={cn(
+          "flex items-center gap-3 px-4 py-4 border-b",
+          isTenantNav ? "border-white/[0.06]" : "border-white/10",
+        )}>
 
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-md ring-1 ring-white/10">
+          <div className={cn(
+            "w-9 h-9 rounded-xl flex items-center justify-center shadow-md ring-1",
+            isTenantNav
+              ? "bg-gradient-to-br from-violet-600 to-brand-700 ring-violet-500/20"
+              : "bg-gradient-to-br from-brand-500 to-brand-700 ring-white/10",
+          )}>
 
             <Zap size={16} className="text-white" />
 
@@ -646,22 +659,25 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
             <div className="text-sm font-semibold text-white leading-tight truncate">{t("app.name")}</div>
 
-            <div className="text-[10px] text-slate-400 leading-tight">{t("app.version")}</div>
+            <div className="text-[10px] text-slate-500 leading-tight">{t("app.version")}</div>
 
           </div>
 
         </div>
 
-        <nav className="flex-1 px-2 py-2 overflow-y-auto scrollbar-thin">
+        <nav className="flex-1 px-2.5 py-3 overflow-y-auto scrollbar-thin">
 
           {navSections.map(({ sectionKey, items }) => {
             const visibleItems = filterNavItems(items, navGates);
             if (visibleItems.length === 0) return null;
 
             return (
-            <div key={sectionKey} className="mb-1">
+            <div key={sectionKey} className="mb-2">
 
-              <p className="nav-section-label">
+              <p className={cn(
+                "px-3 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-widest",
+                isTenantNav ? "text-slate-500" : "nav-section-label",
+              )}>
                 {sectionLabel(resolveSectionLabelKey(sectionKey, visibleItems, navAudience))}
               </p>
 
@@ -679,11 +695,18 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
                       href={href}
 
-                      className={cn(active ? "nav-link-active" : "nav-link-inactive")}
+                      className={cn(
+                        active ? "nav-link-active" : "nav-link-inactive",
+                        isTenantNav && active && "bg-violet-500/15 border-l-2 border-violet-400 pl-[10px]",
+                        isTenantNav && !active && "text-slate-400 hover:text-slate-100 hover:bg-white/[0.04]",
+                      )}
 
                     >
 
-                      <Icon size={16} className={cn("shrink-0", active && "text-accent-cyan")} />
+                      <Icon size={16} className={cn(
+                        "shrink-0",
+                        active && (isTenantNav ? "text-violet-400" : "text-accent-cyan"),
+                      )} />
 
                       <span className="truncate">{t(labelKey)}</span>
 
@@ -703,11 +726,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
 
 
-        <div className="px-4 py-3 border-t border-white/10">
+        <div className={cn(
+          "px-4 py-3 border-t",
+          isTenantNav ? "border-white/[0.06]" : "border-white/10",
+        )}>
 
           <div className="flex items-center gap-2 text-[10px] text-slate-500">
 
-            <Building2 size={12} className="text-accent-gold shrink-0" />
+            <Building2 size={12} className={cn("shrink-0", isTenantNav ? "text-violet-400/70" : "text-accent-gold")} />
 
             <span className="truncate">{t("app.footer")}</span>
 
@@ -721,7 +747,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        <header className="sticky top-0 z-30 shrink-0 border-b border-gray-200/80 bg-white/90 backdrop-blur-md px-5 py-3 flex items-center justify-end gap-3 shadow-sm">
+        <header className={cn(
+          "sticky top-0 z-30 shrink-0 px-5 py-3 flex items-center justify-end gap-3",
+          isTenantNav
+            ? "border-b border-white/[0.06] bg-surface-dark-page/80 backdrop-blur-md"
+            : "border-b border-gray-200/80 bg-white/90 backdrop-blur-md shadow-sm",
+        )}>
 
           <LanguageSwitcher />
 
@@ -731,7 +762,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
         </header>
 
-        <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50">
+        <div className={cn(
+          "flex-1 overflow-y-auto min-h-0",
+          isTenantNav ? "bg-surface-dark-page" : "bg-slate-50",
+        )}>
 
           <Suspense fallback={null}>
 

@@ -94,6 +94,41 @@ class AdminPlatformTenantsResponse(BaseModel):
     total: int
 
 
+class AdminCreateClientAccountRequest(BaseModel):
+    company_name: str = Field(..., min_length=1, max_length=255)
+    owner_email: str = Field(..., min_length=3, max_length=255)
+    owner_name: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=100)
+    wechat: Optional[str] = Field(None, max_length=100)
+    whatsapp: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+    industry: Optional[str] = Field(None, max_length=100)
+    plan: str = Field(default="starter", max_length=30)
+    locale: str = Field(default="en", max_length=10)
+
+    @field_validator("owner_email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+    @field_validator("company_name")
+    @classmethod
+    def normalize_company(cls, v: str) -> str:
+        return v.strip()
+
+
+class AdminCreateClientAccountResponse(BaseModel):
+    tenant_id: str
+    user_id: str
+    client_id: str
+    company_name: str
+    login_email: str
+    temporary_password: str
+    login_url: str
+    seed_counts: dict[str, int]
+    message: str
+
+
 class AdminPlatformBillingResponse(BaseModel):
     total_tenants: int
     active_subscriptions: int

@@ -5,7 +5,7 @@ export function PageHeader({
   title,
   subtitle,
   icon: Icon,
-  iconClassName = "text-brand-600",
+  iconClassName = "text-brand-600 dark-tenant:text-violet-400",
   actions,
   badge,
   className,
@@ -28,7 +28,7 @@ export function PageHeader({
       <div className="min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           {Icon && (
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 border border-brand-100 shadow-sm shrink-0">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 border border-brand-100 shadow-sm shrink-0 dark-tenant:bg-violet-500/10 dark-tenant:border-violet-500/20">
               <Icon size={20} className={iconClassName} />
             </span>
           )}
@@ -64,7 +64,7 @@ export function PageSection({
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="section-title">{title}</h2>
-          {description && <p className="text-xs text-gray-500 mt-0.5">{description}</p>}
+          {description && <p className="text-xs text-gray-500 mt-0.5 dark-tenant:text-slate-500">{description}</p>}
         </div>
         {action}
       </div>

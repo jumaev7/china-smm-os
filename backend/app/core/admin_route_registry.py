@@ -27,6 +27,7 @@ ADMIN_PROTECTED_ROUTE_SPECS: tuple[AdminRouteSpec, ...] = (
     AdminRouteSpec("GET", "/api/v1/admin-auth/audit-logs", "logs.read", "admin_auth"),
     AdminRouteSpec("GET", "/api/v1/admin-auth/sessions", "logs.read", "admin_auth"),
     AdminRouteSpec("GET", "/api/v1/admin-auth/platform/tenants", "tenants.read", "platform"),
+    AdminRouteSpec("POST", "/api/v1/admin-auth/platform/tenants/create-client", "tenants.manage", "platform"),
     AdminRouteSpec("GET", "/api/v1/admin-auth/platform/billing", "billing.read", "platform"),
     AdminRouteSpec("GET", "/api/v1/admin-auth/platform/analytics", "analytics.read", "platform"),
     AdminRouteSpec("GET", "/api/v1/admin-auth/platform/subscriptions", "subscriptions.read", "platform"),

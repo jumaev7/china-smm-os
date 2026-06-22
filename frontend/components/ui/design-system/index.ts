@@ -13,3 +13,6 @@ export {
   DataTableTh,
   DataTableTd,
 } from "./DataTable";
+export { FilterBar, ActionBar } from "./FilterBar";
+export type { FilterOption } from "./FilterBar";
+export { SectionCard, StatTile } from "./SectionCard";

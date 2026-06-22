@@ -76,8 +76,11 @@ import {
   PageSection,
   PageShell,
   ScoreCard,
+  SectionCard,
+  StatTile,
   StatusBadge,
 } from "@/components/ui/design-system";
+import type { StatusVariant } from "@/lib/design-system";
 import { useTranslation } from "@/lib/I18nProvider";
 import {
   isOverviewLoading,
@@ -86,19 +89,40 @@ import {
   OVERVIEW_WIDGET_QUERY_OPTIONS,
 } from "@/lib/overview-query-options";
 
-const PRIORITY_STYLES: Record<string, string> = {
-  urgent: "bg-red-100 text-red-800 border-red-200",
-  high: "bg-orange-100 text-orange-800 border-orange-200",
-  medium: "bg-amber-100 text-amber-800 border-amber-200",
-  low: "bg-gray-100 text-gray-700 border-gray-200",
+const PRIORITY_VARIANT: Record<string, StatusVariant> = {
+  urgent: "danger",
+  high: "warning",
+  medium: "warning",
+  low: "neutral",
 };
 
-const SEVERITY_STYLES: Record<string, string> = {
-  critical: "bg-red-100 text-red-900 border-red-300",
-  high: "bg-orange-100 text-orange-900 border-orange-200",
-  medium: "bg-amber-100 text-amber-900 border-amber-200",
-  low: "bg-gray-100 text-gray-700 border-gray-200",
+const SEVERITY_VARIANT: Record<string, StatusVariant> = {
+  critical: "danger",
+  high: "warning",
+  medium: "warning",
+  low: "neutral",
 };
+
+function WidgetMetricGrid({
+  items,
+  columns = 4,
+}: {
+  items: { label: string; value: string | number; tone?: "neutral" | "brand" | "success" | "warning" | "danger" | "violet" | "info" | "sky" }[];
+  columns?: 4 | 5;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid gap-3",
+        columns === 5 ? "sm:grid-cols-2 lg:grid-cols-5" : "sm:grid-cols-2 lg:grid-cols-4",
+      )}
+    >
+      {items.map((item) => (
+        <StatTile key={item.label} label={item.label} value={item.value} tone={item.tone} />
+      ))}
+    </div>
+  );
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   hot_lead_follow_up: "Hot lead follow-up",
@@ -419,11 +443,26 @@ function ExecutiveCopilotPageContent() {
         title={t("executive.title")}
         subtitle={t("executive.subtitle")}
         icon={Sparkles}
-        iconClassName="text-brand-600"
+        iconClassName="text-violet-400"
         badge={
           <StatusBadge variant={health >= 75 ? "success" : health >= 50 ? "warning" : "danger"} dot>
             {t("executive.live")}
           </StatusBadge>
+        }
+        actions={
+          <button
+            type="button"
+            className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+            disabled={briefingMutation.isPending}
+            onClick={() => briefingMutation.mutate()}
+          >
+            {briefingMutation.isPending ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Lightbulb size={12} />
+            )}
+            {t("executive.generateBriefing")}
+          </button>
         }
       />
 
@@ -449,10 +488,10 @@ function ExecutiveCopilotPageContent() {
       />
 
       {!showAdvancedSections && (
-        <section className="card p-4 flex flex-wrap items-center justify-between gap-3 border-brand-100">
+        <div className="card-premium p-4 flex flex-wrap items-center justify-between gap-3 border border-violet-200/60 dark-tenant:border-violet-500/20">
           <div>
-            <p className="text-sm font-semibold text-gray-900">Detailed analytics</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm font-semibold text-gray-900 dark-tenant:text-slate-100">Detailed analytics</p>
+            <p className="text-xs text-gray-500 dark-tenant:text-slate-400">
               Load department, buyer, revenue, pilot, and platform sections when you need the full analysis.
             </p>
           </div>
@@ -463,7 +502,7 @@ function ExecutiveCopilotPageContent() {
           >
             Load details
           </button>
-        </section>
+        </div>
       )}
 
       <PageSection
@@ -485,16 +524,18 @@ function ExecutiveCopilotPageContent() {
       </PageSection>
 
       {departmentOverview && (
-        <section className="card p-4 space-y-3 border-brand-100">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-              <Building2 size={16} className="text-brand-600" />
-              {t("executive.widgetSalesDepartment")}
+        <SectionCard
+          title={t("executive.widgetSalesDepartment")}
+          icon={Building2}
+          iconClassName="text-violet-400"
+          href="/sales-department-v3"
+          linkLabel={t("executive.openSalesDeptV3")}
+          footer={
+            <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">
+              Coordinates lead intelligence, communication intelligence, deal room, operator tasks, and workflows.
             </p>
-            <Link href="/sales-department-v3" className="text-xs text-brand-700 hover:underline">
-              {t("executive.openSalesDeptV3")}
-            </Link>
-          </div>
+          }
+        >
           <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-3">
             <KpiCard label={t("executive.businessHealthScore")} value={departmentOverview.business_health_score} />
             <KpiCard label={t("executive.hotLeads")} value={departmentOverview.priority_leads} />
@@ -504,16 +545,13 @@ function ExecutiveCopilotPageContent() {
             <KpiCard label={t("nav.communications")} value={Math.round(departmentOverview.communication_health)} />
           </div>
           {(departmentOverview.weekly_priorities?.length ?? 0) > 0 && (
-            <ul className="text-xs text-gray-600 space-y-1">
+            <ul className="text-xs text-gray-600 dark-tenant:text-slate-400 space-y-1">
               {departmentOverview.weekly_priorities.slice(0, 3).map((item, i) => (
                 <li key={i}>• {item}</li>
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-gray-400">
-            Coordinates lead intelligence, communication intelligence, deal room, operator tasks, and workflows.
-          </p>
-        </section>
+        </SectionCard>
       )}
 
       {multiAgentOverview && (
@@ -930,50 +968,32 @@ function ExecutiveCopilotPageContent() {
       )}
 
       {marketplaceExec && (
-        <section className="card p-4 space-y-3 border-teal-100">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-              <Store size={16} className="text-teal-600" />
-              {t("executive.widgetMarketplace")}
-            </p>
-            <Link href="/marketplace" className="text-xs text-brand-700 hover:underline">
-              {t("common.open")} {t("nav.marketplace")} →
-            </Link>
-          </div>
-          <div className="grid sm:grid-cols-4 gap-3 text-center text-xs">
-            <div className="rounded-lg border border-teal-100 bg-teal-50/50 px-2 py-2">
-              <p className="text-[10px] text-teal-700">Listed</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {marketplaceExec.total_opportunities}
-              </p>
-            </div>
-            <div className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-2">
-              <p className="text-[10px] text-emerald-700">Open</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {marketplaceExec.open_opportunities}
-              </p>
-            </div>
-            <div className="rounded-lg border border-amber-100 bg-amber-50/50 px-2 py-2">
-              <p className="text-[10px] text-amber-700">Interests</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {marketplaceExec.total_interests}
-              </p>
-            </div>
-            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-2 py-2">
-              <p className="text-[10px] text-indigo-700">Claims</p>
-              <p className="text-lg font-semibold tabular-nums">
-                {marketplaceExec.total_claims}
-              </p>
-            </div>
-          </div>
+        <SectionCard
+          title={t("executive.widgetMarketplace")}
+          icon={Store}
+          iconClassName="text-teal-400"
+          href="/marketplace"
+          linkLabel={`${t("common.open")} ${t("nav.marketplace")} →`}
+          footer={
+            <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">{marketplaceExec.safety_notice}</p>
+          }
+        >
+          <WidgetMetricGrid
+            items={[
+              { label: "Listed", value: marketplaceExec.total_opportunities, tone: "success" },
+              { label: "Open", value: marketplaceExec.open_opportunities, tone: "info" },
+              { label: "Interests", value: marketplaceExec.total_interests, tone: "warning" },
+              { label: "Claims", value: marketplaceExec.total_claims, tone: "violet" },
+            ]}
+          />
           {(marketplaceTop?.best_opportunities?.length ?? 0) > 0 && (
             <ol className="space-y-2 text-sm">
               {marketplaceTop!.best_opportunities.slice(0, 5).map((o) => (
                 <li key={o.opportunity_id} className="flex items-start gap-2">
-                  <span className="font-bold text-brand-700 w-5">{o.rank}</span>
+                  <span className="font-bold text-brand-700 dark-tenant:text-violet-400 w-5">{o.rank}</span>
                   <div>
-                    <p className="font-medium text-gray-900">{o.title}</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="font-medium text-gray-900 dark-tenant:text-slate-100">{o.title}</p>
+                    <p className="text-xs text-gray-500 dark-tenant:text-slate-400">
                       {o.buyer_company} · score {o.rank_score}
                     </p>
                   </div>
@@ -981,8 +1001,7 @@ function ExecutiveCopilotPageContent() {
               ))}
             </ol>
           )}
-          <p className="text-[10px] text-gray-400">{marketplaceExec.safety_notice}</p>
-        </section>
+        </SectionCard>
       )}
 
       {(factoryPartnerWidget?.pending_review ?? 0) > 0 && (
@@ -1605,11 +1624,11 @@ function ExecutiveCopilotPageContent() {
         ]}
       />
 
-      <section className="card p-4 space-y-3">
-        <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-          <AlertTriangle size={16} className="text-red-500" />
-          {t("executive.sectionAlerts")}
-        </p>
+      <SectionCard
+        title={t("executive.sectionAlerts")}
+        icon={AlertTriangle}
+        iconClassName="text-red-400"
+      >
         {alertItems.length === 0 ? (
           <EmptyState title={t("executive.noAlerts")} description={t("executive.noAlertsHint")} />
         ) : (
@@ -1617,36 +1636,34 @@ function ExecutiveCopilotPageContent() {
             {alertItems.map((a: ExecutiveCopilotAlert) => (
               <li
                 key={a.id}
-                className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-50 pb-2"
+                className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-50 dark-tenant:border-white/[0.04] pb-2"
               >
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{a.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{a.message}</p>
-                  <p className="text-[10px] text-gray-400 capitalize mt-0.5">{a.source}</p>
+                  <p className="text-sm font-medium text-gray-900 dark-tenant:text-slate-100">{a.title}</p>
+                  <p className="text-xs text-gray-500 dark-tenant:text-slate-400 mt-0.5">{a.message}</p>
+                  <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500 capitalize mt-0.5">{a.source}</p>
                 </div>
-                <span
-                  className={cn(
-                    "text-[10px] px-2 py-0.5 rounded-full border font-medium capitalize",
-                    SEVERITY_STYLES[a.severity] ?? SEVERITY_STYLES.medium,
-                  )}
+                <StatusBadge
+                  variant={SEVERITY_VARIANT[a.severity] ?? "warning"}
+                  className="capitalize text-[10px]"
                 >
                   {a.severity}
-                </span>
+                </StatusBadge>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </SectionCard>
 
-      <section className="card p-4 space-y-3">
-        <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-          <TrendingUp size={16} className="text-emerald-600" />
-          {t("executive.sectionOpportunities")}
-        </p>
+      <SectionCard
+        title={t("executive.sectionOpportunities")}
+        icon={TrendingUp}
+        iconClassName="text-emerald-400"
+      >
         {effectiveOverview.opportunities === 0 ? (
           <EmptyState title={t("executive.noOpportunities")} description={t("executive.noOpportunitiesHint")} />
         ) : (
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-gray-600 dark-tenant:text-slate-400">
             {effectiveOverview.opportunities} opportunity signal(s) detected across CRM, proposals, inbox, and
             operator tasks. Review items in Sales Manager or CRM for detail.
           </p>
@@ -1654,20 +1671,25 @@ function ExecutiveCopilotPageContent() {
         {opportunityHighlights.length > 0 && (
           <ul className="space-y-2 text-xs">
             {opportunityHighlights.slice(0, 8).map((o, i) => (
-              <li key={i} className="border-b border-gray-50 pb-2">
-                <p className="font-medium text-gray-900">{o.title}</p>
-                <p className="text-gray-500">{o.description}</p>
+              <li key={i} className="border-b border-gray-50 dark-tenant:border-white/[0.04] pb-2">
+                <p className="font-medium text-gray-900 dark-tenant:text-slate-100">{o.title}</p>
+                <p className="text-gray-500 dark-tenant:text-slate-400">{o.description}</p>
               </li>
             ))}
           </ul>
         )}
-      </section>
+      </SectionCard>
 
-      <section className="card p-4 space-y-3">
-        <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-          <Target size={16} className="text-brand-600" />
-          {t("executive.sectionRecommendations")}
-        </p>
+      <SectionCard
+        title={t("executive.sectionRecommendations")}
+        icon={Target}
+        iconClassName="text-violet-400"
+        footer={
+          <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">
+            Advisory only — no CRM updates or auto-messaging.
+          </p>
+        }
+      >
         {recItems.length === 0 ? (
           <EmptyState title={t("executive.noRecommendations")} description={t("executive.noRecommendationsHint")} />
         ) : (
@@ -1675,29 +1697,26 @@ function ExecutiveCopilotPageContent() {
             {recItems.map((r: ExecutiveCopilotRecommendation, i) => (
               <li
                 key={`${r.category}-${i}`}
-                className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-50 pb-2"
+                className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-50 dark-tenant:border-white/[0.04] pb-2"
               >
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{r.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{r.description}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">
+                  <p className="text-sm font-medium text-gray-900 dark-tenant:text-slate-100">{r.title}</p>
+                  <p className="text-xs text-gray-500 dark-tenant:text-slate-400 mt-0.5">{r.description}</p>
+                  <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500 mt-0.5">
                     {CATEGORY_LABELS[r.category] ?? r.category} · {r.source}
                   </p>
                 </div>
-                <span
-                  className={cn(
-                    "text-[10px] px-2 py-0.5 rounded-full border font-medium capitalize shrink-0",
-                    PRIORITY_STYLES[r.priority] ?? PRIORITY_STYLES.medium,
-                  )}
+                <StatusBadge
+                  variant={PRIORITY_VARIANT[r.priority] ?? "warning"}
+                  className="capitalize shrink-0 text-[10px]"
                 >
                   {r.priority}
-                </span>
+                </StatusBadge>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-[10px] text-gray-400">Advisory only — no CRM updates or auto-messaging.</p>
-      </section>
+      </SectionCard>
 
       <section className="card p-4 space-y-3 border-violet-100">
         <div className="flex items-center justify-between gap-2">
@@ -1738,57 +1757,41 @@ function ExecutiveCopilotPageContent() {
         <p className="text-[10px] text-gray-400">Open a deal workspace to review aggregated context manually.</p>
       </section>
 
-      <section className="card p-4 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-            <Lightbulb size={16} className="text-violet-600" />
-            {t("executive.sectionBriefing")}
-          </p>
-          <button
-            type="button"
-            className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1"
-            disabled={briefingMutation.isPending}
-            onClick={() => briefingMutation.mutate()}
-          >
-            {briefingMutation.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
-              <Lightbulb size={12} />
-            )}
-            {t("executive.generateBriefing")}
-          </button>
-        </div>
-
+      <SectionCard
+        title={t("executive.sectionBriefing")}
+        icon={Lightbulb}
+        iconClassName="text-violet-400"
+      >
         {!briefing ? (
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-400 dark-tenant:text-slate-500">
             Click Generate Briefing for a heuristic executive summary. No AI calls on page load.
           </p>
         ) : (
           <>
-            <p className="text-sm text-gray-800 leading-relaxed">{briefing.summary}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-sm text-gray-800 dark-tenant:text-slate-200 leading-relaxed">{briefing.summary}</p>
+            <p className="text-xs text-gray-500 dark-tenant:text-slate-400">
               Health score at generation: {briefing.business_health_score}/100
             </p>
             {briefing.communication_intelligence &&
               (briefing.communication_intelligence.total_analyzed ?? 0) > 0 && (
-              <div className="rounded-lg border border-teal-100 bg-teal-50/40 p-3">
-                <p className="text-xs font-semibold text-teal-900 mb-1">Communication Intelligence</p>
-                <p className="text-xs text-gray-700">
+              <div className="rounded-xl border border-teal-200/80 bg-teal-50/40 p-3 dark-tenant:border-teal-500/20 dark-tenant:bg-teal-500/10">
+                <p className="text-xs font-semibold text-teal-900 dark-tenant:text-teal-200 mb-1">Communication Intelligence</p>
+                <p className="text-xs text-gray-700 dark-tenant:text-slate-300">
                   {briefing.communication_intelligence.hot_buyers} hot buyers ·{" "}
                   {briefing.communication_intelligence.follow_ups_required} follow-ups ·{" "}
                   {briefing.communication_intelligence.inactive_conversations} inactive
                 </p>
-                <Link href="/communication-intelligence" className="text-[10px] text-brand-700 hover:underline">
+                <Link href="/communication-intelligence" className="text-[10px] text-brand-700 hover:underline dark-tenant:text-violet-400">
                   Open Communication Intelligence →
                 </Link>
               </div>
             )}
             {briefing.opportunities.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-emerald-700 mb-1">{t("executive.opportunities")}</p>
+                <p className="text-xs font-semibold text-emerald-700 dark-tenant:text-emerald-400 mb-1">{t("executive.opportunities")}</p>
                 <ul className="space-y-1">
                   {briefing.opportunities.map((o, i) => (
-                    <li key={i} className="text-sm text-gray-700">
+                    <li key={i} className="text-sm text-gray-700 dark-tenant:text-slate-300">
                       • {o}
                     </li>
                   ))}
@@ -1797,10 +1800,10 @@ function ExecutiveCopilotPageContent() {
             )}
             {briefing.risks.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-red-700 mb-1">{t("executive.risks")}</p>
+                <p className="text-xs font-semibold text-red-700 dark-tenant:text-red-400 mb-1">{t("executive.risks")}</p>
                 <ul className="space-y-1">
                   {briefing.risks.map((r, i) => (
-                    <li key={i} className="text-sm text-gray-700">
+                    <li key={i} className="text-sm text-gray-700 dark-tenant:text-slate-300">
                       • {r}
                     </li>
                   ))}
@@ -1809,23 +1812,22 @@ function ExecutiveCopilotPageContent() {
             )}
             {briefing.recommendations.length > 0 && (
               <div>
-                <p className="text-xs font-semibold text-brand-700 mb-1">{t("executive.sectionRecommendations")}</p>
+                <p className="text-xs font-semibold text-brand-700 dark-tenant:text-violet-400 mb-1">{t("executive.sectionRecommendations")}</p>
                 <ul className="space-y-1">
                   {briefing.recommendations.map((r, i) => (
-                    <li key={i} className="text-sm text-gray-700">
+                    <li key={i} className="text-sm text-gray-700 dark-tenant:text-slate-300">
                       → {r}
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-            <p className="text-[10px] text-gray-400">Source: {briefing.source}</p>
+            <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">Source: {briefing.source}</p>
           </>
         )}
-      </section>
+      </SectionCard>
 
-      <div className="card p-4">
-        <p className="text-xs font-semibold text-gray-900 mb-2">{t("executive.quickLinks")}</p>
+      <SectionCard title={t("executive.quickLinks")} icon={Briefcase} iconClassName="text-sky-400">
         <div className="flex flex-wrap gap-2">
           {[
             { href: "/crm", labelKey: "nav.crm", icon: Contact },
@@ -1840,14 +1842,14 @@ function ExecutiveCopilotPageContent() {
             <Link
               key={href}
               href={href}
-              className="inline-flex items-center gap-1.5 text-xs text-gray-700 hover:text-brand-800 px-2 py-1.5 rounded-lg border border-gray-100 hover:bg-gray-50"
+              className="inline-flex items-center gap-1.5 text-xs text-gray-700 hover:text-brand-800 dark-tenant:text-slate-300 dark-tenant:hover:text-violet-300 px-2 py-1.5 rounded-lg border border-gray-100 dark-tenant:border-white/[0.06] hover:bg-gray-50 dark-tenant:hover:bg-white/[0.04] transition-colors"
             >
               <Icon size={12} />
               {t(labelKey)}
             </Link>
           ))}
         </div>
-      </div>
+      </SectionCard>
     </PageShell>
   );
 }

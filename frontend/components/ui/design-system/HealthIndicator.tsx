@@ -33,6 +33,7 @@ export function HealthIndicator({
       <div
         className={cn(
           "rounded-full border font-bold tabular-nums flex items-center justify-center bg-white shadow-sm",
+          "dark-tenant:bg-surface-dark-elevated dark-tenant:shadow-dark-card",
           dim,
           RING_COLORS[variant],
         )}
@@ -43,9 +44,9 @@ export function HealthIndicator({
       </div>
       {(label || showBar) && (
         <div className="space-y-1.5 min-w-[100px]">
-          {label && <p className="text-xs font-semibold text-navy-800">{label}</p>}
+          {label && <p className="text-xs font-semibold text-navy-800 dark-tenant:text-slate-200">{label}</p>}
           {showBar && (
-            <div className="h-1.5 w-full max-w-[120px] rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-1.5 w-full max-w-[120px] rounded-full bg-gray-100 overflow-hidden dark-tenant:bg-white/10">
               <div
                 className={cn("h-full rounded-full transition-all", BAR_COLORS[variant])}
                 style={{ width: `${Math.min(100, Math.max(0, score))}%` }}

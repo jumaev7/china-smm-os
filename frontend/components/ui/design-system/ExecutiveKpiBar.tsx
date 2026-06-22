@@ -23,12 +23,13 @@ export function ExecutiveKpiBar({
     <div
       className={cn(
         "rounded-2xl border border-navy-100/80 bg-gradient-to-br from-white via-white to-brand-50/30 p-4 shadow-card",
+        "dark-tenant:border-white/[0.08] dark-tenant:from-surface-dark-card dark-tenant:via-surface-dark-card dark-tenant:to-violet-500/[0.06] dark-tenant:shadow-dark-card",
         className,
       )}
     >
       <div className="flex flex-col lg:flex-row lg:items-center gap-4">
         {healthScore != null && (
-          <div className="flex items-center gap-4 shrink-0 lg:pr-6 lg:border-r border-gray-100">
+          <div className="flex items-center gap-4 shrink-0 lg:pr-6 lg:border-r border-gray-100 dark-tenant:border-white/[0.08]">
             <HealthIndicator score={healthScore} size="md" label={healthLabel} />
           </div>
         )}
@@ -36,14 +37,14 @@ export function ExecutiveKpiBar({
           {items.map((item) => (
             <div
               key={item.label}
-              className="rounded-xl bg-white/80 border border-gray-100/80 px-3 py-2.5 hover:border-brand-200/50 transition-colors"
+              className="rounded-xl bg-white/80 border border-gray-100/80 px-3 py-2.5 hover:border-brand-200/50 transition-colors dark-tenant:bg-surface-dark-elevated/60 dark-tenant:border-white/[0.06] dark-tenant:hover:border-violet-500/25"
             >
               <p className="kpi-label truncate">{item.label}</p>
-              <p className="text-lg font-semibold text-navy-900 tabular-nums mt-0.5 truncate">
+              <p className="text-lg font-semibold text-navy-900 tabular-nums mt-0.5 truncate dark-tenant:text-slate-100">
                 {item.value}
               </p>
               {item.hint && (
-                <p className="text-[10px] text-gray-400 mt-0.5 truncate">{item.hint}</p>
+                <p className="text-[10px] text-gray-400 mt-0.5 truncate dark-tenant:text-slate-500">{item.hint}</p>
               )}
             </div>
           ))}

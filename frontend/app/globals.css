@@ -42,6 +42,222 @@
     @apply text-2xl font-semibold tabular-nums text-navy-900;
   }
 
+  /* Inner dashboard KPI/stat tiles (section cards) — light + tenant dark */
+  .dashboard-metric-tile {
+    @apply rounded-lg border px-3 py-2 transition-colors;
+  }
+  .dashboard-metric-tile--compact {
+    @apply px-2 py-2;
+  }
+  .dashboard-metric-tile--hero {
+    @apply px-4 py-2;
+  }
+  .dashboard-metric-tile--link {
+    @apply cursor-pointer;
+  }
+
+  .dashboard-metric-tile--neutral {
+    @apply border-gray-100 bg-gray-50/50 dark-tenant:border-white/[0.08] dark-tenant:bg-surface-dark-elevated/60 dark-tenant:hover:border-violet-500/30;
+  }
+  .dashboard-metric-tile--neutral.dashboard-metric-tile--link {
+    @apply hover:bg-gray-50 dark-tenant:hover:bg-surface-dark-cardHover;
+  }
+
+  .dashboard-metric-tile--slate {
+    @apply border-slate-100 bg-slate-50/50 dark-tenant:border-white/[0.08] dark-tenant:bg-surface-dark-elevated/60 dark-tenant:hover:border-violet-500/30;
+  }
+  .dashboard-metric-tile--slate.dashboard-metric-tile--link {
+    @apply hover:bg-slate-50 dark-tenant:hover:bg-surface-dark-cardHover;
+  }
+
+  .dashboard-metric-tile--brand {
+    @apply border-brand-100 bg-brand-50/50 dark-tenant:border-violet-500/20 dark-tenant:bg-violet-500/10 dark-tenant:hover:border-violet-500/30;
+  }
+  .dashboard-metric-tile--brand.dashboard-metric-tile--link {
+    @apply hover:bg-brand-50 dark-tenant:hover:bg-violet-500/[0.14];
+  }
+
+  .dashboard-metric-tile--info {
+    @apply border-blue-100 bg-blue-50/50 dark-tenant:border-sky-500/20 dark-tenant:bg-sky-500/10 dark-tenant:hover:border-sky-500/30;
+  }
+  .dashboard-metric-tile--info.dashboard-metric-tile--link {
+    @apply hover:bg-blue-50 dark-tenant:hover:bg-sky-500/[0.14];
+  }
+
+  .dashboard-metric-tile--sky {
+    @apply border-sky-100 bg-sky-50/50 dark-tenant:border-sky-500/20 dark-tenant:bg-sky-500/10 dark-tenant:hover:border-sky-500/30;
+  }
+  .dashboard-metric-tile--sky.dashboard-metric-tile--link {
+    @apply hover:bg-sky-50 dark-tenant:hover:bg-sky-500/[0.14];
+  }
+
+  .dashboard-metric-tile--indigo {
+    @apply border-indigo-100 bg-indigo-50/50 dark-tenant:border-indigo-500/20 dark-tenant:bg-indigo-500/10 dark-tenant:hover:border-indigo-500/30;
+  }
+  .dashboard-metric-tile--indigo.dashboard-metric-tile--link {
+    @apply hover:bg-indigo-50 dark-tenant:hover:bg-indigo-500/[0.14];
+  }
+
+  .dashboard-metric-tile--violet {
+    @apply border-violet-100 bg-violet-50/50 dark-tenant:border-violet-500/20 dark-tenant:bg-violet-500/10 dark-tenant:hover:border-violet-500/30;
+  }
+  .dashboard-metric-tile--violet.dashboard-metric-tile--link {
+    @apply hover:bg-violet-50 dark-tenant:hover:bg-violet-500/[0.14];
+  }
+
+  .dashboard-metric-tile--success {
+    @apply border-emerald-100 bg-emerald-50/50 dark-tenant:border-emerald-500/20 dark-tenant:bg-emerald-500/10 dark-tenant:hover:border-emerald-500/30;
+  }
+  .dashboard-metric-tile--success.dashboard-metric-tile--link {
+    @apply hover:bg-emerald-50 dark-tenant:hover:bg-emerald-500/[0.14];
+  }
+
+  .dashboard-metric-tile--teal {
+    @apply border-teal-100 bg-teal-50/50 dark-tenant:border-teal-500/20 dark-tenant:bg-teal-500/10 dark-tenant:hover:border-teal-500/30;
+  }
+  .dashboard-metric-tile--teal.dashboard-metric-tile--link {
+    @apply hover:bg-teal-50 dark-tenant:hover:bg-teal-500/[0.14];
+  }
+
+  .dashboard-metric-tile--cyan {
+    @apply border-cyan-100 bg-cyan-50/50 dark-tenant:border-cyan-500/20 dark-tenant:bg-cyan-500/10 dark-tenant:hover:border-cyan-500/30;
+  }
+  .dashboard-metric-tile--cyan.dashboard-metric-tile--link {
+    @apply hover:bg-cyan-50 dark-tenant:hover:bg-cyan-500/[0.14];
+  }
+
+  .dashboard-metric-tile--warning {
+    @apply border-amber-100 bg-amber-50/50 dark-tenant:border-amber-500/20 dark-tenant:bg-amber-500/10 dark-tenant:hover:border-amber-500/30;
+  }
+  .dashboard-metric-tile--warning.dashboard-metric-tile--link {
+    @apply hover:bg-amber-50 dark-tenant:hover:bg-amber-500/[0.14];
+  }
+
+  .dashboard-metric-tile--orange {
+    @apply border-orange-100 bg-orange-50/50 dark-tenant:border-orange-500/20 dark-tenant:bg-orange-500/10 dark-tenant:hover:border-orange-500/30;
+  }
+  .dashboard-metric-tile--orange.dashboard-metric-tile--link {
+    @apply hover:bg-orange-50 dark-tenant:hover:bg-orange-500/[0.14];
+  }
+
+  .dashboard-metric-tile--danger {
+    @apply border-red-100 bg-red-50/50 dark-tenant:border-red-500/20 dark-tenant:bg-red-500/10 dark-tenant:hover:border-red-500/30;
+  }
+  .dashboard-metric-tile--danger.dashboard-metric-tile--link {
+    @apply hover:bg-red-50 dark-tenant:hover:bg-red-500/[0.14];
+  }
+
+  .dashboard-metric-tile--fuchsia {
+    @apply border-fuchsia-100 bg-fuchsia-50/50 dark-tenant:border-fuchsia-500/20 dark-tenant:bg-fuchsia-500/10 dark-tenant:hover:border-fuchsia-500/30;
+  }
+  .dashboard-metric-tile--fuchsia.dashboard-metric-tile--link {
+    @apply hover:bg-fuchsia-50 dark-tenant:hover:bg-fuchsia-500/[0.14];
+  }
+
+  .dashboard-metric-value {
+    @apply font-semibold tabular-nums;
+  }
+  .dashboard-metric-value--lg {
+    @apply text-lg;
+  }
+  .dashboard-metric-value--xl {
+    @apply text-2xl;
+  }
+  .dashboard-metric-value--sm {
+    @apply text-sm;
+  }
+  .dashboard-metric-value--body {
+    @apply text-sm font-medium;
+  }
+
+  .dashboard-metric-value--neutral,
+  .dashboard-metric-value--slate {
+    @apply text-gray-800 dark-tenant:text-slate-100;
+  }
+  .dashboard-metric-value--brand {
+    @apply text-brand-900 dark-tenant:text-violet-200;
+  }
+  .dashboard-metric-value--info {
+    @apply text-blue-800 dark-tenant:text-sky-200;
+  }
+  .dashboard-metric-value--sky {
+    @apply text-sky-800 dark-tenant:text-sky-200;
+  }
+  .dashboard-metric-value--indigo {
+    @apply text-indigo-900 dark-tenant:text-indigo-200;
+  }
+  .dashboard-metric-value--violet {
+    @apply text-violet-800 dark-tenant:text-violet-200;
+  }
+  .dashboard-metric-value--success {
+    @apply text-emerald-800 dark-tenant:text-emerald-200;
+  }
+  .dashboard-metric-value--teal {
+    @apply text-teal-900 dark-tenant:text-teal-200;
+  }
+  .dashboard-metric-value--cyan {
+    @apply text-cyan-900 dark-tenant:text-cyan-200;
+  }
+  .dashboard-metric-value--warning {
+    @apply text-amber-800 dark-tenant:text-amber-200;
+  }
+  .dashboard-metric-value--orange {
+    @apply text-orange-800 dark-tenant:text-orange-200;
+  }
+  .dashboard-metric-value--danger {
+    @apply text-red-800 dark-tenant:text-red-200;
+  }
+  .dashboard-metric-value--fuchsia {
+    @apply text-fuchsia-900 dark-tenant:text-fuchsia-200;
+  }
+
+  .dashboard-metric-label {
+    @apply text-[10px];
+  }
+  .dashboard-metric-label--muted {
+    @apply text-gray-500 dark-tenant:text-slate-500;
+  }
+  .dashboard-metric-label--neutral,
+  .dashboard-metric-label--slate {
+    @apply text-gray-600 dark-tenant:text-slate-400;
+  }
+  .dashboard-metric-label--brand {
+    @apply text-brand-600 dark-tenant:text-violet-400;
+  }
+  .dashboard-metric-label--info {
+    @apply text-blue-600 dark-tenant:text-sky-400;
+  }
+  .dashboard-metric-label--sky {
+    @apply text-sky-600 dark-tenant:text-sky-400;
+  }
+  .dashboard-metric-label--indigo {
+    @apply text-indigo-600 dark-tenant:text-indigo-400;
+  }
+  .dashboard-metric-label--violet {
+    @apply text-violet-600 dark-tenant:text-violet-400;
+  }
+  .dashboard-metric-label--success {
+    @apply text-emerald-600 dark-tenant:text-emerald-400;
+  }
+  .dashboard-metric-label--teal {
+    @apply text-teal-700 dark-tenant:text-teal-400;
+  }
+  .dashboard-metric-label--cyan {
+    @apply text-cyan-700 dark-tenant:text-cyan-400;
+  }
+  .dashboard-metric-label--warning {
+    @apply text-amber-600 dark-tenant:text-amber-400;
+  }
+  .dashboard-metric-label--orange {
+    @apply text-orange-600 dark-tenant:text-orange-400;
+  }
+  .dashboard-metric-label--danger {
+    @apply text-red-600 dark-tenant:text-red-400;
+  }
+  .dashboard-metric-label--fuchsia {
+    @apply text-fuchsia-700 dark-tenant:text-fuchsia-400;
+  }
+
   .btn {
     @apply inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed;
   }
@@ -108,5 +324,88 @@
   }
   .nav-link-inactive {
     @apply nav-link text-slate-300 hover:bg-navy-600/60 hover:text-white;
+  }
+
+  /* ── Tenant premium dark theme (scoped via DashboardShell) ── */
+  [data-tenant-theme="dark"] {
+    --tenant-page-bg: #0b0f1a;
+    --tenant-surface: #141b2d;
+    --tenant-surface-elevated: #1a2236;
+    --tenant-border: rgba(255, 255, 255, 0.08);
+    --tenant-text: #f1f5f9;
+    --tenant-text-muted: #94a3b8;
+    --tenant-accent: #6366f1;
+  }
+
+  [data-tenant-theme="dark"] .page-title {
+    @apply text-slate-100;
+  }
+  [data-tenant-theme="dark"] .page-subtitle {
+    @apply text-slate-400;
+  }
+  [data-tenant-theme="dark"] .section-title {
+    @apply text-slate-200;
+  }
+  [data-tenant-theme="dark"] .kpi-label {
+    @apply text-slate-500;
+  }
+  [data-tenant-theme="dark"] .kpi-value {
+    @apply text-slate-100;
+  }
+
+  [data-tenant-theme="dark"] .card,
+  [data-tenant-theme="dark"] .card-premium,
+  [data-tenant-theme="dark"] .card-elevated {
+    @apply bg-surface-dark-card border-white/[0.08] shadow-dark-card;
+  }
+
+  [data-tenant-theme="dark"] .btn-primary {
+    @apply bg-violet-600 hover:bg-violet-500 focus:ring-violet-400 shadow-glow;
+  }
+  [data-tenant-theme="dark"] .btn-secondary {
+    @apply bg-surface-dark-elevated text-slate-200 border-white/10 hover:bg-surface-dark-cardHover hover:border-white/15 focus:ring-white/20;
+  }
+
+  [data-tenant-theme="dark"] .input {
+    @apply bg-surface-dark-elevated border-white/10 text-slate-100 placeholder:text-slate-500 focus:border-violet-500/50 focus:ring-violet-500/20;
+  }
+
+  [data-tenant-theme="dark"] .skeleton-shimmer {
+    @apply from-surface-dark-elevated via-surface-dark-card to-surface-dark-elevated;
+  }
+
+  [data-tenant-theme="dark"] .table-premium-head tr {
+    @apply border-white/[0.06] bg-surface-dark-elevated/80;
+  }
+  [data-tenant-theme="dark"] .table-premium-th {
+    @apply text-slate-500;
+  }
+  [data-tenant-theme="dark"] .table-premium-body .table-premium-row {
+    @apply border-white/[0.04] hover:bg-violet-500/[0.06];
+  }
+  [data-tenant-theme="dark"] .table-premium-td {
+    @apply text-slate-300;
+  }
+
+  [data-tenant-theme="dark"] .tenant-stat-tile {
+    @apply rounded-xl border border-white/[0.08] bg-surface-dark-elevated/60 px-3 py-2 transition-colors hover:border-violet-500/30;
+  }
+  [data-tenant-theme="dark"] .tenant-widget-link {
+    @apply rounded-xl border border-white/[0.08] bg-surface-dark-elevated/40 px-3 py-2 transition-all hover:border-violet-500/25 hover:bg-surface-dark-cardHover;
+  }
+  [data-tenant-theme="dark"] .tenant-filter-pill {
+    @apply px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150;
+  }
+  [data-tenant-theme="dark"] .tenant-filter-pill-active {
+    @apply tenant-filter-pill bg-violet-600/90 text-white shadow-glow;
+  }
+  [data-tenant-theme="dark"] .tenant-filter-pill-inactive {
+    @apply tenant-filter-pill text-slate-400 hover:text-slate-200 hover:bg-white/[0.04];
+  }
+  [data-tenant-theme="dark"] .tenant-kanban-column {
+    @apply rounded-xl bg-surface-dark-elevated/50 border border-white/[0.06] p-2.5 min-h-[140px];
+  }
+  [data-tenant-theme="dark"] .tenant-kanban-card {
+    @apply rounded-xl border border-white/[0.08] bg-surface-dark-card p-3 shadow-dark-card space-y-2 text-xs transition-all hover:border-violet-500/20;
   }
 }

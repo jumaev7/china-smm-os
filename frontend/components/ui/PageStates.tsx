@@ -45,11 +45,11 @@ export function LoadingState({
       )}
     >
       <div className="relative">
-        <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center">
-          <Loader2 size={22} className="animate-spin text-brand-600" />
+        <div className="w-12 h-12 rounded-2xl bg-brand-50 flex items-center justify-center dark-tenant:bg-violet-500/10">
+          <Loader2 size={22} className="animate-spin text-brand-600 dark-tenant:text-violet-400" />
         </div>
       </div>
-      <p className="text-sm font-medium text-gray-600">{text}</p>
+      <p className="text-sm font-medium text-gray-600 dark-tenant:text-slate-400">{text}</p>
       <div className="flex gap-1">
         {[0, 1, 2].map((i) => (
           <span
@@ -100,8 +100,8 @@ export function ErrorState({
         <AlertCircle size={22} className="text-danger-600" />
       </div>
       <div>
-        <p className="text-sm font-semibold text-navy-900">{t("errors.title")}</p>
-        <p className="text-sm text-gray-600 mt-1">{displayMessage}</p>
+        <p className="text-sm font-semibold text-navy-900 dark-tenant:text-slate-100">{t("errors.title")}</p>
+        <p className="text-sm text-gray-600 mt-1 dark-tenant:text-slate-400">{displayMessage}</p>
       </div>
       {onRetry && (
         <button
@@ -145,12 +145,12 @@ export function EmptyState({
         className,
       )}
     >
-      <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-gray-100 flex items-center justify-center">
-        <Inbox size={26} className="text-gray-300" />
+      <div className="w-14 h-14 rounded-2xl bg-slate-50 border border-gray-100 flex items-center justify-center dark-tenant:bg-surface-dark-elevated dark-tenant:border-white/[0.06]">
+        <Inbox size={26} className="text-gray-300 dark-tenant:text-slate-600" />
       </div>
       <div className="max-w-sm">
-        <p className="font-semibold text-navy-900">{displayTitle}</p>
-        {displayDescription && <p className="text-xs text-gray-500 mt-1.5 leading-relaxed">{displayDescription}</p>}
+        <p className="font-semibold text-navy-900 dark-tenant:text-slate-100">{displayTitle}</p>
+        {displayDescription && <p className="text-xs text-gray-500 mt-1.5 leading-relaxed dark-tenant:text-slate-500">{displayDescription}</p>}
       </div>
       {action}
     </div>

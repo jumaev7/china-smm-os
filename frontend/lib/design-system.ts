@@ -39,6 +39,9 @@ export const designTokens = {
       elevated: "#ffffff",
       sidebar: "#0f1a2e",
       sidebarHover: "#1a2b4a",
+      darkPage: "#0b0f1a",
+      darkCard: "#141b2d",
+      darkElevated: "#1a2236",
     },
     semantic: {
       success: { bg: "#ecfdf5", border: "#a7f3d0", text: "#047857" },
@@ -80,6 +83,8 @@ export const designTokens = {
 /** Pages upgraded in UI/UX Premium v1 */
 export const UPGRADED_PAGES = [
   { route: "/dashboard", name: "Dashboard", tier: "priority" },
+  { route: "/content", name: "Content Studio", tier: "priority" },
+  { route: "/pipeline", name: "Pipeline", tier: "priority" },
   { route: "/executive-copilot", name: "Executive Copilot", tier: "priority" },
   { route: "/factory-platform", name: "Factory Platform", tier: "priority" },
   { route: "/customer-portal-v2", name: "Customer Portal v2", tier: "priority" },
