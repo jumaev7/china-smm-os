@@ -14,7 +14,6 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 import { PageHeader, PageSection, PageShell, StatusBadge } from "@/components/ui/design-system";
-import { CommunicationsSubNav } from "@/components/communications/CommunicationsSubNav";
 import { useTranslation } from "@/lib/I18nProvider";
 
 const BUCKETS: { id: FollowUpBucket | ""; labelKey: string }[] = [
@@ -172,7 +171,6 @@ export default function CommunicationsFollowupsPage() {
         subtitle={t("communicationsHub.followupsSubtitle")}
         icon={CalendarClock}
       />
-      <CommunicationsSubNav />
 
       <div className="flex flex-wrap gap-2 mt-4">
         {BUCKETS.map((b) => (

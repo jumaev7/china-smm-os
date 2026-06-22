@@ -29,7 +29,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 export default function TenantUsersPage() {
   const qc = useQueryClient();
-  const { user: currentUser, tenantName } = useAuth();
+  const { user: currentUser } = useAuth();
   const [newEmail, setNewEmail] = useState("");
   const [newRole, setNewRole] = useState<TenantUserRole>("viewer");
   const [newPassword, setNewPassword] = useState("");
@@ -75,7 +75,7 @@ export default function TenantUsersPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (isLoading) return <LoadingState label="Loading tenant users…" />;
+  if (isLoading) return <LoadingState label="Loading team…" />;
   if (isError) return <ErrorState message={(error as Error).message} onRetry={() => refetch()} />;
 
   const users = data?.items ?? [];
@@ -84,20 +84,20 @@ export default function TenantUsersPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Tenant Users</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Team & Roles</h1>
         <p className="mt-1 text-sm text-gray-500">
-          {tenantName ?? "Your tenant"} — manage users, roles, and permissions
+          Invite your team and control access by role.
         </p>
       </div>
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">
         <div className="mb-4 flex items-center gap-2">
           <Users size={18} className="text-brand-600" />
-          <h2 className="text-lg font-medium text-gray-900">Users</h2>
+          <h2 className="text-lg font-medium text-gray-900">Team members</h2>
           <span className="text-sm text-gray-400">({users.length})</span>
         </div>
         {users.length === 0 ? (
-          <EmptyState title="No users" description="Add a tenant user below." />
+          <EmptyState title="No team members yet" description="Invite a team member below and assign a role." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -153,7 +153,7 @@ export default function TenantUsersPage() {
       <section className="rounded-xl border border-gray-200 bg-white p-5">
         <div className="mb-4 flex items-center gap-2">
           <UserPlus size={18} className="text-brand-600" />
-          <h2 className="text-lg font-medium text-gray-900">Add User</h2>
+          <h2 className="text-lg font-medium text-gray-900">Invite team member</h2>
         </div>
         <div className="grid gap-3 sm:grid-cols-4">
           <input
@@ -189,7 +189,7 @@ export default function TenantUsersPage() {
           className="mt-3 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
         >
           {createMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-          Create user
+          Create member
         </button>
       </section>
 

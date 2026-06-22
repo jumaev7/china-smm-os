@@ -20,7 +20,6 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 import { PageHeader, PageSection, PageShell } from "@/components/ui/design-system";
-import { CommunicationsSubNav } from "@/components/communications/CommunicationsSubNav";
 import { useTranslation } from "@/lib/I18nProvider";
 
 const CHANNELS: (CommunicationChannel | "telegram")[] = [
@@ -156,7 +155,6 @@ export default function CommunicationsInboxPage() {
           </Link>
         }
       />
-      <CommunicationsSubNav />
 
       <div className="card p-4 space-y-3 mt-4">
         <div className="flex flex-wrap gap-2">

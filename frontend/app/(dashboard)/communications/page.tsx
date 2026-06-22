@@ -19,7 +19,6 @@ import {
   type CommunicationDashboard,
 } from "@/lib/api";
 import { useTranslation } from "@/lib/I18nProvider";
-import { CommunicationsSubNav } from "@/components/communications/CommunicationsSubNav";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 import {
   KpiCard,
@@ -93,7 +92,6 @@ export default function CommunicationsDashboardPage() {
         subtitle={t("communicationsHub.dashboardSubtitle")}
         icon={MessagesSquare}
       />
-      <CommunicationsSubNav />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mt-4">
         <KpiCard

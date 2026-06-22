@@ -13,7 +13,6 @@ import {
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 import { PageHeader, PageSection, PageShell } from "@/components/ui/design-system";
-import { CommunicationsSubNav } from "@/components/communications/CommunicationsSubNav";
 import { useTranslation } from "@/lib/I18nProvider";
 
 type TemplateForm = {
@@ -108,7 +107,6 @@ export default function CommunicationsTemplatesPage() {
           </button>
         }
       />
-      <CommunicationsSubNav />
 
       <div className="flex flex-wrap gap-2 mt-4">
         <button

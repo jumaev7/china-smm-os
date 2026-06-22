@@ -534,11 +534,28 @@ const SECTION_LABEL_FALLBACK: Record<string, string> = {
 
 
 
+function communicationsNavMatches(pathname: string, path: string): boolean {
+  if (path === "/communications") {
+    return pathname === "/communications";
+  }
+  if (path === "/communications/inbox") {
+    return (
+      pathname === "/communications/inbox" ||
+      pathname.startsWith("/communications/inbox/") ||
+      pathname.startsWith("/communications/threads/") ||
+      pathname.startsWith("/communications/contacts/")
+    );
+  }
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
 function navIsActive(pathname: string, href: string, searchParams: URLSearchParams): boolean {
   const [path, queryString] = href.split("?");
   const pathMatches = path === "/publishing"
     ? pathname === "/publishing"
-    : pathname === path || pathname.startsWith(`${path}/`);
+    : path.startsWith("/communications")
+      ? communicationsNavMatches(pathname, path)
+      : pathname === path || pathname.startsWith(`${path}/`);
 
   if (!pathMatches) return false;
   if (!queryString) {
