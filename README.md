@@ -148,6 +148,57 @@ Open http://localhost:3000
 
 ---
 
+## Local Telegram live webhook workflow
+
+Telegram delivers updates only to an HTTPS webhook URL. For local dev, expose the backend with a **cloudflared quick tunnel** (not ngrok free — its browser interstitial returns 503/HTML to Telegram POSTs).
+
+### 1. Start backend
+
+```bash
+cd backend
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Ensure `TELEGRAM_BOT_TOKEN` is set in `backend/.env`.
+
+### 2. Start cloudflared quick tunnel
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+Copy the `https://xxxx.trycloudflare.com` URL from the tunnel output. **This URL changes every time cloudflared restarts** — re-run the sync script after each restart.
+
+### 3. Sync Telegram webhook
+
+From `backend/` (with venv active):
+
+```bash
+# Auto-detect tunnel URL from cloudflared metrics (:20241)
+python scripts/sync_cloudflared_telegram_webhook.py
+
+# Or pass the URL explicitly
+python scripts/sync_cloudflared_telegram_webhook.py --public-url https://xxxx.trycloudflare.com
+```
+
+The script checks backend `/health`, calls `setWebhook`, verifies `getWebhookInfo` matches, probes the public webhook path, and prints **READY** when you can send a live test message.
+
+Check-only (no register):
+
+```bash
+python scripts/setup_telegram_webhook.py --check-only
+```
+
+### 4. Human photo test
+
+When the sync script reports READY, send a photo + caption in the configured Telegram group (see script output for chat id).
+
+### Stable tunnel (later)
+
+For a URL that does not change on restart, use a **named Cloudflare tunnel** or a **paid static domain** instead of the ephemeral `trycloudflare.com` quick tunnel.
+
+---
+
 ## Production migrations (Alembic)
 
 In production, use Alembic instead of auto-create:

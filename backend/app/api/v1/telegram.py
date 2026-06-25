@@ -5,9 +5,12 @@ POST /api/v1/telegram/webhook
 Register with Telegram:
   curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://yourdomain.com/api/v1/telegram/webhook"
 
-For local dev, use ngrok:
-  ngrok http 8000
-  Then register the ngrok URL above.
+For local dev, expose port 8000 with a public HTTPS tunnel, then register:
+  cloudflared tunnel --url http://127.0.0.1:8000
+  python scripts/setup_telegram_webhook.py --public-url https://<tunnel-host>
+
+Note: ngrok free static domains may return 503/HTML interstitial to Telegram
+webhook POSTs (no ngrok-skip-browser-warning header). Prefer cloudflared for dev.
 """
 import logging
 
