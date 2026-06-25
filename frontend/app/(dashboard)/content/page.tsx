@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { contentApi, clientsApi, Client, normalizeList, ContentItem } from "@/lib/api";
+import { contentApi, clientsApi, Client, normalizeList, ContentItem, tenantOnboardingApi } from "@/lib/api";
 import { STATUS_CONFIG, PLATFORM_CONFIG, cn } from "@/lib/utils";
 import { formatScheduledLocal, LOCAL_TIMEZONE_NOTE } from "@/lib/datetime";
 import { Plus, CheckCheck, Trash2, Sparkles, Eye, CalendarPlus, FileText, Filter } from "lucide-react";
@@ -78,6 +78,14 @@ export default function ContentPage() {
   });
   const clientOptions = normalizeList<Client>(clients);
 
+  const { data: channelStatus } = useQuery({
+    queryKey: ["onboarding-channels-content"],
+    queryFn: () => tenantOnboardingApi.channelStatus().then((r) => r.data),
+  });
+  const telegramConnected = Boolean(
+    (channelStatus?.telegram as { connected?: boolean } | undefined)?.connected,
+  );
+
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["content", statusFilter, sourceFilter, clientFilter],
     queryFn: () =>
@@ -139,12 +147,25 @@ export default function ContentPage() {
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : items.length === 0 ? (
         <EmptyState
-          title="No content yet"
-          description="Create your first content item or adjust filters."
+          title={activeFilter ? "No matching content" : "No content yet"}
+          description={
+            activeFilter
+              ? "Try a different filter or create content manually."
+              : telegramConnected
+                ? "Post a photo or video to your linked Telegram group — it will appear here. You can also create content manually."
+                : "Connect your Telegram group first (Onboarding → Channels), then post media to the group or upload manually."
+          }
           action={
-            <button className="btn-primary text-sm mt-2" onClick={() => setShowNew(true)}>
-              <Plus size={14} /> Create content
-            </button>
+            <div className="flex flex-wrap gap-2 justify-center mt-2">
+              {!telegramConnected && (
+                <Link href="/onboarding/channels" className="btn-primary text-sm">
+                  Connect Telegram
+                </Link>
+              )}
+              <button className="btn-secondary text-sm" onClick={() => setShowNew(true)}>
+                <Plus size={14} /> Create manually
+              </button>
+            </div>
           }
         />
       ) : (
@@ -157,7 +178,13 @@ export default function ContentPage() {
               onApprove={() => approveMutation.mutate(item.id)}
               onDelete={() => { if (confirm("Delete this content?")) deleteMutation.mutate(item.id); }}
               onSchedule={() => { setSchedulingItemId(item.id); setSchedulingItem(item); }}
-              onGenerate={() => setGeneratingItem(item)}
+              onGenerate={() => {
+                if (!clientMap[item.client_id]) {
+                  toast.error("Client profile missing — refresh or check client settings");
+                  return;
+                }
+                setGeneratingItem(item);
+              }}
             />
           ))}
         </div>

@@ -7,6 +7,7 @@ import { format, parseISO } from "date-fns";
 import { Building2, Check, Copy, Plus, UserPlus } from "lucide-react";
 import { adminAuthApi, pilotOnboardingApi, normalizeList } from "@/lib/api";
 import { AdminAuthGuard } from "@/components/auth/AdminAuthGuard";
+import { TenantOperationsPanel } from "@/components/admin/TenantOperationsPanel";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 
@@ -41,11 +42,14 @@ type CreateClientForm = {
 type CreatedClientResult = {
   tenant_id: string;
   user_id: string;
+  client_id: string;
   company_name: string;
   login_email: string;
   temporary_password: string;
   login_url: string;
   message: string;
+  seed_counts: Record<string, number>;
+  next_steps: string[];
 };
 
 const EMPTY_FORM: CreateClientForm = {
@@ -108,11 +112,14 @@ function TenantsPageContent() {
       setCreated({
         tenant_id: data.tenant_id,
         user_id: data.user_id,
+        client_id: data.client_id,
         company_name: data.company_name,
         login_email: data.login_email,
         temporary_password: data.temporary_password,
         login_url: data.login_url,
         message: data.message,
+        seed_counts: data.seed_counts ?? {},
+        next_steps: data.next_steps ?? [],
       });
       setShowCreateForm(false);
       setForm(EMPTY_FORM);
@@ -136,6 +143,8 @@ function TenantsPageContent() {
     ? [
         "Client account created",
         `Company: ${created.company_name}`,
+        `Tenant ID: ${created.tenant_id}`,
+        `Client ID: ${created.client_id}`,
         `Login: ${created.login_email}`,
         `Temporary password: ${created.temporary_password}`,
         `Login URL: ${created.login_url}`,
@@ -188,6 +197,22 @@ function TenantsPageContent() {
               <dd className="font-medium text-gray-900">{created.company_name}</dd>
             </div>
             <div className="flex gap-2">
+              <dt className="text-gray-500 w-36 shrink-0">Tenant ID</dt>
+              <dd className="font-mono text-xs text-gray-700 break-all">{created.tenant_id}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-gray-500 w-36 shrink-0">Client ID</dt>
+              <dd className="font-mono text-xs text-gray-700 break-all">{created.client_id}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-gray-500 w-36 shrink-0">Demo seed</dt>
+              <dd className="text-xs text-gray-700">
+                {Object.entries(created.seed_counts)
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join(" · ") || "—"}
+              </dd>
+            </div>
+            <div className="flex gap-2">
               <dt className="text-gray-500 w-36 shrink-0">Login</dt>
               <dd className="font-mono text-gray-900">{created.login_email}</dd>
             </div>
@@ -207,6 +232,27 @@ function TenantsPageContent() {
           <p className="text-xs text-amber-700">
             Save these credentials now — the temporary password is only shown once.
           </p>
+          {created.next_steps.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-700 mb-1">Next steps</p>
+              <ol className="list-decimal list-inside text-xs text-gray-600 space-y-0.5">
+                {created.next_steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={`/clients/${created.client_id}`}
+              className="text-xs text-brand-700 hover:underline"
+            >
+              Open client settings →
+            </Link>
+            <Link href="/billing?tab=licenses" className="text-xs text-brand-700 hover:underline">
+              Create subscription →
+            </Link>
+          </div>
           <button
             type="button"
             onClick={copyLoginDetails}
@@ -410,6 +456,7 @@ function TenantsPageContent() {
               ) : (
                 <p className="text-xs text-gray-400">No linked factory application onboarding track</p>
               )}
+              <TenantOperationsPanel tenantId={selected.id} />
               <div className="flex flex-wrap gap-3 pt-2">
                 <Link href="/billing?tab=licenses" className="text-xs text-brand-700 hover:underline">
                   View licenses →

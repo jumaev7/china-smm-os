@@ -248,7 +248,7 @@ class ContentService:
         item = await ContentService.get(db, content_id)
         for field, value in generated.model_dump().items():
             setattr(item, field, value)
-        if item.status == "draft":
+        if item.status in ("draft", "needs_caption", "needs_review"):
             item.status = "ready"
         await db.commit()
         return await ContentService.get(db, content_id)

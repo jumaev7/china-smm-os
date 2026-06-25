@@ -176,4 +176,11 @@ class AdminClientProvisioningService:
             "login_url": _login_url(),
             "seed_counts": seed_counts,
             "message": "Client account created. Share login details securely — password is shown once.",
+            "next_steps": [
+                "Share login credentials with the client owner (password shown once above)",
+                "Create a trial or active subscription on the Billing page",
+                f"Link Telegram intake group on client settings (client_id: {client.id})",
+                "Register webhook if testing live Telegram intake (see README)",
+                "Client owner logs in and completes /onboarding/channels",
+            ],
         }

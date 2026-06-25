@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { clientsApi, Client, normalizeList } from "@/lib/api";
 import { CATEGORY_LABELS, LANGUAGE_LABELS } from "@/lib/utils";
-import { Plus, Search, Globe, Tag, Trash2, Pencil } from "lucide-react";
+import { Plus, Search, Globe, Tag, Trash2, Pencil, MessageCircle } from "lucide-react";
 import toast from "react-hot-toast";
 import { ClientFormModal } from "@/components/clients/ClientFormModal";
 import Link from "next/link";
@@ -70,6 +70,7 @@ export default function ClientsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Category</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Language</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Style</th>
+                <th className="text-left px-4 py-3 font-medium text-gray-600">Telegram</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -95,6 +96,18 @@ export default function ClientsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-500 capitalize">{c.content_style}</td>
+                  <td className="px-4 py-3">
+                    {c.telegram_group_id ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        <MessageCircle size={11} />
+                        {c.telegram_group_title || "Linked"}
+                      </span>
+                    ) : c.company_name.startsWith("Telegram Group:") ? (
+                      <span className="text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Placeholder</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">Not linked</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
                       c.status === "active" ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"

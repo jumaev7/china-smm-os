@@ -39,6 +39,8 @@ from app.services.admin_client_provisioning_service import AdminClientProvisioni
 from app.services.admin_auth_service import AdminAuthService
 from app.services.admin_rbac_service import AdminRbacService, CurrentAdminUser
 from app.services.admin_security_service import AdminSecurityService
+from app.services.tenant_operations_service import TenantOperationsService
+from app.schemas.tenant_operations import TenantOperationsResponse
 
 router = APIRouter(prefix="/admin-auth", tags=["admin-auth"])
 
@@ -234,6 +236,18 @@ async def admin_create_client_account(
         plan=body.plan,
         locale=body.locale,
     )
+
+
+@router.get(
+    "/platform/tenants/{tenant_id}/operations",
+    response_model=TenantOperationsResponse,
+)
+async def admin_tenant_operations(
+    tenant_id: UUID,
+    admin: CurrentAdminUser = Depends(require_admin_permission("tenants.read")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await TenantOperationsService.get_tenant_operations(db, admin, tenant_id)
 
 
 @router.get("/platform/billing", response_model=AdminPlatformBillingResponse)

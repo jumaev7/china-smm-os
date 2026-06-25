@@ -127,6 +127,7 @@ class AdminCreateClientAccountResponse(BaseModel):
     login_url: str
     seed_counts: dict[str, int]
     message: str
+    next_steps: list[str] = Field(default_factory=list)
 
 
 class AdminPlatformBillingResponse(BaseModel):

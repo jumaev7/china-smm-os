@@ -27,9 +27,9 @@ const GUIDANCE: Record<
   },
   content: {
     title: "No Content Yet",
-    description: "Upload product photos from Telegram or your media library. AI will generate export marketing content.",
-    defaultAction: "Upload content from Telegram",
-    defaultRoute: "/content-factory",
+    description: "Post photos or videos to your linked Telegram group, or upload manually. AI will generate export marketing captions.",
+    defaultAction: "Connect Telegram",
+    defaultRoute: "/onboarding/channels",
   },
   proposals: {
     title: "No Proposals Yet",

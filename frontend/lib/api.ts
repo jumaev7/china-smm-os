@@ -12281,7 +12281,54 @@ export const adminAuthApi = {
       login_url: string;
       seed_counts: Record<string, number>;
       message: string;
+      next_steps: string[];
     }>("/admin-auth/platform/tenants/create-client", body),
+  tenantOperations: (tenantId: string) =>
+    adminApi.get<{
+      tenant_id: string;
+      company_name: string;
+      tenant_status: string;
+      plan: string;
+      readiness: "ready" | "onboarding_incomplete";
+      checks: Array<{
+        id: string;
+        label: string;
+        ok: boolean;
+        detail?: string | null;
+        critical: boolean;
+      }>;
+      blockers: string[];
+      owner_email?: string | null;
+      owner_has_password: boolean;
+      client_count: number;
+      primary_client_id?: string | null;
+      content_count: number;
+      telegram_content_count: number;
+      subscription_status?: string | null;
+      has_publishing_destination: boolean;
+      connected_publishing_accounts: number;
+      clients_telegram: Array<{
+        client_id: string;
+        company_name: string;
+        is_placeholder: boolean;
+        telegram_group_id?: string | null;
+        telegram_group_title?: string | null;
+        telegram_workflow_mode?: string | null;
+        telegram_publish_chat_id?: string | null;
+        intake_linked: boolean;
+        duplicate_group_warning: boolean;
+        duplicate_client_ids: string[];
+        last_intake_at?: string | null;
+      }>;
+      telegram_health: {
+        bot_configured: boolean;
+        ingestion_enabled: boolean;
+        webhook_url?: string | null;
+        webhook_pending_updates?: number | null;
+        webhook_last_error?: string | null;
+      };
+      next_steps: string[];
+    }>(`/admin-auth/platform/tenants/${tenantId}/operations`),
   platformBilling: () =>
     adminApi.get<{
       total_tenants: number;
