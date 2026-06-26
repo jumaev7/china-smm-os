@@ -180,6 +180,30 @@ async def ensure_dev_schema_patches() -> None:
         await conn.run_sync(_ensure_whatsapp_business_foundation_columns)
         await conn.run_sync(_ensure_telegram_ingestion_columns)
         await conn.run_sync(_ensure_content_factory_ai_columns)
+        await conn.run_sync(_ensure_meta_publishing_columns)
+
+
+def _ensure_meta_publishing_columns(connection) -> None:
+    """Meta Graph API publishing foundation columns on publishing_accounts."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "publishing_accounts" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("publishing_accounts")}
+    for column, sql in [
+        ("refresh_token_encrypted", "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS refresh_token_encrypted TEXT"),
+        ("expires_at", "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ"),
+        ("facebook_page_id", "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS facebook_page_id VARCHAR(64)"),
+        ("instagram_business_account_id", "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS instagram_business_account_id VARCHAR(64)"),
+        ("permissions_json", "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS permissions_json TEXT"),
+        ("account_metadata_json", "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS account_metadata_json TEXT"),
+    ]:
+        if column not in existing:
+            connection.execute(text(sql))
+    connection.execute(text(
+        "ALTER TABLE publishing_accounts ALTER COLUMN status TYPE VARCHAR(30)"
+    ))
 
 
 def _ensure_telegram_ingestion_columns(connection) -> None:

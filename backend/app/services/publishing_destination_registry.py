@@ -4,11 +4,20 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from app.core.config import settings
+from app.services.meta_graph_client import meta_oauth_configured
 
 DestinationGlobalStatus = Literal["live", "partial", "mock", "not_configured"]
 TenantDestinationStatus = Literal["live", "partial", "mock", "not_configured", "blocked"]
 
 SUPPORTED_DESTINATIONS = ("telegram", "instagram", "facebook", "tiktok", "linkedin")
+
+META_ACCOUNT_BLOCK_STATUSES = frozenset({
+    "disconnected",
+    "expired",
+    "invalid",
+    "missing_permissions",
+    "blocked",
+})
 
 # Architecture truth — what the codebase actually implements today.
 DESTINATION_TRUTH: dict[str, dict[str, Any]] = {
@@ -25,21 +34,22 @@ DESTINATION_TRUTH: dict[str, dict[str, Any]] = {
     "instagram": {
         "global_status": "mock",
         "adapter": "instagram_publisher",
-        "api": "Mock only — returns mock-ig-* platform_post_id",
+        "api": "Mock publish only — Meta Graph connection foundation (no content publish yet)",
         "blockers_for_real": [
-            "No Meta Graph API integration",
-            "No OAuth / connected Business account flow",
-            "Publisher always sets mock=True",
+            "Graph API content publish not implemented in this milestone",
+            "Publisher always sets mock=True until live adapter ships",
         ],
+        "connection": "Meta OAuth — Facebook Page + Instagram Business account",
     },
     "facebook": {
         "global_status": "mock",
         "adapter": "facebook_publisher",
-        "api": "Mock only — returns mock-fb-* platform_post_id",
+        "api": "Mock publish only — Meta Graph connection foundation (no content publish yet)",
         "blockers_for_real": [
-            "No Meta Graph API integration",
-            "No Page access token storage",
+            "Graph API page publish not implemented in this milestone",
+            "Publisher always sets mock=True until live adapter ships",
         ],
+        "connection": "Meta OAuth — Facebook Page access token storage",
     },
     "tiktok": {
         "global_status": "mock",
@@ -68,6 +78,10 @@ def scheduled_worker_enabled() -> bool:
     return bool(settings.SCHEDULED_PUBLISH_ENABLED)
 
 
+def meta_connection_configured() -> bool:
+    return meta_oauth_configured()
+
+
 def global_destination_status(platform: str) -> DestinationGlobalStatus:
     truth = DESTINATION_TRUTH.get(platform)
     if not truth:
@@ -75,7 +89,13 @@ def global_destination_status(platform: str) -> DestinationGlobalStatus:
     status = truth["global_status"]
     if platform == "telegram" and status == "live" and not telegram_bot_configured():
         return "partial"
+    if platform in ("facebook", "instagram") and meta_connection_configured():
+        return "partial"
     return status  # type: ignore[return-value]
+
+
+def _meta_account_blocked(account_status: str | None) -> bool:
+    return account_status in META_ACCOUNT_BLOCK_STATUSES
 
 
 def platform_implementation(
@@ -90,6 +110,10 @@ def platform_implementation(
         return "blocked"
     if dest_status == "blocked":
         return "blocked"
+    if platform in ("facebook", "instagram"):
+        if _meta_account_blocked(account_status):
+            return "blocked"
+        return "mock"
     if truth.get("global_status") == "mock":
         return "mock"
     if platform == "telegram":
@@ -127,6 +151,17 @@ def tenant_destination_status(
         if global_status == "live" and telegram_bot_configured():
             return "live"
         return "partial"
+
+    if platform in ("facebook", "instagram"):
+        if not has_account:
+            return "blocked"
+        if account_status == "mock":
+            return "mock"
+        if _meta_account_blocked(account_status):
+            return "blocked"
+        if account_status == "connected":
+            return "partial" if global_status == "partial" else "mock"
+        return "blocked"
 
     if not has_account:
         return "blocked"

@@ -7,13 +7,15 @@ from app.services.publish_context import PublishContext
 
 
 async def publish(ctx: PublishContext) -> dict:
+    # Foundation milestone: always mock — no Graph API publish calls yet.
     post_id = f"mock-ig-{secrets.token_hex(6)}"
+    connected_note = " (connected account — live publish not enabled yet)" if ctx.account_status == "connected" else ""
     return {
         "platform": "instagram",
         "success": True,
         "mock": True,
         "platform_post_id": post_id,
-        "message": f"[Mock] Posted to Instagram Business ({ctx.account_name or 'account'}) for {ctx.company_name}",
+        "message": f"[Mock] Posted to Instagram Business ({ctx.account_name or 'account'}){connected_note} for {ctx.company_name}",
         "media_url": ctx.media_url,
         "caption_preview": (ctx.caption or "")[:120],
     }

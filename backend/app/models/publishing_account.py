@@ -7,7 +7,15 @@ from sqlalchemy.dialects.postgresql import UUID
 
 from app.core.database import Base
 
-ACCOUNT_STATUSES = ("connected", "disconnected", "mock")
+ACCOUNT_STATUSES = (
+    "connected",
+    "disconnected",
+    "mock",
+    "expired",
+    "invalid",
+    "missing_permissions",
+    "blocked",
+)
 PLATFORMS = ("telegram", "facebook", "instagram", "tiktok", "linkedin")
 
 
@@ -21,7 +29,13 @@ class PublishingAccount(Base):
     account_name: Mapped[str] = mapped_column(String(255), nullable=False)
     account_id: Mapped[str] = mapped_column(String(255), nullable=False)
     access_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="mock", server_default="mock")
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    facebook_page_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    instagram_business_account_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    permissions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    account_metadata_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(30), default="mock", server_default="mock")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(),
     )

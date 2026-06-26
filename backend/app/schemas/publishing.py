@@ -7,7 +7,15 @@ from pydantic import BaseModel, Field
 PublishMode = Literal["test_publish", "manual_publish", "scheduled_publish"]
 
 PLATFORMS = ["telegram", "facebook", "instagram", "tiktok", "linkedin"]
-ACCOUNT_STATUSES = ["connected", "disconnected", "mock"]
+ACCOUNT_STATUSES = [
+    "connected",
+    "disconnected",
+    "mock",
+    "expired",
+    "invalid",
+    "missing_permissions",
+    "blocked",
+]
 
 MOCK_ACCOUNT_LABELS = {
     "telegram": "Telegram Channel Mock",
@@ -40,6 +48,14 @@ class PublishingAccountResponse(BaseModel):
     account_name: str
     account_id: str
     status: str
+    expires_at: Optional[datetime] = None
+    facebook_page_id: Optional[str] = None
+    instagram_business_account_id: Optional[str] = None
+    permissions: List[str] = Field(default_factory=list)
+    account_metadata: dict = Field(default_factory=dict)
+    token_expired: bool = False
+    health: Optional[str] = None
+    missing_permissions: List[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -153,3 +169,67 @@ class PublishingQueueActionResponse(BaseModel):
     status: Optional[str] = None
     safety_status: Optional[str] = None
     block_reason: Optional[str] = None
+
+
+class MetaAccountHealth(BaseModel):
+    platform: str
+    account_id: str
+    account_name: str
+    status: str
+    health: str
+    expires_at: Optional[datetime] = None
+    token_expired: bool = False
+    facebook_page_id: Optional[str] = None
+    instagram_business_account_id: Optional[str] = None
+    permissions: List[str] = Field(default_factory=list)
+    missing_permissions: List[str] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
+    blockers: List[str] = Field(default_factory=list)
+    publish_ready: bool = False
+    implementation: str = "mock"
+
+
+class MetaConnectionSummaryResponse(BaseModel):
+    oauth_configured: bool
+    connected: bool
+    facebook: Optional[MetaAccountHealth] = None
+    instagram: Optional[MetaAccountHealth] = None
+    permissions: List[str] = Field(default_factory=list)
+    missing_permissions: List[str] = Field(default_factory=list)
+    expires_at: Optional[datetime] = None
+    token_expired: bool = False
+    health: str
+    blockers: List[str] = Field(default_factory=list)
+    publish_implementation: str = "mock"
+
+
+class MetaConnectionHealthResponse(BaseModel):
+    oauth_configured: bool
+    connected: bool
+    health: str
+    token_expired: bool = False
+    expires_at: Optional[datetime] = None
+    permissions: List[str] = Field(default_factory=list)
+    missing_permissions: List[str] = Field(default_factory=list)
+    facebook: Optional[MetaAccountHealth] = None
+    instagram: Optional[MetaAccountHealth] = None
+    blockers: List[str] = Field(default_factory=list)
+    publish_implementation: str = "mock"
+
+
+class MetaOAuthStartResponse(BaseModel):
+    authorize_url: str = ""
+    state: Optional[str] = None
+    mode: str
+    demo_connect_url: Optional[str] = None
+
+
+class MetaRefreshResponse(BaseModel):
+    ok: bool
+    message: str
+    accounts: dict[str, str] = Field(default_factory=dict)
+
+
+class MetaDisconnectResponse(BaseModel):
+    ok: bool
+    message: str

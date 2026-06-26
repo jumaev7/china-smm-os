@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.publishing_account import PublishingAccount, ACCOUNT_STATUSES, PLATFORMS
 from app.schemas.publishing import MOCK_ACCOUNT_LABELS, PublishingAccountCreate, PublishingAccountUpdate
+from app.services.meta_connection_service import MetaConnectionService
+from app.services.meta_graph_client import token_is_expired
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 
 ACTIVE_STATUSES = frozenset({"connected", "mock"})
@@ -18,12 +20,41 @@ ACTIVE_STATUSES = frozenset({"connected", "mock"})
 class PublishingAccountService:
     @staticmethod
     def _serialize(account: PublishingAccount) -> dict:
+        permissions = MetaConnectionService.account_permissions(account)
+        metadata = MetaConnectionService.account_metadata(account)
+        expired = token_is_expired(account.expires_at)
+        health = None
+        missing_permissions: list[str] = []
+        if MetaConnectionService.is_meta_platform(account.platform) and account.status != "mock":
+            from app.services.meta_graph_client import missing_connection_permissions
+
+            missing_permissions = missing_connection_permissions(permissions)
+            if account.status == "disconnected":
+                health = "disconnected"
+            elif expired:
+                health = "expired"
+            elif account.status == "missing_permissions" or missing_permissions:
+                health = "missing_permissions"
+            elif account.status == "invalid":
+                health = "unhealthy"
+            elif account.status == "connected":
+                health = "healthy"
+            else:
+                health = account.status
         return {
             "id": account.id,
             "platform": account.platform,
             "account_name": account.account_name,
             "account_id": account.account_id,
             "status": account.status,
+            "expires_at": account.expires_at,
+            "facebook_page_id": account.facebook_page_id,
+            "instagram_business_account_id": account.instagram_business_account_id,
+            "permissions": permissions,
+            "account_metadata": metadata,
+            "token_expired": expired,
+            "health": health,
+            "missing_permissions": missing_permissions,
             "created_at": account.created_at,
             "updated_at": account.updated_at,
         }
@@ -142,6 +173,14 @@ class PublishingAccountService:
         )
         account = result.scalar_one_or_none()
         if not account:
+            if MetaConnectionService.is_meta_platform(platform):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"No connected Meta publishing account for {platform}. "
+                        "Connect Facebook/Instagram in Publishing settings."
+                    ),
+                )
             raise HTTPException(
                 status_code=400,
                 detail=(
@@ -167,6 +206,12 @@ class PublishingAccountService:
                     detail=f"Account {account_id} is for {account.platform}, not {platform}",
                 )
             if account.status not in ACTIVE_STATUSES:
+                if MetaConnectionService.is_meta_platform(platform):
+                    blockers = MetaConnectionService.readiness_blockers(account)
+                    detail = blockers[0] if blockers else (
+                        f"Account {account.account_name} is not ready (status={account.status})"
+                    )
+                    raise HTTPException(status_code=400, detail=detail)
                 raise HTTPException(
                     status_code=400,
                     detail=f"Account {account.account_name} is not connected (status={account.status})",

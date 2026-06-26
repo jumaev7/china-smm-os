@@ -31,6 +31,7 @@ PUBLIC_API_PREFIXES: tuple[str, ...] = (
     "/api/v1/admin-auth/bootstrap",
     "/api/v1/factory-partner/apply",
     "/api/v1/telegram/webhook",
+    "/api/v1/publishing/meta/oauth/callback",
     "/api/webhooks/whatsapp",
     "/api/v1/system/health",
     "/public/",

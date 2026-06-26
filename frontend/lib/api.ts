@@ -285,9 +285,49 @@ export interface PublishingAccount {
   platform: Platform;
   account_name: string;
   account_id: string;
-  status: "connected" | "disconnected" | "mock";
+  status: "connected" | "disconnected" | "mock" | "expired" | "invalid" | "missing_permissions" | "blocked";
+  expires_at?: string | null;
+  facebook_page_id?: string | null;
+  instagram_business_account_id?: string | null;
+  permissions?: string[];
+  account_metadata?: Record<string, unknown>;
+  token_expired?: boolean;
+  health?: string | null;
+  missing_permissions?: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface MetaAccountHealth {
+  platform: string;
+  account_id: string;
+  account_name: string;
+  status: string;
+  health: string;
+  expires_at?: string | null;
+  token_expired?: boolean;
+  facebook_page_id?: string | null;
+  instagram_business_account_id?: string | null;
+  permissions?: string[];
+  missing_permissions?: string[];
+  metadata?: Record<string, unknown>;
+  blockers?: string[];
+  publish_ready?: boolean;
+  implementation?: string;
+}
+
+export interface MetaConnectionSummary {
+  oauth_configured: boolean;
+  connected: boolean;
+  facebook?: MetaAccountHealth | null;
+  instagram?: MetaAccountHealth | null;
+  permissions: string[];
+  missing_permissions: string[];
+  expires_at?: string | null;
+  token_expired: boolean;
+  health: string;
+  blockers: string[];
+  publish_implementation: string;
 }
 
 export interface ContentItem {
@@ -9436,6 +9476,21 @@ export const publishingApi = {
     api.post<PublishingQueueActionResponse>(`/publishing/queue/${contentId}/retry`),
   sendClientReviewQueueItem: (contentId: string) =>
     api.post<PublishingQueueActionResponse>(`/publishing/queue/${contentId}/send-client-review`),
+};
+
+export const metaPublishingApi = {
+  oauthStart: () =>
+    api.get<{
+      authorize_url: string;
+      state?: string;
+      mode: string;
+      demo_connect_url?: string;
+    }>("/publishing/meta/oauth/start"),
+  getConnection: () => api.get<MetaConnectionSummary>("/publishing/meta/connection"),
+  getHealth: () => api.get<MetaConnectionSummary>("/publishing/meta/health"),
+  refresh: () => api.post<{ ok: boolean; message: string }>("/publishing/meta/refresh"),
+  disconnect: () => api.post<{ ok: boolean; message: string }>("/publishing/meta/disconnect"),
+  demoConnect: () => api.post<MetaConnectionSummary>("/publishing/meta/oauth/demo-connect"),
 };
 
 export interface PublishingCalendarItem {

@@ -74,6 +74,16 @@ class Settings(BaseSettings):
     WHATSAPP_WEBHOOK_VERIFY_TOKEN: str = ""
     WHATSAPP_APP_SECRET: str = ""
 
+    # Meta Graph API — Facebook Login + Instagram Business (publishing connection)
+    META_APP_ID: str = ""
+    META_APP_SECRET: str = ""
+    META_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/publishing/meta/oauth/callback"
+    META_GRAPH_API_VERSION: str = "v21.0"
+    META_OAUTH_SCOPES: str = (
+        "pages_show_list,pages_read_engagement,instagram_basic,business_management,"
+        "pages_manage_posts,instagram_content_publish"
+    )
+
     @property
     def admin_secret_key(self) -> str:
         return self.ADMIN_SECRET_KEY or self.SECRET_KEY

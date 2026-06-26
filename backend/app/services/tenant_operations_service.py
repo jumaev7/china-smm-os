@@ -167,9 +167,14 @@ class TenantOperationsService:
                     if not telegram_bot_configured():
                         dest_blockers.append("TELEGRAM_BOT_TOKEN not configured")
                 else:
-                    dest_blockers.append(
-                        f"No connected or mock publishing account for {platform}",
-                    )
+                    if platform in ("facebook", "instagram"):
+                        dest_blockers.append(
+                            f"No connected Meta publishing account for {platform}",
+                        )
+                    else:
+                        dest_blockers.append(
+                            f"No connected or mock publishing account for {platform}",
+                        )
             elif impl == "mock":
                 if platform == "telegram":
                     dest_blockers.append(
@@ -182,6 +187,10 @@ class TenantOperationsService:
             elif impl == "live" and platform == "telegram":
                 if not primary_publish_chat and not (account and account.account_id):
                     dest_blockers.append("Telegram publish chat not configured")
+            elif impl == "blocked" and platform in ("facebook", "instagram") and account:
+                from app.services.meta_connection_service import MetaConnectionService
+
+                dest_blockers.extend(MetaConnectionService.readiness_blockers(account))
 
             destinations.append({
                 "platform": platform,

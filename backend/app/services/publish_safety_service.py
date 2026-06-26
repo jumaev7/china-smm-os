@@ -24,6 +24,7 @@ from app.services.publishing_destination_registry import (
     telegram_bot_configured,
     tenant_destination_status,
 )
+from app.services.meta_connection_service import MetaConnectionService
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 
 logger = logging.getLogger(__name__)
@@ -254,6 +255,8 @@ class PublishSafetyService:
                     )
                 elif account and account.status == "connected" and not client_tg_dest:
                     pass  # account.account_id is the destination
+            elif impl == "blocked" and platform in ("facebook", "instagram") and account:
+                entry["blockers"].extend(MetaConnectionService.readiness_blockers(account))
             platform_status[platform] = entry
 
         return {
@@ -312,6 +315,15 @@ class PublishSafetyService:
                 except HTTPException as exc:
                     add_error(f"account_{platform}", _http_detail_str(exc.detail))
                     continue
+                if platform in ("facebook", "instagram"):
+                    meta_blockers = MetaConnectionService.readiness_blockers(account)
+                    for idx, blocker in enumerate(meta_blockers):
+                        add_error(
+                            f"account_{platform}" if idx == 0 else f"account_{platform}_{idx}",
+                            blocker,
+                        )
+                    if meta_blockers:
+                        continue
                 if platform == "telegram" and account.status == "connected":
                     effective_chat = client_tg_dest or account.account_id
                     if not effective_chat:
