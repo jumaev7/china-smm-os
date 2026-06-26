@@ -4,7 +4,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.admin_access import get_current_admin_optional
 from app.core.database import get_db
+from app.core.tenant_access import get_current_tenant_user_optional
 from app.schemas.publishing import (
     PublishingAccountCreate,
     PublishingAccountUpdate,
@@ -15,21 +17,38 @@ from app.schemas.publishing import (
     PublishingQueueResponse,
     PublishingQueueActionResponse,
 )
+from app.services.admin_rbac_service import CurrentAdminUser
 from app.services.publishing_account_service import PublishingAccountService
 from app.services.publishing_calendar_service import PublishingCalendarService
 from app.services.publishing_queue_service import PublishingQueueService
+from app.services.publishing_tenant_scope import resolve_publishing_tenant_id
 from app.services.scheduled_publish_diagnostics_service import ScheduledPublishDiagnosticsService
+from app.services.tenant_auth_service import CurrentTenantUser
 
 router = APIRouter(prefix="/publishing", tags=["publishing"])
+
+
+def _resolve_scope(
+    user: CurrentTenantUser | None,
+    admin: CurrentAdminUser | None,
+    tenant_id: UUID | None,
+) -> UUID:
+    return resolve_publishing_tenant_id(user, admin, tenant_id)
 
 
 @router.get("/accounts", response_model=PublishingAccountListResponse)
 async def list_publishing_accounts(
     platform: str | None = None,
     status: str | None = None,
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
     db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
 ):
-    items, total = await PublishingAccountService.list_all(db, platform=platform, status=status)
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    items, total = await PublishingAccountService.list_all(
+        db, scope_tenant_id, platform=platform, status=status,
+    )
     return {
         "items": [PublishingAccountService._serialize(a) for a in items],
         "total": total,
@@ -39,9 +58,13 @@ async def list_publishing_accounts(
 @router.post("/accounts", response_model=PublishingAccountResponse, status_code=201)
 async def create_publishing_account(
     data: PublishingAccountCreate,
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
     db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
 ):
-    account = await PublishingAccountService.create(db, data)
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    account = await PublishingAccountService.create(db, scope_tenant_id, data)
     return PublishingAccountService._serialize(account)
 
 
@@ -49,18 +72,26 @@ async def create_publishing_account(
 async def update_publishing_account(
     account_id: UUID,
     data: PublishingAccountUpdate,
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
     db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
 ):
-    account = await PublishingAccountService.update(db, account_id, data)
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    account = await PublishingAccountService.update(db, scope_tenant_id, account_id, data)
     return PublishingAccountService._serialize(account)
 
 
 @router.delete("/accounts/{account_id}", status_code=204)
 async def delete_publishing_account(
     account_id: UUID,
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
     db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
 ):
-    await PublishingAccountService.delete(db, account_id)
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    await PublishingAccountService.delete(db, scope_tenant_id, account_id)
 
 
 @router.get("/queue", response_model=PublishingQueueResponse)

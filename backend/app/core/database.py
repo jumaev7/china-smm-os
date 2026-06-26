@@ -181,6 +181,7 @@ async def ensure_dev_schema_patches() -> None:
         await conn.run_sync(_ensure_telegram_ingestion_columns)
         await conn.run_sync(_ensure_content_factory_ai_columns)
         await conn.run_sync(_ensure_meta_publishing_columns)
+        await conn.run_sync(_ensure_publishing_accounts_tenant_id)
 
 
 def _ensure_meta_publishing_columns(connection) -> None:
@@ -204,6 +205,49 @@ def _ensure_meta_publishing_columns(connection) -> None:
     connection.execute(text(
         "ALTER TABLE publishing_accounts ALTER COLUMN status TYPE VARCHAR(30)"
     ))
+
+
+def _ensure_publishing_accounts_tenant_id(connection) -> None:
+    """Tenant ownership column on publishing_accounts."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "publishing_accounts" not in inspector.get_table_names():
+        return
+    existing = {c["name"] for c in inspector.get_columns("publishing_accounts")}
+    if "tenant_id" not in existing:
+        connection.execute(text(
+            "ALTER TABLE publishing_accounts ADD COLUMN IF NOT EXISTS tenant_id UUID"
+        ))
+        connection.execute(text(
+            """
+            UPDATE publishing_accounts
+            SET tenant_id = (
+                SELECT tu.tenant_id
+                FROM tenant_users tu
+                WHERE lower(tu.email) = 'demo@factory.local'
+                LIMIT 1
+            )
+            WHERE tenant_id IS NULL
+            """
+        ))
+        connection.execute(text(
+            """
+            UPDATE publishing_accounts
+            SET tenant_id = (
+                SELECT t.id FROM tenants t ORDER BY t.created_at ASC LIMIT 1
+            )
+            WHERE tenant_id IS NULL
+            """
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_publishing_accounts_tenant_id "
+            "ON publishing_accounts (tenant_id)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_publishing_accounts_tenant_platform "
+            "ON publishing_accounts (tenant_id, platform)"
+        ))
 
 
 def _ensure_telegram_ingestion_columns(connection) -> None:

@@ -17,6 +17,7 @@ from app.services.content_review_service import client_review_required, is_clien
 from app.services.content_service import ContentService
 from app.services.publish_safety_service import SUPPORTED_PLATFORMS
 from app.services.publishing_account_service import ACTIVE_STATUSES, PublishingAccountService
+from app.services.publishing_tenant_scope import tenant_id_for_content_optional
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,7 @@ class ScheduledPublishDiagnosticsService:
     @staticmethod
     async def _accounts_for_platforms(
         db: AsyncSession,
+        tenant_id: UUID,
         platforms: list[str],
     ) -> tuple[dict[str, list[str]], dict[str, str | None], list[str]]:
         available: dict[str, list[str]] = {}
@@ -101,6 +103,7 @@ class ScheduledPublishDiagnosticsService:
 
         result = await db.execute(
             select(PublishingAccount)
+            .where(PublishingAccount.tenant_id == tenant_id)
             .where(PublishingAccount.platform.in_(platforms))
             .where(PublishingAccount.status.in_(tuple(ACTIVE_STATUSES)))
             .order_by(PublishingAccount.platform, PublishingAccount.created_at)
@@ -121,7 +124,7 @@ class ScheduledPublishDiagnosticsService:
                     missing.append(platform)
                 continue
             try:
-                resolved = await PublishingAccountService.resolve_for_platform(db, platform)
+                resolved = await PublishingAccountService.resolve_for_platform(db, tenant_id, platform)
                 selected[platform] = resolved.account_name
             except HTTPException:
                 selected[platform] = None
@@ -155,9 +158,14 @@ class ScheduledPublishDiagnosticsService:
         has_media = bool(item.media_file_id) or len(selected_media) > 0
         has_caption = _has_caption(item)
 
-        available, selected, missing = await ScheduledPublishDiagnosticsService._accounts_for_platforms(
-            db, platforms,
-        )
+        content_tenant_id = await tenant_id_for_content_optional(db, item)
+        if content_tenant_id is None:
+            missing = [p for p in platforms if p in SUPPORTED_PLATFORMS]
+            available, selected = {}, {p: None for p in platforms}
+        else:
+            available, selected, missing = await ScheduledPublishDiagnosticsService._accounts_for_platforms(
+                db, content_tenant_id, platforms,
+            )
         skip_reason = ScheduledPublishDiagnosticsService.compute_skip_reason(
             item,
             now=now,

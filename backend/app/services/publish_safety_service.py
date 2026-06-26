@@ -18,6 +18,7 @@ from app.services.content_readiness_service import ContentReadinessService, _has
 from app.services.content_review_service import client_review_required, is_client_approved
 from app.services.content_service import ContentService
 from app.services.publishing_account_service import PublishingAccountService
+from app.services.publishing_tenant_scope import tenant_id_for_content, tenant_id_for_content_optional
 from app.services.meta_connection_service import MetaConnectionService
 from app.services.meta_graph_client import token_is_expired
 from app.services.publishing_destination_registry import (
@@ -201,22 +202,29 @@ class PublishSafetyService:
         platform_status: dict[str, dict] = {}
         explicit_account = account_id if len(target_platforms) == 1 else None
         has_connected_account = False
+        content_tenant_id = await tenant_id_for_content_optional(db, item)
 
         for platform in target_platforms:
             account = None
             account_error: str | None = None
-            try:
-                account = await PublishingAccountService.resolve_for_platform(
-                    db,
-                    platform,
-                    explicit_account,
-                    client_publish_chat_id=(
-                        client_tg_dest if platform == "telegram" else None
-                    ),
+            if content_tenant_id is None:
+                account_error = (
+                    "Content client has no tenant — publishing account cannot be resolved"
                 )
-                has_connected_account = True
-            except HTTPException as exc:
-                account_error = _http_detail_str(exc.detail)
+            else:
+                try:
+                    account = await PublishingAccountService.resolve_for_platform(
+                        db,
+                        content_tenant_id,
+                        platform,
+                        explicit_account,
+                        client_publish_chat_id=(
+                            client_tg_dest if platform == "telegram" else None
+                        ),
+                    )
+                    has_connected_account = True
+                except HTTPException as exc:
+                    account_error = _http_detail_str(exc.detail)
 
             permissions = (
                 MetaConnectionService.account_permissions(account)
@@ -256,7 +264,7 @@ class PublishSafetyService:
                 "global_status": global_destination_status(platform),
                 "account_name": account.account_name if account else None,
                 "account_status": account.status if account else "missing",
-                "account_scope": "global",  # TODO: tenant-scoped publishing accounts
+                "account_scope": "tenant",
                 "implementation": impl,
                 "blockers": [account_error] if account_error else [],
             }
@@ -328,6 +336,7 @@ class PublishSafetyService:
             None if explicit_account
             else await PublishSafetyService._client_publish_chat_id(db, item)
         )
+        content_tenant_id = await tenant_id_for_content_optional(db, item)
         if not target_platforms:
             add_error("platforms", "Select at least one platform to publish")
         else:
@@ -337,9 +346,16 @@ class PublishSafetyService:
             for platform in target_platforms:
                 if platform not in SUPPORTED_PLATFORMS:
                     continue
+                if content_tenant_id is None:
+                    add_error(
+                        f"account_{platform}",
+                        "Content client has no tenant — publishing account cannot be resolved",
+                    )
+                    continue
                 try:
                     account = await PublishingAccountService.resolve_for_platform(
                         db,
+                        content_tenant_id,
                         platform,
                         explicit_account,
                         client_publish_chat_id=(

@@ -3,10 +3,19 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
-import { publishingApi, metaPublishingApi, Platform, PublishingAccount, normalizeList } from "@/lib/api";
+import {
+  adminAuthApi,
+  publishingApi,
+  metaPublishingApi,
+  Platform,
+  PublishingAccount,
+  normalizeList,
+} from "@/lib/api";
+import { useAuth } from "@/lib/auth-store";
+import { useDashboardAuthGates } from "@/lib/useDashboardAuthGates";
 import { PLATFORM_CONFIG, cn } from "@/lib/utils";
 import Link from "next/link";
-import { Plus, Trash2, Radio, Link2, Unlink, CalendarDays, ListOrdered, RefreshCw, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Radio, Link2, Unlink, CalendarDays, ListOrdered, RefreshCw, ShieldCheck, AlertTriangle, Building2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const ALL_PLATFORMS: Platform[] = ["telegram", "instagram", "facebook", "tiktok", "linkedin"];
@@ -62,38 +71,68 @@ const QUICK_MOCK_BUTTONS: { platform: Platform; label: string }[] = [
 export default function PublishingPage() {
   const qc = useQueryClient();
   const searchParams = useSearchParams();
+  const { adminWidgetsEnabled, authReady } = useDashboardAuthGates();
+  const { user: tenantUser } = useAuth();
+  const [adminTenantId, setAdminTenantId] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [newPlatform, setNewPlatform] = useState<Platform>("telegram");
   const [tgName, setTgName] = useState("");
   const [tgChannel, setTgChannel] = useState("");
 
+  const { data: adminTenants } = useQuery({
+    queryKey: ["admin-platform-tenants-publishing"],
+    queryFn: () => adminAuthApi.platformTenants({ limit: 200 }).then((r) => r.data),
+    enabled: authReady && adminWidgetsEnabled,
+  });
+
+  useEffect(() => {
+    if (!adminWidgetsEnabled || adminTenantId) return;
+    const stored = typeof window !== "undefined" ? localStorage.getItem("publishingTenantId") : null;
+    const items = adminTenants?.items ?? [];
+    const pick =
+      stored && items.some((t) => t.id === stored) ? stored : items[0]?.id ?? "";
+    if (pick) setAdminTenantId(pick);
+  }, [adminWidgetsEnabled, adminTenantId, adminTenants]);
+
+  useEffect(() => {
+    if (adminTenantId && typeof window !== "undefined") {
+      localStorage.setItem("publishingTenantId", adminTenantId);
+    }
+  }, [adminTenantId]);
+
+  const tenantId = adminWidgetsEnabled ? adminTenantId : (tenantUser?.tenant_id ?? "");
+  const scopeParams = tenantId ? { tenant_id: tenantId } : undefined;
+  const selectedTenant = adminTenants?.items?.find((t) => t.id === adminTenantId);
+
   useEffect(() => {
     if (searchParams.get("meta_connected") === "1") {
       toast.success("Meta account connected");
-      qc.invalidateQueries({ queryKey: ["meta-connection"] });
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["meta-connection", tenantId] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
     }
     const metaError = searchParams.get("meta_error");
     if (metaError) {
       toast.error(decodeURIComponent(metaError));
     }
-  }, [searchParams, qc]);
+  }, [searchParams, qc, tenantId]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["publishing-accounts"],
-    queryFn: () => publishingApi.listAccounts().then((r) => r.data),
+    queryKey: ["publishing-accounts", tenantId],
+    queryFn: () => publishingApi.listAccounts(scopeParams).then((r) => r.data),
+    enabled: !!tenantId,
   });
 
   const { data: metaConnection, isLoading: metaLoading } = useQuery({
-    queryKey: ["meta-connection"],
-    queryFn: () => metaPublishingApi.getConnection().then((r) => r.data),
+    queryKey: ["meta-connection", tenantId],
+    queryFn: () => metaPublishingApi.getConnection(scopeParams).then((r) => r.data),
+    enabled: !!tenantId,
   });
 
   const createMutation = useMutation({
     mutationFn: (platform: Platform) =>
-      publishingApi.createAccount({ platform, mock: true }),
+      publishingApi.createAccount({ platform, mock: true }, scopeParams),
     onSuccess: (_data, platform) => {
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
       toast.success(`${MOCK_LABELS[platform]} created`);
       setShowAdd(false);
     },
@@ -105,15 +144,18 @@ export default function PublishingPage() {
 
   const createRealTelegramMutation = useMutation({
     mutationFn: () =>
-      publishingApi.createAccount({
-        platform: "telegram",
-        mock: false,
-        status: "connected",
-        account_name: tgName.trim(),
-        account_id: tgChannel.trim(),
-      }),
+      publishingApi.createAccount(
+        {
+          platform: "telegram",
+          mock: false,
+          status: "connected",
+          account_name: tgName.trim(),
+          account_id: tgChannel.trim(),
+        },
+        scopeParams,
+      ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
       toast.success("Telegram channel connected");
       setTgName("");
       setTgChannel("");
@@ -125,9 +167,9 @@ export default function PublishingPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => publishingApi.deleteAccount(id),
+    mutationFn: (id: string) => publishingApi.deleteAccount(id, scopeParams),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
       toast.success("Account removed");
     },
     onError: () => toast.error("Failed to delete account"),
@@ -135,9 +177,9 @@ export default function PublishingPage() {
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
-      publishingApi.updateAccount(id, { status: status as PublishingAccount["status"] }),
+      publishingApi.updateAccount(id, { status: status as PublishingAccount["status"] }, scopeParams),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
       toast.success("Account updated");
     },
     onError: () => toast.error("Failed to update account"),
@@ -145,9 +187,9 @@ export default function PublishingPage() {
 
   const metaConnectMutation = useMutation({
     mutationFn: async () => {
-      const { data: start } = await metaPublishingApi.oauthStart();
+      const { data: start } = await metaPublishingApi.oauthStart(scopeParams);
       if (start.mode === "demo" && start.demo_connect_url) {
-        await metaPublishingApi.demoConnect();
+        await metaPublishingApi.demoConnect(scopeParams);
         return { mode: "demo" as const };
       }
       if (start.authorize_url) {
@@ -158,8 +200,8 @@ export default function PublishingPage() {
     },
     onSuccess: (result) => {
       if (result?.mode === "demo") {
-        qc.invalidateQueries({ queryKey: ["meta-connection"] });
-        qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+        qc.invalidateQueries({ queryKey: ["meta-connection", tenantId] });
+        qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
         toast.success("Demo Meta account connected");
       }
     },
@@ -170,10 +212,10 @@ export default function PublishingPage() {
   });
 
   const metaRefreshMutation = useMutation({
-    mutationFn: () => metaPublishingApi.refresh(),
+    mutationFn: () => metaPublishingApi.refresh(scopeParams),
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["meta-connection"] });
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["meta-connection", tenantId] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
       toast.success(res.data.message || "Meta tokens refreshed");
     },
     onError: (err: unknown) => {
@@ -183,10 +225,10 @@ export default function PublishingPage() {
   });
 
   const metaDisconnectMutation = useMutation({
-    mutationFn: () => metaPublishingApi.disconnect(),
+    mutationFn: () => metaPublishingApi.disconnect(scopeParams),
     onSuccess: (res) => {
-      qc.invalidateQueries({ queryKey: ["meta-connection"] });
-      qc.invalidateQueries({ queryKey: ["publishing-accounts"] });
+      qc.invalidateQueries({ queryKey: ["meta-connection", tenantId] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
       toast.success(res.data.message || "Meta disconnected");
     },
     onError: () => toast.error("Failed to disconnect Meta"),
@@ -203,7 +245,7 @@ export default function PublishingPage() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Publishing Accounts</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Connect mock or real publishing accounts.
+            Tenant-scoped publishing accounts — each tenant sees only its own connections.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -221,6 +263,38 @@ export default function PublishingPage() {
         </div>
       </div>
 
+      {adminWidgetsEnabled && (
+        <div className="card p-4 mb-4 border-violet-100 bg-violet-50/40">
+          <div className="flex items-center gap-2 mb-2">
+            <Building2 size={15} className="text-violet-700" />
+            <h3 className="text-sm font-semibold text-gray-900">Admin tenant scope</h3>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            Switch tenant to manage that workspace&apos;s publishing accounts.
+          </p>
+          <select
+            className="input text-sm max-w-md"
+            value={adminTenantId}
+            onChange={(e) => setAdminTenantId(e.target.value)}
+          >
+            {(adminTenants?.items ?? []).map((tenant) => (
+              <option key={tenant.id} value={tenant.id}>
+                {tenant.company_name} ({tenant.status})
+              </option>
+            ))}
+          </select>
+          {selectedTenant && (
+            <p className="text-[10px] text-gray-500 mt-2 font-mono">{selectedTenant.id}</p>
+          )}
+        </div>
+      )}
+
+      {!tenantId ? (
+        <div className="card p-8 text-center text-sm text-gray-500">
+          {adminWidgetsEnabled ? "Select a tenant to view publishing accounts." : "Loading tenant scope…"}
+        </div>
+      ) : (
+        <>
       <div className="card p-4 mb-4 border-indigo-100 bg-indigo-50/40">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div>
@@ -563,6 +637,8 @@ export default function PublishingPage() {
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );

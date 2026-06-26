@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from fastapi import HTTPException
 from jose import JWTError, jwt
@@ -24,26 +25,34 @@ STATE_TTL_MINUTES = 15
 
 class MetaOAuthService:
     @staticmethod
-    def _encode_state() -> str:
+    def _encode_state(tenant_id: UUID) -> str:
         payload = {
             "nonce": secrets.token_hex(8),
+            "tenant_id": str(tenant_id),
             "exp": datetime.now(timezone.utc) + timedelta(minutes=STATE_TTL_MINUTES),
         }
         return jwt.encode(payload, settings.admin_secret_key, algorithm=settings.JWT_ALGORITHM)
 
     @staticmethod
-    def _verify_state(state: str) -> None:
+    def _verify_state(state: str) -> UUID:
         try:
-            jwt.decode(
+            data = jwt.decode(
                 state,
                 settings.admin_secret_key,
                 algorithms=[settings.JWT_ALGORITHM],
             )
         except JWTError as exc:
             raise HTTPException(status_code=400, detail="Invalid or expired OAuth state") from exc
+        raw_tenant_id = data.get("tenant_id")
+        if not raw_tenant_id:
+            raise HTTPException(status_code=400, detail="OAuth state missing tenant scope")
+        try:
+            return UUID(str(raw_tenant_id))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="OAuth state has invalid tenant scope") from exc
 
     @staticmethod
-    def start_oauth() -> dict[str, str]:
+    def start_oauth(tenant_id: UUID) -> dict[str, str]:
         if not meta_oauth_configured():
             if settings.DEMO_MODE:
                 return {
@@ -58,7 +67,7 @@ class MetaOAuthService:
                     "and META_OAUTH_REDIRECT_URI."
                 ),
             )
-        state = MetaOAuthService._encode_state()
+        state = MetaOAuthService._encode_state(tenant_id)
         from app.services.meta_graph_client import build_oauth_authorize_url
 
         return {
@@ -81,7 +90,7 @@ class MetaOAuthService:
             raise HTTPException(status_code=400, detail=f"Meta OAuth denied: {message}")
         if not code or not state:
             raise HTTPException(status_code=400, detail="Missing OAuth code or state")
-        MetaOAuthService._verify_state(state)
+        tenant_id = MetaOAuthService._verify_state(state)
 
         if not meta_oauth_configured():
             raise HTTPException(status_code=400, detail="Meta OAuth not configured")
@@ -92,7 +101,7 @@ class MetaOAuthService:
             raise HTTPException(status_code=400, detail="Meta OAuth did not return an access token")
 
         connection = await resolve_page_connection(short_token)
-        accounts = await MetaConnectionService.upsert_from_oauth(db, connection)
+        accounts = await MetaConnectionService.upsert_from_oauth(db, tenant_id, connection)
         return {
             "status": "connected",
             "facebook_account_id": str(accounts["facebook"].id),
@@ -102,7 +111,7 @@ class MetaOAuthService:
         }
 
     @staticmethod
-    async def demo_connect(db: AsyncSession) -> dict[str, str]:
+    async def demo_connect(db: AsyncSession, tenant_id: UUID) -> dict[str, str]:
         if not settings.DEMO_MODE:
             raise HTTPException(status_code=400, detail="Demo Meta connect requires DEMO_MODE=true")
         expires_at = datetime.now(timezone.utc) + timedelta(days=60)
@@ -125,7 +134,7 @@ class MetaOAuthService:
             }),
             "metadata": {"demo": True, "meta_user_id": f"demo-user-{secrets.token_hex(4)}"},
         }
-        accounts = await MetaConnectionService.upsert_from_oauth(db, connection)
+        accounts = await MetaConnectionService.upsert_from_oauth(db, tenant_id, connection)
         return {
             "status": "connected",
             "mode": "demo",

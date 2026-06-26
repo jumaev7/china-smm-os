@@ -39,29 +39,68 @@ def req(method: str, path: str, body: dict | None = None, token: str | None = No
 
 
 async def _demo_connect_direct() -> dict:
+    from sqlalchemy import func, select
+
     from app.core.database import AsyncSessionLocal
+    from app.models.tenant import TenantUser
     from app.services.meta_connection_service import MetaConnectionService
     from app.services.meta_oauth_service import MetaOAuthService
+    from app.services.tenant_auth_service import DEMO_USER_EMAIL
 
     async with AsyncSessionLocal() as db:
-        await MetaOAuthService.demo_connect(db)
-        return await MetaConnectionService.get_connection_summary(db)
+        tenant_id = (
+            await db.execute(
+                select(TenantUser.tenant_id).where(
+                    func.lower(TenantUser.email) == DEMO_USER_EMAIL.lower(),
+                ),
+            )
+        ).scalar_one_or_none()
+        if not tenant_id:
+            raise RuntimeError("Demo tenant not found")
+        await MetaOAuthService.demo_connect(db, tenant_id)
+        return await MetaConnectionService.get_connection_summary(db, tenant_id)
 
 
 def demo_connect_direct() -> dict:
     return asyncio.run(_demo_connect_direct())
 
 
-async def _seed_publish_verify_ready() -> dict | None:
+_BOOTSTRAP_CACHE: tuple[str | None, dict | None] | None = None
+
+
+async def _script_bootstrap() -> tuple[str | None, dict | None]:
+    from sqlalchemy import func, select
+
     from app.core.database import AsyncSessionLocal
+    from app.models.tenant import TenantUser
     from app.services.demo_tenant_seed_service import ensure_publish_verify_ready_for_demo_user
+    from app.services.tenant_auth_service import DEMO_USER_EMAIL
 
     async with AsyncSessionLocal() as db:
-        return await ensure_publish_verify_ready_for_demo_user(db)
+        tenant_id = (
+            await db.execute(
+                select(TenantUser.tenant_id).where(
+                    func.lower(TenantUser.email) == DEMO_USER_EMAIL.lower(),
+                ),
+            )
+        ).scalar_one_or_none()
+        seed = await ensure_publish_verify_ready_for_demo_user(db)
+        return (str(tenant_id) if tenant_id else None), seed
+
+
+def script_bootstrap() -> tuple[str | None, dict | None]:
+    global _BOOTSTRAP_CACHE
+    if _BOOTSTRAP_CACHE is None:
+        _BOOTSTRAP_CACHE = asyncio.run(_script_bootstrap())
+    return _BOOTSTRAP_CACHE
+
+
+def demo_tenant_id() -> str | None:
+    return script_bootstrap()[0]
 
 
 def seed_publish_verify_ready() -> dict | None:
-    return asyncio.run(_seed_publish_verify_ready())
+    return script_bootstrap()[1]
 
 
 def main() -> int:
@@ -80,7 +119,8 @@ def main() -> int:
         "/admin-auth/login",
         {"email": "admin@example.com", "password": "ChangeMe_12345!"},
     )
-    if code != 200:
+    is_admin = code == 200
+    if not is_admin:
         code, login = req("POST", "/auth/login", {"email": "demo@factory.local", "password": "demo1234"})
     if code != 200:
         print("FAIL login", code, login)
@@ -88,8 +128,17 @@ def main() -> int:
     token = login["access_token"]
     print("OK login")
 
+    tenant_scope = demo_tenant_id()
+    is_admin = is_admin and tenant_scope is not None
+
+    def scope_path(path: str) -> str:
+        if is_admin and tenant_scope and "tenant_id=" not in path:
+            sep = "&" if "?" in path else "?"
+            return f"{path}{sep}tenant_id={tenant_scope}"
+        return path
+
     def auth_req(method: str, path: str, body: dict | None = None) -> tuple[int, dict]:
-        return req(method, path, body, token=token)
+        return req(method, scope_path(path), body, token=token)
 
     code, summary = auth_req("GET", "/publishing/meta/connection")
     if code != 200:

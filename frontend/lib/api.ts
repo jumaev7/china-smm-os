@@ -282,6 +282,7 @@ export interface PublishAttempt {
 
 export interface PublishingAccount {
   id: string;
+  tenant_id: string;
   platform: Platform;
   account_name: string;
   account_id: string;
@@ -9443,18 +9444,22 @@ export const tasksApi = {
 // ─── Publishing accounts API ──────────────────────────────────────────────────
 
 export const publishingApi = {
-  listAccounts: (params?: { platform?: Platform; status?: string }) =>
+  listAccounts: (params?: { platform?: Platform; status?: string; tenant_id?: string }) =>
     api.get<{ items: PublishingAccount[]; total: number }>("/publishing/accounts", { params }),
-  createAccount: (data: {
-    platform: Platform;
-    mock?: boolean;
-    account_name?: string;
-    account_id?: string;
-    status?: string;
-  }) => api.post<PublishingAccount>("/publishing/accounts", data),
-  updateAccount: (id: string, data: Partial<PublishingAccount>) =>
-    api.patch<PublishingAccount>(`/publishing/accounts/${id}`, data),
-  deleteAccount: (id: string) => api.delete(`/publishing/accounts/${id}`),
+  createAccount: (
+    data: {
+      platform: Platform;
+      mock?: boolean;
+      account_name?: string;
+      account_id?: string;
+      status?: string;
+    },
+    params?: { tenant_id?: string },
+  ) => api.post<PublishingAccount>("/publishing/accounts", data, { params }),
+  updateAccount: (id: string, data: Partial<PublishingAccount>, params?: { tenant_id?: string }) =>
+    api.patch<PublishingAccount>(`/publishing/accounts/${id}`, data, { params }),
+  deleteAccount: (id: string, params?: { tenant_id?: string }) =>
+    api.delete(`/publishing/accounts/${id}`, { params }),
   scheduledDebug: (clientTimezone?: string) =>
     api.get<ScheduledPublishDebugResponse>("/publishing/scheduled-debug", {
       params: clientTimezone ? { client_timezone: clientTimezone } : undefined,
@@ -9479,18 +9484,23 @@ export const publishingApi = {
 };
 
 export const metaPublishingApi = {
-  oauthStart: () =>
+  oauthStart: (params?: { tenant_id?: string }) =>
     api.get<{
       authorize_url: string;
       state?: string;
       mode: string;
       demo_connect_url?: string;
-    }>("/publishing/meta/oauth/start"),
-  getConnection: () => api.get<MetaConnectionSummary>("/publishing/meta/connection"),
-  getHealth: () => api.get<MetaConnectionSummary>("/publishing/meta/health"),
-  refresh: () => api.post<{ ok: boolean; message: string }>("/publishing/meta/refresh"),
-  disconnect: () => api.post<{ ok: boolean; message: string }>("/publishing/meta/disconnect"),
-  demoConnect: () => api.post<MetaConnectionSummary>("/publishing/meta/oauth/demo-connect"),
+    }>("/publishing/meta/oauth/start", { params }),
+  getConnection: (params?: { tenant_id?: string }) =>
+    api.get<MetaConnectionSummary>("/publishing/meta/connection", { params }),
+  getHealth: (params?: { tenant_id?: string }) =>
+    api.get<MetaConnectionSummary>("/publishing/meta/health", { params }),
+  refresh: (params?: { tenant_id?: string }) =>
+    api.post<{ ok: boolean; message: string }>("/publishing/meta/refresh", undefined, { params }),
+  disconnect: (params?: { tenant_id?: string }) =>
+    api.post<{ ok: boolean; message: string }>("/publishing/meta/disconnect", undefined, { params }),
+  demoConnect: (params?: { tenant_id?: string }) =>
+    api.post<MetaConnectionSummary>("/publishing/meta/oauth/demo-connect", undefined, { params }),
 };
 
 export interface PublishingCalendarItem {

@@ -64,17 +64,21 @@ class MetaConnectionService:
         return platform in META_PLATFORMS
 
     @staticmethod
-    async def list_meta_accounts(db: AsyncSession) -> list[PublishingAccount]:
+    async def list_meta_accounts(db: AsyncSession, tenant_id: UUID) -> list[PublishingAccount]:
         result = await db.execute(
             select(PublishingAccount)
+            .where(PublishingAccount.tenant_id == tenant_id)
             .where(PublishingAccount.platform.in_(tuple(META_PLATFORMS)))
             .order_by(PublishingAccount.platform, PublishingAccount.created_at.desc())
         )
         return list(result.scalars().all())
 
     @staticmethod
-    async def get_primary_meta_accounts(db: AsyncSession) -> dict[str, PublishingAccount | None]:
-        accounts = await MetaConnectionService.list_meta_accounts(db)
+    async def get_primary_meta_accounts(
+        db: AsyncSession,
+        tenant_id: UUID,
+    ) -> dict[str, PublishingAccount | None]:
+        accounts = await MetaConnectionService.list_meta_accounts(db, tenant_id)
         by_platform: dict[str, PublishingAccount | None] = {"facebook": None, "instagram": None}
         for account in accounts:
             if account.status == "disconnected":
@@ -236,9 +240,9 @@ class MetaConnectionService:
         }
 
     @staticmethod
-    async def get_connection_summary(db: AsyncSession) -> dict[str, Any]:
+    async def get_connection_summary(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
         configured = meta_oauth_configured()
-        accounts = await MetaConnectionService.get_primary_meta_accounts(db)
+        accounts = await MetaConnectionService.get_primary_meta_accounts(db, tenant_id)
         fb = accounts.get("facebook")
         ig = accounts.get("instagram")
         fb_health = await MetaConnectionService.evaluate_account_health(fb, live_check=True) if fb else None
@@ -287,7 +291,11 @@ class MetaConnectionService:
         }
 
     @staticmethod
-    async def upsert_from_oauth(db: AsyncSession, connection: dict[str, Any]) -> dict[str, PublishingAccount]:
+    async def upsert_from_oauth(
+        db: AsyncSession,
+        tenant_id: UUID,
+        connection: dict[str, Any],
+    ) -> dict[str, PublishingAccount]:
         page_token = connection["page_access_token"]
         user_token = connection["user_access_token"]
         expires_at = connection.get("page_expires_at") or connection.get("user_expires_at")
@@ -313,6 +321,7 @@ class MetaConnectionService:
         fb_name = connection.get("facebook_page_name") or "Facebook Page"
         fb = await MetaConnectionService._upsert_platform_account(
             db,
+            tenant_id=tenant_id,
             platform="facebook",
             account_name=fb_name,
             account_id=connection["facebook_page_id"],
@@ -325,6 +334,7 @@ class MetaConnectionService:
             ig_name = connection.get("instagram_username") or "Instagram Business"
             ig = await MetaConnectionService._upsert_platform_account(
                 db,
+                tenant_id=tenant_id,
                 platform="instagram",
                 account_name=f"@{ig_name}" if not ig_name.startswith("@") else ig_name,
                 account_id=ig_id,
@@ -341,6 +351,7 @@ class MetaConnectionService:
     async def _upsert_platform_account(
         db: AsyncSession,
         *,
+        tenant_id: UUID,
         platform: str,
         account_name: str,
         account_id: str,
@@ -348,6 +359,7 @@ class MetaConnectionService:
     ) -> PublishingAccount:
         result = await db.execute(
             select(PublishingAccount)
+            .where(PublishingAccount.tenant_id == tenant_id)
             .where(PublishingAccount.platform == platform)
             .where(PublishingAccount.account_id == account_id)
             .limit(1)
@@ -361,6 +373,7 @@ class MetaConnectionService:
             return account
 
         account = PublishingAccount(
+            tenant_id=tenant_id,
             platform=platform,
             account_name=account_name,
             account_id=account_id,
@@ -370,8 +383,8 @@ class MetaConnectionService:
         return account
 
     @staticmethod
-    async def refresh_tokens(db: AsyncSession) -> dict[str, Any]:
-        accounts = await MetaConnectionService.get_primary_meta_accounts(db)
+    async def refresh_tokens(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
+        accounts = await MetaConnectionService.get_primary_meta_accounts(db, tenant_id)
         fb = accounts.get("facebook")
         if not fb or not fb.refresh_token_encrypted:
             raise HTTPException(status_code=400, detail="No connected Meta account to refresh")
@@ -413,7 +426,7 @@ class MetaConnectionService:
                 "permissions": user_debug.get("scopes") or MetaConnectionService.account_permissions(fb),
                 "metadata": MetaConnectionService.account_metadata(fb),
             }
-            updated = await MetaConnectionService.upsert_from_oauth(db, connection)
+            updated = await MetaConnectionService.upsert_from_oauth(db, tenant_id, connection)
             return {
                 "ok": True,
                 "message": "Meta tokens refreshed",
@@ -436,8 +449,8 @@ class MetaConnectionService:
             return None
 
     @staticmethod
-    async def disconnect(db: AsyncSession) -> dict[str, Any]:
-        accounts = await MetaConnectionService.list_meta_accounts(db)
+    async def disconnect(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
+        accounts = await MetaConnectionService.list_meta_accounts(db, tenant_id)
         cleared = 0
         for account in accounts:
             if account.status == "mock":

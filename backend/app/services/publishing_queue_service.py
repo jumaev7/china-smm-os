@@ -16,8 +16,9 @@ from app.schemas.publishing import PublishContentRequest
 from app.services.content_readiness_service import _has_caption
 from app.services.content_review_service import ContentReviewService
 from app.services.content_service import ContentService
-from app.services.publish_safety_service import PublishSafetyService
+from app.services.publish_safety_service import PublishSafetyService, SUPPORTED_PLATFORMS
 from app.services.publish_service import PublishService
+from app.services.publishing_tenant_scope import tenant_id_for_content_optional
 from app.services.scheduled_publish_diagnostics_service import ScheduledPublishDiagnosticsService
 
 logger = logging.getLogger(__name__)
@@ -107,9 +108,13 @@ class PublishingQueueService:
             selected_media = await ContentService.build_selected_media(db, item)
             has_media = bool(item.media_file_id) or len(selected_media) > 0
             has_caption = _has_caption(item)
-            _, _, missing = await ScheduledPublishDiagnosticsService._accounts_for_platforms(
-                db, platforms,
-            )
+            content_tenant_id = await tenant_id_for_content_optional(db, item)
+            if content_tenant_id is None:
+                missing = [p for p in platforms if p in SUPPORTED_PLATFORMS]
+            else:
+                _, _, missing = await ScheduledPublishDiagnosticsService._accounts_for_platforms(
+                    db, content_tenant_id, platforms,
+                )
             skip_reason = ScheduledPublishDiagnosticsService.compute_skip_reason(
                 item,
                 now=now,

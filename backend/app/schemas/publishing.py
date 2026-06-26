@@ -44,6 +44,7 @@ class PublishingAccountUpdate(BaseModel):
 
 class PublishingAccountResponse(BaseModel):
     id: UUID
+    tenant_id: UUID
     platform: str
     account_name: str
     account_id: str

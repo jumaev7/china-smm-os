@@ -287,6 +287,21 @@ class AuditService:
         return bool(by_platform.get(platform))
 
     @staticmethod
+    def _tenant_account_indexes(
+        accounts: list[PublishingAccount],
+    ) -> dict:
+        by_tenant: dict = {}
+        for acc in accounts:
+            tenant_entry = by_tenant.setdefault(
+                acc.tenant_id,
+                {"by_platform": defaultdict(list), "telegram_by_chat": {}},
+            )
+            tenant_entry["by_platform"][acc.platform].append(acc)
+            if acc.platform == "telegram":
+                tenant_entry["telegram_by_chat"][acc.account_id] = acc
+        return by_tenant
+
+    @staticmethod
     async def _check_content_missing_publish_account(db: AsyncSession, issues: list[dict]) -> None:
         accounts_r = await db.execute(
             select(PublishingAccount).where(
@@ -294,15 +309,15 @@ class AuditService:
             )
         )
         accounts = list(accounts_r.scalars().all())
-        by_platform: dict[str, list[PublishingAccount]] = defaultdict(list)
-        telegram_by_chat: dict[str, PublishingAccount] = {}
-        for acc in accounts:
-            by_platform[acc.platform].append(acc)
-            if acc.platform == "telegram":
-                telegram_by_chat[acc.account_id] = acc
+        by_tenant = AuditService._tenant_account_indexes(accounts)
 
         result = await db.execute(
-            select(ContentItem, Client.telegram_publish_chat_id, Client.company_name)
+            select(
+                ContentItem,
+                Client.telegram_publish_chat_id,
+                Client.company_name,
+                Client.tenant_id,
+            )
             .join(Client, Client.id == ContentItem.client_id)
             .where(
                 ContentItem.status.in_(("scheduled", "approved", "publishing", "failed", "partial_failed")),
@@ -312,9 +327,14 @@ class AuditService:
             .limit(_MAX_ISSUES_PER_CHECK * 3)
         )
         count = 0
-        for item, publish_chat_id, company_name in result.all():
+        for item, publish_chat_id, company_name, tenant_id in result.all():
             if count >= _MAX_ISSUES_PER_CHECK:
                 break
+            if tenant_id is None:
+                continue
+            tenant_accounts = by_tenant.get(tenant_id, {})
+            by_platform = tenant_accounts.get("by_platform", {})
+            telegram_by_chat = tenant_accounts.get("telegram_by_chat", {})
             missing = [
                 p for p in (item.platforms or [])
                 if not AuditService._platform_account_available(

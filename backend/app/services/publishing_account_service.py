@@ -19,6 +19,10 @@ ACTIVE_STATUSES = frozenset({"connected", "mock"})
 
 class PublishingAccountService:
     @staticmethod
+    def _tenant_clause(tenant_id: UUID):
+        return PublishingAccount.tenant_id == tenant_id
+
+    @staticmethod
     def _serialize(account: PublishingAccount) -> dict:
         permissions = MetaConnectionService.account_permissions(account)
         metadata = MetaConnectionService.account_metadata(account)
@@ -43,6 +47,7 @@ class PublishingAccountService:
                 health = account.status
         return {
             "id": account.id,
+            "tenant_id": account.tenant_id,
             "platform": account.platform,
             "account_name": account.account_name,
             "account_id": account.account_id,
@@ -62,12 +67,18 @@ class PublishingAccountService:
     @staticmethod
     async def list_all(
         db: AsyncSession,
+        tenant_id: UUID,
         *,
         platform: str | None = None,
         status: str | None = None,
     ) -> tuple[list[PublishingAccount], int]:
-        query = select(PublishingAccount).order_by(PublishingAccount.platform, PublishingAccount.created_at)
-        count_q = select(func.count()).select_from(PublishingAccount)
+        tenant_filter = PublishingAccountService._tenant_clause(tenant_id)
+        query = (
+            select(PublishingAccount)
+            .where(tenant_filter)
+            .order_by(PublishingAccount.platform, PublishingAccount.created_at)
+        )
+        count_q = select(func.count()).select_from(PublishingAccount).where(tenant_filter)
         if platform:
             query = query.where(PublishingAccount.platform == platform)
             count_q = count_q.where(PublishingAccount.platform == platform)
@@ -79,9 +90,12 @@ class PublishingAccountService:
         return list(result.scalars().all()), total
 
     @staticmethod
-    async def get(db: AsyncSession, account_id: UUID) -> PublishingAccount:
+    async def get(db: AsyncSession, tenant_id: UUID, account_id: UUID) -> PublishingAccount:
         result = await db.execute(
-            select(PublishingAccount).where(PublishingAccount.id == account_id)
+            select(PublishingAccount).where(
+                PublishingAccount.id == account_id,
+                PublishingAccountService._tenant_clause(tenant_id),
+            )
         )
         account = result.scalar_one_or_none()
         if not account:
@@ -89,7 +103,11 @@ class PublishingAccountService:
         return account
 
     @staticmethod
-    async def create(db: AsyncSession, data: PublishingAccountCreate) -> PublishingAccount:
+    async def create(
+        db: AsyncSession,
+        tenant_id: UUID,
+        data: PublishingAccountCreate,
+    ) -> PublishingAccount:
         if data.platform not in PLATFORMS:
             raise HTTPException(status_code=400, detail=f"Unsupported platform: {data.platform}")
 
@@ -110,6 +128,7 @@ class PublishingAccountService:
             status = data.status if data.status in ACCOUNT_STATUSES else "connected"
 
         account = PublishingAccount(
+            tenant_id=tenant_id,
             platform=data.platform,
             account_name=account_name,
             account_id=account_id,
@@ -124,10 +143,11 @@ class PublishingAccountService:
     @staticmethod
     async def update(
         db: AsyncSession,
+        tenant_id: UUID,
         account_id: UUID,
         data: PublishingAccountUpdate,
     ) -> PublishingAccount:
-        account = await PublishingAccountService.get(db, account_id)
+        account = await PublishingAccountService.get(db, tenant_id, account_id)
         for field, value in data.model_dump(exclude_unset=True).items():
             if field == "status" and value not in ACCOUNT_STATUSES:
                 raise HTTPException(status_code=400, detail=f"Invalid status: {value}")
@@ -137,14 +157,15 @@ class PublishingAccountService:
         return account
 
     @staticmethod
-    async def delete(db: AsyncSession, account_id: UUID) -> None:
-        account = await PublishingAccountService.get(db, account_id)
+    async def delete(db: AsyncSession, tenant_id: UUID, account_id: UUID) -> None:
+        account = await PublishingAccountService.get(db, tenant_id, account_id)
         await db.delete(account)
         await db.commit()
 
     @staticmethod
     async def find_telegram_account_by_chat_id(
         db: AsyncSession,
+        tenant_id: UUID,
         chat_id: str,
     ) -> PublishingAccount | None:
         normalized = validate_telegram_publish_chat_id(chat_id)
@@ -152,6 +173,7 @@ class PublishingAccountService:
             return None
         result = await db.execute(
             select(PublishingAccount)
+            .where(PublishingAccountService._tenant_clause(tenant_id))
             .where(PublishingAccount.platform == "telegram")
             .where(PublishingAccount.status.in_(tuple(ACTIVE_STATUSES)))
             .where(PublishingAccount.account_id == normalized)
@@ -162,10 +184,12 @@ class PublishingAccountService:
     @staticmethod
     async def _default_platform_account(
         db: AsyncSession,
+        tenant_id: UUID,
         platform: str,
     ) -> PublishingAccount:
         result = await db.execute(
             select(PublishingAccount)
+            .where(PublishingAccountService._tenant_clause(tenant_id))
             .where(PublishingAccount.platform == platform)
             .where(PublishingAccount.status.in_(tuple(ACTIVE_STATUSES)))
             .order_by(PublishingAccount.created_at)
@@ -177,14 +201,14 @@ class PublishingAccountService:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        f"No connected Meta publishing account for {platform}. "
+                        f"No connected Meta publishing account for {platform} in this tenant. "
                         "Connect Facebook/Instagram in Publishing settings."
                     ),
                 )
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"No connected or mock publishing account for {platform}. "
+                    f"No connected or mock publishing account for {platform} in this tenant. "
                     "Add one in Publishing settings."
                 ),
             )
@@ -193,13 +217,14 @@ class PublishingAccountService:
     @staticmethod
     async def resolve_for_platform(
         db: AsyncSession,
+        tenant_id: UUID,
         platform: str,
         account_id: UUID | None = None,
         *,
         client_publish_chat_id: str | None = None,
     ) -> PublishingAccount:
         if account_id:
-            account = await PublishingAccountService.get(db, account_id)
+            account = await PublishingAccountService.get(db, tenant_id, account_id)
             if account.platform != platform:
                 raise HTTPException(
                     status_code=400,
@@ -220,10 +245,10 @@ class PublishingAccountService:
 
         if platform == "telegram" and client_publish_chat_id:
             matched = await PublishingAccountService.find_telegram_account_by_chat_id(
-                db, client_publish_chat_id,
+                db, tenant_id, client_publish_chat_id,
             )
             if matched:
                 return matched
-            return await PublishingAccountService._default_platform_account(db, platform)
+            return await PublishingAccountService._default_platform_account(db, tenant_id, platform)
 
-        return await PublishingAccountService._default_platform_account(db, platform)
+        return await PublishingAccountService._default_platform_account(db, tenant_id, platform)

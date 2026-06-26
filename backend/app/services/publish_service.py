@@ -20,6 +20,7 @@ from app.schemas.publishing import PublishContentRequest
 from app.services.content_service import ContentService
 from app.services.publish_context import PublishContext
 from app.services.publishing_account_service import PublishingAccountService
+from app.services.publishing_tenant_scope import tenant_id_for_content
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 from app.services.meta_connection_service import MetaConnectionService
 from app.services.meta_graph_client import token_is_expired
@@ -472,6 +473,7 @@ class PublishService:
             explicit_account = req.account_id if len(target_platforms) == 1 else None
             client_ctx = await PublishService._client_publish_context(db, item)
             client_tg_dest = None if explicit_account else client_ctx["chat_id"]
+            content_tenant_id = await tenant_id_for_content(db, item)
             if client_tg_dest and "telegram" in target_platforms:
                 logger.info(
                     "[Publish] telegram destination: client=%s chat=%s",
@@ -487,6 +489,7 @@ class PublishService:
                 try:
                     account = await PublishingAccountService.resolve_for_platform(
                         db,
+                        content_tenant_id,
                         platform,
                         explicit_account,
                         client_publish_chat_id=(

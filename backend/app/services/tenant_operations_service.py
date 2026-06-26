@@ -104,11 +104,13 @@ class TenantOperationsService:
     @staticmethod
     async def _publishing_readiness(
         db: AsyncSession,
+        tenant_id: UUID,
         clients: list[Client],
     ) -> dict[str, Any]:
         accounts = (
             await db.execute(
                 select(PublishingAccount)
+                .where(PublishingAccount.tenant_id == tenant_id)
                 .where(PublishingAccount.status.in_(tuple(ACTIVE_ACCOUNT_STATUSES)))
                 .order_by(PublishingAccount.platform, PublishingAccount.created_at),
             )
@@ -136,7 +138,7 @@ class TenantOperationsService:
                 "account_name": a.account_name,
                 "account_id": a.account_id,
                 "status": a.status,
-                "scope": "global",
+                "scope": "tenant",
             }
             for a in accounts
         ]
@@ -283,6 +285,7 @@ class TenantOperationsService:
         connected_accounts = int(
             await db.scalar(
                 select(func.count()).select_from(PublishingAccount).where(
+                    PublishingAccount.tenant_id == tenant_id,
                     PublishingAccount.status.in_(tuple(ACTIVE_ACCOUNT_STATUSES)),
                 ),
             ) or 0,
@@ -439,7 +442,7 @@ class TenantOperationsService:
         if not next_steps and readiness == "ready":
             next_steps.append("Tenant is ready for content operations — share login and test Telegram intake")
 
-        publishing_readiness = await TenantOperationsService._publishing_readiness(db, clients)
+        publishing_readiness = await TenantOperationsService._publishing_readiness(db, tenant_id, clients)
 
         return {
             "tenant_id": tenant_id,
