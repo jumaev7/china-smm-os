@@ -490,14 +490,16 @@ class ContentService:
                         "text": (ref.get("text") or "")[:200],
                     })
 
-        if not selected and item.media_file:
-            selected.append({
-                "ordinal": 1,
-                "media_file_id": str(item.media_file.id),
-                "media_type": item.media_file.file_type,
-                "url": storage.get_url(item.media_file.storage_path),
-                "text": "",
-            })
+        if not selected and item.media_file_id:
+            mf = await db.get(MediaFile, item.media_file_id)
+            if mf:
+                selected.append({
+                    "ordinal": 1,
+                    "media_file_id": str(mf.id),
+                    "media_type": mf.file_type,
+                    "url": storage.get_url(mf.storage_path),
+                    "text": "",
+                })
         return selected
 
     @staticmethod

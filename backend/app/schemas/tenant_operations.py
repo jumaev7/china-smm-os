@@ -38,6 +38,35 @@ class TenantOpsTelegramHealth(BaseModel):
     webhook_last_error: Optional[str] = None
 
 
+class TenantPublishingAccountSummary(BaseModel):
+    platform: str
+    account_name: str
+    account_id: str
+    status: str
+    scope: str = "global"
+
+
+class TenantDestinationStatus(BaseModel):
+    platform: str
+    status: str
+    global_status: str
+    account_name: Optional[str] = None
+    account_status: Optional[str] = None
+    account_scope: str = "global"
+    implementation: Optional[str] = None
+    blockers: list[str] = Field(default_factory=list)
+
+
+class TenantPublishingReadiness(BaseModel):
+    scheduled_worker_enabled: bool
+    accounts_scope: str = "global"
+    connected_accounts: list[TenantPublishingAccountSummary] = Field(default_factory=list)
+    destinations: list[TenantDestinationStatus] = Field(default_factory=list)
+    telegram_publish_chat_configured: bool = False
+    approvals_required: bool = True
+    blockers: list[str] = Field(default_factory=list)
+
+
 class TenantOperationsResponse(BaseModel):
     tenant_id: UUID
     company_name: str
@@ -57,4 +86,5 @@ class TenantOperationsResponse(BaseModel):
     connected_publishing_accounts: int = 0
     clients_telegram: list[TenantOpsClientTelegram] = Field(default_factory=list)
     telegram_health: TenantOpsTelegramHealth
+    publishing_readiness: TenantPublishingReadiness
     next_steps: list[str] = Field(default_factory=list)

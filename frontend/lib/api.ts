@@ -211,11 +211,37 @@ export interface PublishSafetyError {
   critical: boolean;
 }
 
+export interface PublishSafetyReadyFlags {
+  has_media: boolean;
+  has_caption: boolean;
+  has_admin_approval: boolean;
+  has_client_approval: boolean;
+  has_scheduled_time: boolean;
+  has_connected_account: boolean;
+  telegram_publish_chat_configured: boolean;
+}
+
+export interface PublishSafetyPlatformStatus {
+  status: string;
+  global_status: string;
+  account_name?: string | null;
+  account_status?: string | null;
+  account_scope?: string;
+  implementation?: string | null;
+  blockers: string[];
+}
+
 export type PublishMode = "test_publish" | "manual_publish" | "scheduled_publish";
 
 export interface PublishSafety {
   passed: boolean;
+  can_publish: boolean;
   errors: PublishSafetyError[];
+  blockers: string[];
+  warnings: string[];
+  required_actions: string[];
+  platform_status: Record<string, PublishSafetyPlatformStatus>;
+  ready: PublishSafetyReadyFlags;
   message?: string | null;
   mode?: PublishMode | null;
 }
@@ -12326,6 +12352,30 @@ export const adminAuthApi = {
         webhook_url?: string | null;
         webhook_pending_updates?: number | null;
         webhook_last_error?: string | null;
+      };
+      publishing_readiness: {
+        scheduled_worker_enabled: boolean;
+        accounts_scope: string;
+        connected_accounts: Array<{
+          platform: string;
+          account_name: string;
+          account_id: string;
+          status: string;
+          scope: string;
+        }>;
+        destinations: Array<{
+          platform: string;
+          status: string;
+          global_status: string;
+          account_name?: string | null;
+          account_status?: string | null;
+          account_scope?: string;
+          implementation?: string | null;
+          blockers: string[];
+        }>;
+        telegram_publish_chat_configured: boolean;
+        approvals_required: boolean;
+        blockers: string[];
       };
       next_steps: string[];
     }>(`/admin-auth/platform/tenants/${tenantId}/operations`),

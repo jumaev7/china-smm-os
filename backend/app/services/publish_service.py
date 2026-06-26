@@ -12,6 +12,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.client import Client
 from app.models.content import ContentItem
 from app.models.publish_attempt import PublishAttempt
 from app.models.publishing_account import PublishingAccount
@@ -102,7 +103,6 @@ class PublishService:
             .where(ContentItem.id == content_id)
             .options(
                 selectinload(ContentItem.media_file),
-                selectinload(ContentItem.client),
             )
         )
         item = result.scalar_one_or_none()
@@ -197,14 +197,32 @@ class PublishService:
         return recovered
 
     @staticmethod
-    def _client_telegram_publish_chat_id(item: ContentItem) -> str | None:
-        client = item.client
-        if not client or not client.telegram_publish_chat_id:
-            return None
-        try:
-            return validate_telegram_publish_chat_id(client.telegram_publish_chat_id)
-        except ValueError:
-            return None
+    async def _client_publish_context(db: AsyncSession, item: ContentItem) -> dict:
+        """Load client publish fields via explicit query — never lazy-load item.client."""
+        if not item.client_id:
+            return {"chat_id": None, "company_name": "", "publish_title": None}
+        result = await db.execute(
+            select(
+                Client.company_name,
+                Client.telegram_publish_chat_id,
+                Client.telegram_publish_title,
+            ).where(Client.id == item.client_id)
+        )
+        row = result.one_or_none()
+        if not row:
+            return {"chat_id": None, "company_name": "", "publish_title": None}
+        company_name, raw_chat, publish_title = row
+        chat_id: str | None = None
+        if raw_chat:
+            try:
+                chat_id = validate_telegram_publish_chat_id(raw_chat)
+            except ValueError:
+                chat_id = None
+        return {
+            "chat_id": chat_id,
+            "company_name": company_name or "",
+            "publish_title": publish_title,
+        }
 
     @staticmethod
     async def _build_context(
@@ -214,16 +232,17 @@ class PublishService:
         account: PublishingAccount,
         *,
         telegram_destination_chat_id: str | None = None,
+        company_name: str = "",
+        telegram_publish_title: str | None = None,
     ) -> PublishContext:
-        company_name = item.client.company_name if item.client else ""
         media_type = payload.get("media_file_type")
         final_video = _pick_final_video_url(payload)
         media_url = final_video if media_type == "video" and final_video else payload.get("media_url")
         caption = _compose_post_text(_pick_caption(item), item.hashtags)
         effective_chat_id = telegram_destination_chat_id or account.account_id
         effective_name = account.account_name
-        if telegram_destination_chat_id and item.client and item.client.telegram_publish_title:
-            effective_name = item.client.telegram_publish_title
+        if telegram_destination_chat_id and telegram_publish_title:
+            effective_name = telegram_publish_title
         return PublishContext(
             content_id=str(item.id),
             client_id=str(item.client_id),
@@ -430,10 +449,8 @@ class PublishService:
                 logger.info("[Publish] scheduler claim active: content=%s", content_id)
 
             explicit_account = req.account_id if len(target_platforms) == 1 else None
-            client_tg_dest = (
-                None if explicit_account
-                else PublishService._client_telegram_publish_chat_id(item)
-            )
+            client_ctx = await PublishService._client_publish_context(db, item)
+            client_tg_dest = None if explicit_account else client_ctx["chat_id"]
             if client_tg_dest and "telegram" in target_platforms:
                 logger.info(
                     "[Publish] telegram destination: client=%s chat=%s",
@@ -481,8 +498,13 @@ class PublishService:
                         else None
                     )
                     ctx = await PublishService._build_context(
-                        item, platform, payload, account,
+                        item,
+                        platform,
+                        payload,
+                        account,
                         telegram_destination_chat_id=tg_override,
+                        company_name=client_ctx["company_name"],
+                        telegram_publish_title=client_ctx["publish_title"],
                     )
                     try:
                         result = await adapter(ctx)
@@ -575,7 +597,9 @@ class PublishService:
                 content_id,
                 exc.detail,
             )
-            await db.rollback()
+            # Safety blocks commit via record_blocked — rollback would fault the session.
+            if exc.status_code != 400:
+                await db.rollback()
             raise
 
         except Exception as exc:

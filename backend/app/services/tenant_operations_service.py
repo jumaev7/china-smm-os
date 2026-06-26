@@ -18,6 +18,14 @@ from app.models.telegram_buffer import TelegramGroupBufferMessage
 from app.models.telegram_ingestion import TelegramIngestionSettings
 from app.models.tenant import TenantUser
 from app.services.admin_rbac_service import AdminRbacService, CurrentAdminUser
+from app.services.publishing_destination_registry import (
+    SUPPORTED_DESTINATIONS,
+    global_destination_status,
+    platform_implementation,
+    scheduled_worker_enabled,
+    telegram_bot_configured,
+    tenant_destination_status,
+)
 from app.services.subscription_service import SubscriptionService
 from app.services.tenant_service import TenantService
 
@@ -92,6 +100,120 @@ class TenantOperationsService:
             ),
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def _publishing_readiness(
+        db: AsyncSession,
+        clients: list[Client],
+    ) -> dict[str, Any]:
+        accounts = (
+            await db.execute(
+                select(PublishingAccount)
+                .where(PublishingAccount.status.in_(tuple(ACTIVE_ACCOUNT_STATUSES)))
+                .order_by(PublishingAccount.platform, PublishingAccount.created_at),
+            )
+        ).scalars().all()
+
+        accounts_by_platform: dict[str, PublishingAccount] = {}
+        for account in accounts:
+            accounts_by_platform.setdefault(account.platform, account)
+
+        has_publish_chat = any(
+            bool((c.telegram_publish_chat_id or "").strip()) for c in clients
+        )
+        primary_publish_chat = next(
+            (
+                (c.telegram_publish_chat_id or "").strip()
+                for c in clients
+                if (c.telegram_publish_chat_id or "").strip()
+            ),
+            None,
+        )
+
+        connected_summaries = [
+            {
+                "platform": a.platform,
+                "account_name": a.account_name,
+                "account_id": a.account_id,
+                "status": a.status,
+                "scope": "global",
+            }
+            for a in accounts
+        ]
+
+        destinations: list[dict[str, Any]] = []
+        publishing_blockers: list[str] = []
+
+        for platform in SUPPORTED_DESTINATIONS:
+            account = accounts_by_platform.get(platform)
+            dest_status = tenant_destination_status(
+                platform,
+                has_account=account is not None,
+                account_status=account.status if account else None,
+                telegram_publish_chat_id=primary_publish_chat,
+            )
+            impl = platform_implementation(
+                platform,
+                dest_status=dest_status,
+                account_status=account.status if account else None,
+            )
+            dest_blockers: list[str] = []
+            if dest_status == "blocked":
+                if platform == "telegram":
+                    if not primary_publish_chat and not account:
+                        dest_blockers.append(
+                            "No Telegram publish chat on client and no telegram account",
+                        )
+                    if not telegram_bot_configured():
+                        dest_blockers.append("TELEGRAM_BOT_TOKEN not configured")
+                else:
+                    dest_blockers.append(
+                        f"No connected or mock publishing account for {platform}",
+                    )
+            elif impl == "mock":
+                if platform == "telegram":
+                    dest_blockers.append(
+                        "Telegram account is mock — test publish returns fake post id",
+                    )
+                else:
+                    dest_blockers.append(
+                        "Adapter is mock-only — test publish returns fake platform_post_id",
+                    )
+            elif impl == "live" and platform == "telegram":
+                if not primary_publish_chat and not (account and account.account_id):
+                    dest_blockers.append("Telegram publish chat not configured")
+
+            destinations.append({
+                "platform": platform,
+                "status": dest_status,
+                "global_status": global_destination_status(platform),
+                "account_name": account.account_name if account else None,
+                "account_status": account.status if account else "missing",
+                "account_scope": "global",  # TODO: tenant-scoped publishing accounts
+                "implementation": impl,
+                "blockers": dest_blockers,
+            })
+            publishing_blockers.extend(dest_blockers)
+
+        if not has_publish_chat and "telegram" not in accounts_by_platform:
+            publishing_blockers.append(
+                "Telegram publish destination not configured for any client",
+            )
+
+        if not scheduled_worker_enabled():
+            publishing_blockers.append(
+                "Scheduled publish worker disabled (SCHEDULED_PUBLISH_ENABLED=false)",
+            )
+
+        return {
+            "scheduled_worker_enabled": scheduled_worker_enabled(),
+            "accounts_scope": "global",
+            "connected_accounts": connected_summaries,
+            "destinations": destinations,
+            "telegram_publish_chat_configured": has_publish_chat,
+            "approvals_required": True,
+            "blockers": list(dict.fromkeys(publishing_blockers)),
+        }
 
     @staticmethod
     async def get_tenant_operations(
@@ -308,6 +430,8 @@ class TenantOperationsService:
         if not next_steps and readiness == "ready":
             next_steps.append("Tenant is ready for content operations — share login and test Telegram intake")
 
+        publishing_readiness = await TenantOperationsService._publishing_readiness(db, clients)
+
         return {
             "tenant_id": tenant_id,
             "company_name": tenant.company_name,
@@ -327,5 +451,6 @@ class TenantOperationsService:
             "connected_publishing_accounts": connected_accounts,
             "clients_telegram": clients_telegram,
             "telegram_health": telegram_health,
+            "publishing_readiness": publishing_readiness,
             "next_steps": next_steps,
         }

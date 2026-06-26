@@ -216,9 +216,35 @@ class PublishSafetyError(BaseModel):
     critical: bool = True
 
 
+class PublishSafetyReadyFlags(BaseModel):
+    has_media: bool = False
+    has_caption: bool = False
+    has_admin_approval: bool = False
+    has_client_approval: bool = False
+    has_scheduled_time: bool = False
+    has_connected_account: bool = False
+    telegram_publish_chat_configured: bool = False
+
+
+class PublishSafetyPlatformStatus(BaseModel):
+    status: str
+    global_status: str
+    account_name: Optional[str] = None
+    account_status: Optional[str] = None
+    account_scope: str = "global"
+    implementation: Optional[str] = None
+    blockers: List[str] = Field(default_factory=list)
+
+
 class PublishSafetyResponse(BaseModel):
     passed: bool
+    can_publish: bool
     errors: List[PublishSafetyError]
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    required_actions: List[str] = Field(default_factory=list)
+    platform_status: dict[str, PublishSafetyPlatformStatus] = Field(default_factory=dict)
+    ready: PublishSafetyReadyFlags = Field(default_factory=PublishSafetyReadyFlags)
     message: Optional[str] = None
     mode: Optional[str] = None
 

@@ -18,6 +18,12 @@ from app.services.content_readiness_service import ContentReadinessService, _has
 from app.services.content_review_service import client_review_required, is_client_approved
 from app.services.content_service import ContentService
 from app.services.publishing_account_service import PublishingAccountService
+from app.services.publishing_destination_registry import (
+    global_destination_status,
+    platform_implementation,
+    telegram_bot_configured,
+    tenant_destination_status,
+)
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 
 logger = logging.getLogger(__name__)
@@ -28,6 +34,28 @@ PublishMode = Literal["test_publish", "manual_publish", "scheduled_publish"]
 
 def _error(check_id: str, message: str, *, critical: bool = True) -> dict:
     return {"id": check_id, "message": message, "critical": critical}
+
+
+def _http_detail_str(detail: object) -> str:
+    if detail is None:
+        return "Request failed"
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, dict):
+        msg = detail.get("message")
+        return str(msg) if msg else str(detail)
+    return str(detail)
+
+
+_REQUIRED_ACTIONS: dict[str, str] = {
+    "platforms": "Select at least one publishing platform",
+    "content": "Attach media or add a caption",
+    "admin_approved": "Admin-approve the content item",
+    "client_approved": "Obtain client approval (review link or Telegram preview)",
+    "client_changes": "Address client change requests",
+    "status": "Resolve content status before publishing",
+    "scheduled_for": "Set a valid scheduled publish time",
+}
 
 
 def _normalize_mode(
@@ -48,15 +76,12 @@ def _normalize_mode(
 class PublishSafetyService:
     @staticmethod
     async def _client_publish_chat_id(db: AsyncSession, item: ContentItem) -> str | None:
-        raw: str | None = None
-        client = getattr(item, "client", None)
-        if client is not None:
-            raw = client.telegram_publish_chat_id
-        elif item.client_id:
-            result = await db.execute(
-                select(Client.telegram_publish_chat_id).where(Client.id == item.client_id)
-            )
-            raw = result.scalar_one_or_none()
+        if not item.client_id:
+            return None
+        result = await db.execute(
+            select(Client.telegram_publish_chat_id).where(Client.id == item.client_id)
+        )
+        raw = result.scalar_one_or_none()
         if not raw:
             return None
         try:
@@ -127,11 +152,129 @@ class PublishSafetyService:
                 [e["id"] for e in errors],
             )
 
+        return await PublishSafetyService._build_response(
+            db,
+            item,
+            errors=errors,
+            passed=passed,
+            mode=resolved_mode,
+            target_platforms=target_platforms,
+            account_id=account_id,
+        )
+
+    @staticmethod
+    async def _build_response(
+        db: AsyncSession,
+        item: ContentItem,
+        *,
+        errors: list[dict],
+        passed: bool,
+        mode: PublishMode | str,
+        target_platforms: list[str],
+        account_id: UUID | None,
+    ) -> dict:
+        selected = await ContentService.build_selected_media(db, item)
+        has_media = bool(item.media_file_id) or len(selected) > 0
+        has_caption = _has_caption(item)
+        has_admin_approval = item.approved_at is not None
+        has_client_approval = is_client_approved(item)
+        has_scheduled_time = item.scheduled_for is not None
+        client_tg_dest = await PublishSafetyService._client_publish_chat_id(db, item)
+
+        blockers = [e["message"] for e in errors if e.get("critical", True)]
+        warnings = [e["message"] for e in errors if not e.get("critical", True)]
+        required_actions: list[str] = []
+        seen_actions: set[str] = set()
+        for err in errors:
+            action = _REQUIRED_ACTIONS.get(err["id"])
+            if not action:
+                if err["id"].startswith("account_"):
+                    action = err["message"]
+                elif err["id"] not in seen_actions:
+                    action = err["message"]
+            if action and action not in seen_actions:
+                seen_actions.add(action)
+                required_actions.append(action)
+
+        platform_status: dict[str, dict] = {}
+        explicit_account = account_id if len(target_platforms) == 1 else None
+        has_connected_account = False
+
+        for platform in target_platforms:
+            account = None
+            account_error: str | None = None
+            try:
+                account = await PublishingAccountService.resolve_for_platform(
+                    db,
+                    platform,
+                    explicit_account,
+                    client_publish_chat_id=(
+                        client_tg_dest if platform == "telegram" else None
+                    ),
+                )
+                has_connected_account = True
+            except HTTPException as exc:
+                account_error = _http_detail_str(exc.detail)
+
+            dest_status = tenant_destination_status(
+                platform,
+                has_account=account is not None,
+                account_status=account.status if account else None,
+                telegram_publish_chat_id=client_tg_dest,
+            )
+            impl = platform_implementation(
+                platform,
+                dest_status=dest_status,
+                account_status=account.status if account else None,
+            )
+            entry: dict = {
+                "status": dest_status,
+                "global_status": global_destination_status(platform),
+                "account_name": account.account_name if account else None,
+                "account_status": account.status if account else "missing",
+                "account_scope": "global",  # TODO: tenant-scoped publishing accounts
+                "implementation": impl,
+                "blockers": [account_error] if account_error else [],
+            }
+            if impl == "mock":
+                if platform == "telegram":
+                    entry["blockers"].append(
+                        "Telegram account is mock — test publish returns fake post id",
+                    )
+                else:
+                    entry["blockers"].append(
+                        "Platform adapter is mock-only — no real post is created",
+                    )
+            elif impl == "blocked" and platform == "telegram":
+                if not telegram_bot_configured():
+                    entry["blockers"].append("TELEGRAM_BOT_TOKEN not configured")
+                if not client_tg_dest and not (account and account.account_id):
+                    entry["blockers"].append(
+                        "Telegram publish chat not configured on client or account",
+                    )
+                elif account and account.status == "connected" and not client_tg_dest:
+                    pass  # account.account_id is the destination
+            platform_status[platform] = entry
+
         return {
             "passed": passed,
+            "can_publish": passed,
             "errors": errors,
+            "blockers": blockers,
+            "warnings": warnings,
+            "required_actions": required_actions,
+            "platform_status": platform_status,
             "message": errors[0]["message"] if errors else None,
-            "mode": resolved_mode,
+            "mode": mode,
+            "ready": {
+                "has_media": has_media,
+                "has_caption": has_caption,
+                "has_admin_approval": has_admin_approval,
+                "has_client_approval": has_client_approval,
+                "has_scheduled_time": has_scheduled_time,
+                "has_connected_account": has_connected_account,
+                "telegram_publish_chat_configured": bool(client_tg_dest),
+            },
         }
 
     @staticmethod
@@ -158,7 +301,7 @@ class PublishSafetyService:
                 if platform not in SUPPORTED_PLATFORMS:
                     continue
                 try:
-                    await PublishingAccountService.resolve_for_platform(
+                    account = await PublishingAccountService.resolve_for_platform(
                         db,
                         platform,
                         explicit_account,
@@ -167,7 +310,20 @@ class PublishSafetyService:
                         ),
                     )
                 except HTTPException as exc:
-                    add_error(f"account_{platform}", str(exc.detail))
+                    add_error(f"account_{platform}", _http_detail_str(exc.detail))
+                    continue
+                if platform == "telegram" and account.status == "connected":
+                    effective_chat = client_tg_dest or account.account_id
+                    if not effective_chat:
+                        add_error(
+                            "account_telegram",
+                            "Telegram publish chat not configured on client or account",
+                        )
+                    elif not telegram_bot_configured():
+                        add_error(
+                            "account_telegram",
+                            "TELEGRAM_BOT_TOKEN not configured for live Telegram publish",
+                        )
 
     @staticmethod
     async def _check_media_or_caption(
@@ -411,7 +567,9 @@ class PublishSafetyService:
             status_code=400,
             detail={
                 "message": safety["message"] or "Publish blocked by safety guard",
+                "can_publish": False,
                 "errors": safety["errors"],
+                "blockers": safety["blockers"],
                 "mode": resolved_mode,
             },
         )

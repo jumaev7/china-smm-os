@@ -1,6 +1,6 @@
 from uuid import UUID
 import logging
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.pagination import DEFAULT_LIMIT, MAX_LIMIT, clamp_limit

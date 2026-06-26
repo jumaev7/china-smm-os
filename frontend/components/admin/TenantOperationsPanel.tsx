@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO } from "date-fns";
-import { AlertTriangle, CheckCircle2, Circle, MessageCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, MessageCircle, Radio } from "lucide-react";
 import { adminAuthApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { LoadingState } from "@/components/ui/PageStates";
@@ -61,6 +61,47 @@ export function TenantOperationsPanel({ tenantId }: Props) {
           </li>
         ))}
       </ul>
+
+      {data.publishing_readiness && (
+        <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 space-y-2">
+          <p className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-1">
+            <Radio size={12} /> Publishing readiness
+          </p>
+          <p className="text-[10px] text-gray-500">
+            Worker: {data.publishing_readiness.scheduled_worker_enabled ? "enabled" : "disabled"}
+            {" · "}
+            Accounts: {data.publishing_readiness.accounts_scope}
+            {" · "}
+            Telegram publish chat:{" "}
+            {data.publishing_readiness.telegram_publish_chat_configured ? "configured" : "missing"}
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {data.publishing_readiness.destinations.map((d) => (
+              <span
+                key={d.platform}
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded border capitalize",
+                  d.status === "live" && "bg-emerald-50 border-emerald-200 text-emerald-800",
+                  d.status === "mock" && "bg-slate-50 border-slate-200 text-slate-700",
+                  d.status === "partial" && "bg-amber-50 border-amber-200 text-amber-800",
+                  d.status === "blocked" && "bg-red-50 border-red-200 text-red-800",
+                  d.status === "not_configured" && "bg-gray-50 border-gray-200 text-gray-600",
+                )}
+                title={[d.implementation, ...(d.blockers || [])].filter(Boolean).join("; ") || undefined}
+              >
+                {d.platform}: {d.implementation || d.status}
+              </span>
+            ))}
+          </div>
+          {data.publishing_readiness.blockers.length > 0 && (
+            <ul className="text-[10px] text-amber-800 space-y-0.5 list-disc list-inside">
+              {data.publishing_readiness.blockers.slice(0, 4).map((b) => (
+                <li key={b}>{b}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {data.clients_telegram.length > 0 && (
         <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 space-y-2">

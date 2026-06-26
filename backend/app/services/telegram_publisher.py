@@ -287,4 +287,12 @@ async def _real_publish(ctx: PublishContext) -> dict:
 async def publish(ctx: PublishContext) -> dict:
     if ctx.account_status == "mock":
         return _mock_publish(ctx)
+    if not (settings.TELEGRAM_BOT_TOKEN or "").strip():
+        return {
+            "platform": "telegram",
+            "success": False,
+            "mock": False,
+            "platform_post_id": None,
+            "error": "TELEGRAM_BOT_TOKEN not configured for live Telegram publish",
+        }
     return await _real_publish(ctx)
