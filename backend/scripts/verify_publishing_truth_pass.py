@@ -1,13 +1,19 @@
-"""Publishing truth pass — publish-safety, schedule, queue, test publish verification."""
+"""Publishing truth pass — blocked path + mock publish success verification."""
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 BASE = "http://127.0.0.1:8000/api/v1"
+MOCK_PLATFORMS = ("instagram", "telegram")
+PUBLISH_VERIFY_READY_MARKER = "[PUBLISH_VERIFY_READY]"
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def req(method: str, path: str, body: dict | None = None, token: str | None = None) -> tuple[int, dict]:
@@ -47,9 +53,10 @@ def has_media(item: dict) -> bool:
     return bool(item.get("media_file_id"))
 
 
-def pick_ready_content(items: list[dict]) -> dict | None:
+def pick_publish_verify_ready(items: list[dict]) -> dict | None:
     for item in items:
-        if has_media(item) and has_caption(item):
+        notes = item.get("internal_notes") or ""
+        if PUBLISH_VERIFY_READY_MARKER in notes:
             return item
     return None
 
@@ -59,8 +66,9 @@ def pick_draft_no_media(items: list[dict]) -> dict | None:
         if item.get("status") == "draft" and not has_media(item) and not has_caption(item):
             return item
     for item in items:
-        if not has_media(item) and not has_caption(item):
-            return item
+        if PUBLISH_VERIFY_READY_MARKER not in (item.get("internal_notes") or ""):
+            if not has_media(item) and not has_caption(item):
+                return item
     return None
 
 
@@ -72,9 +80,35 @@ def detail_can_publish(payload: dict) -> bool | None:
     return None
 
 
+async def _seed_publish_verify_ready() -> dict | None:
+    from app.core.database import AsyncSessionLocal
+    from app.services.demo_tenant_seed_service import ensure_publish_verify_ready_for_demo_user
+
+    async with AsyncSessionLocal() as db:
+        return await ensure_publish_verify_ready_for_demo_user(db)
+
+
+def seed_publish_verify_ready() -> dict | None:
+    return asyncio.run(_seed_publish_verify_ready())
+
+
 def main() -> int:
-    report: dict = {"steps": [], "platforms": {}, "telegram_live": {}}
+    report: dict = {
+        "steps": [],
+        "platforms": {},
+        "telegram_live": {},
+        "blocked_path": {},
+        "success_mock_path": {},
+    }
     failures: list[str] = []
+
+    seed_info = seed_publish_verify_ready()
+    report["seed"] = seed_info or {"error": "demo tenant not found"}
+    if not seed_info:
+        failures.append("failed to seed publish-verify-ready content for demo tenant")
+        print("FAIL seed publish-verify-ready")
+    else:
+        print("OK seed publish-verify-ready content_id=", seed_info["content_id"])
 
     code, login = req("POST", "/auth/login", {"email": "demo@factory.local", "password": "demo1234"})
     if code != 200:
@@ -89,15 +123,17 @@ def main() -> int:
     token = login["access_token"]
     report["auth"] = "admin" if "admin" in str(login.get("token_type", "")).lower() else "tenant"
 
-    code, content = req("GET", "/content?limit=50", token=token)
+    code, content = req("GET", "/content?limit=100", token=token)
     if code != 200:
         print("FAIL content_list", code, content)
         return 1
     items = content.get("items") or []
 
     draft_item = pick_draft_no_media(items)
+    blocked_ok = False
     if draft_item:
         draft_id = draft_item["id"]
+        report["blocked_path"]["draft_content_id"] = draft_id
         for mode in ("manual_publish", "test_publish"):
             code, safety = req(
                 "GET",
@@ -134,9 +170,24 @@ def main() -> int:
         elif detail_can_publish(blocked_pub) is not False:
             failures.append("test_publish draft/no-media missing can_publish=false")
         else:
-            print("OK test_publish draft/no-media blocked cleanly")
+            blocked_ok = True
+            print("OK blocked path: draft/no-media test_publish blocked cleanly")
+    else:
+        failures.append("no draft/no-media content item found for blocked-path verification")
 
-    ready_item = pick_ready_content(items)
+    report["blocked_path"]["verified"] = blocked_ok
+
+    ready_item = pick_publish_verify_ready(items)
+    if not ready_item and seed_info:
+        code, seeded = req("GET", f"/content/{seed_info['content_id']}", token=token)
+        if code == 200:
+            ready_item = seeded
+    if not ready_item:
+        failures.append("publish-verify-ready content item not found after seed")
+        print("FAIL no publish-verify-ready content")
+    else:
+        print("OK ready content id=", ready_item["id"])
+
     item = ready_item or (items[0] if items else None)
     if not item:
         print("FAIL no content items")
@@ -146,22 +197,37 @@ def main() -> int:
     report["content_status"] = item.get("status")
     report["content_platforms"] = item.get("platforms")
 
-    code, safety_test = req("GET", f"/content/{item_id}/publish-safety?mode=test_publish", token=token)
-    tg_platform_status = (safety_test.get("platform_status") or {}).get("telegram", {})
-
+    safety_results: dict[str, dict] = {}
     for mode in ("manual_publish", "test_publish"):
         code, safety = req("GET", f"/content/{item_id}/publish-safety?mode={mode}", token=token)
+        safety_results[mode] = safety
         report["steps"].append({
-            "step": f"publish_safety_{mode}",
+            "step": f"publish_safety_ready_{mode}",
             "http": code,
+            "passed": safety.get("passed"),
             "can_publish": safety.get("can_publish"),
             "blockers": safety.get("blockers"),
             "platform_status": safety.get("platform_status"),
         })
         if code != 200:
-            failures.append(f"publish_safety {mode} returned {code}")
-    if not failures:
-        print("OK publish_safety manual + test")
+            failures.append(f"publish_safety ready {mode} returned {code}")
+        elif not safety.get("passed") or not safety.get("can_publish"):
+            failures.append(
+                f"publish_safety ready {mode} should pass "
+                f"(passed={safety.get('passed')} can_publish={safety.get('can_publish')})",
+            )
+        else:
+            print(f"OK publish_safety ready {mode} passed=true can_publish=true")
+
+    report["success_mock_path"]["publish_safety"] = {
+        mode: {
+            "passed": safety_results[mode].get("passed"),
+            "can_publish": safety_results[mode].get("can_publish"),
+        }
+        for mode in safety_results
+    }
+
+    tg_platform_status = (safety_results.get("test_publish") or {}).get("platform_status", {}).get("telegram", {})
 
     code, accounts = req("GET", "/publishing/accounts", token=token)
     telegram_accounts = []
@@ -183,8 +249,9 @@ def main() -> int:
         hour=9, minute=0, second=0, microsecond=0,
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
     platforms = list(item.get("platforms") or ["instagram", "telegram"])
-    if "instagram" not in platforms:
-        platforms.append("instagram")
+    for platform in MOCK_PLATFORMS:
+        if platform not in platforms:
+            platforms.append(platform)
 
     code, sched = req(
         "POST",
@@ -200,23 +267,30 @@ def main() -> int:
     )
     report["steps"].append({"step": "schedule", "http": code, "detail": sched})
     if code not in (200, 201):
-        print("WARN schedule", code, sched.get("detail"))
+        failures.append(f"schedule ready content failed http={code}")
+        print("FAIL schedule", code, sched.get("detail"))
     else:
         print("OK schedule")
 
     code, queue = req("GET", "/publishing/queue", token=token)
+    queue_found = any(r.get("id") == item_id for r in queue.get("items") or [])
     report["steps"].append({
         "step": "queue",
         "http": code,
         "total": queue.get("total"),
-        "found": any(r.get("id") == item_id for r in queue.get("items") or []),
+        "found": queue_found,
     })
-    if code == 200:
-        print("OK queue total=", queue.get("total"))
+    if code != 200:
+        failures.append(f"queue returned {code}")
+        print("FAIL queue", code)
+    elif not queue_found:
+        failures.append("ready content not found in publishing queue after schedule")
+        print("FAIL queue item not found")
     else:
-        print("WARN queue", code)
+        print("OK queue total=", queue.get("total"), "found ready item")
 
-    for platform in ("instagram", "telegram"):
+    mock_success_count = 0
+    for platform in MOCK_PLATFORMS:
         code, pub = req(
             "POST",
             f"/content/{item_id}/publish",
@@ -243,39 +317,51 @@ def main() -> int:
             print(f"FAIL test_publish {platform} http=500")
             continue
 
+        if code != 200:
+            failures.append(f"test_publish {platform} expected 200 got {code}: {entry['error']}")
+            print(f"FAIL test_publish {platform} http={code}")
+            continue
+
+        if first.get("mock") is not True:
+            failures.append(f"test_publish {platform} missing mock=true")
+            print(f"FAIL test_publish {platform} mock flag missing")
+            continue
+
         if platform == "instagram":
-            if code == 200 and first.get("mock") is True:
-                post_id = str(first.get("platform_post_id") or "")
-                if post_id.startswith("mock-ig-"):
-                    print(f"OK test_publish instagram mock post_id={post_id}")
-                else:
-                    failures.append(f"instagram post_id not mock-ig-*: {post_id}")
-            elif code in (400, 422):
-                print(f"OK test_publish instagram blocked http={code}")
+            post_id = str(first.get("platform_post_id") or "")
+            if not post_id.startswith("mock-ig-"):
+                failures.append(f"instagram post_id not mock-ig-*: {post_id}")
+                print(f"FAIL instagram post_id={post_id}")
             else:
-                failures.append(f"instagram unexpected http={code} mock={first.get('mock')}")
+                mock_success_count += 1
+                print(f"OK test_publish instagram mock=true post_id={post_id}")
 
         if platform == "telegram":
-            impl = tg_platform_status.get("implementation")
-            if code == 200:
-                if first.get("mock") is True:
-                    print(f"OK test_publish telegram mock=true post_id={first.get('platform_post_id')}")
-                elif first.get("mock") is False:
-                    report["telegram_live"]["live_path_eligible"] = True
-                    print(f"OK test_publish telegram LIVE post_id={first.get('platform_post_id')}")
-                else:
-                    failures.append("telegram publish missing mock flag")
-            elif code in (400, 422):
-                print(f"OK test_publish telegram blocked http={code}")
+            account_name = str(first.get("account_name") or "")
+            if "mock" not in account_name.lower():
+                failures.append(f"telegram account_name does not indicate mock: {account_name}")
+                print(f"FAIL telegram account_name={account_name}")
             else:
-                failures.append(f"telegram unexpected http={code}")
+                mock_success_count += 1
+                print(
+                    f"OK test_publish telegram mock=true "
+                    f"account_name={account_name} post_id={first.get('platform_post_id')}",
+                )
 
-            if impl == "live" and not report["telegram_live"]["live_path_eligible"]:
-                report["telegram_live"]["skip_reason"] = "live implementation but publish blocked or not run"
+            impl = tg_platform_status.get("implementation")
+            if first.get("mock") is False:
+                report["telegram_live"]["live_path_eligible"] = True
             elif impl != "live":
                 report["telegram_live"]["skip_reason"] = (
                     f"telegram implementation={impl} — live path skipped"
                 )
+
+    report["success_mock_path"]["mock_publish_count"] = mock_success_count
+    report["success_mock_path"]["verified"] = mock_success_count == len(MOCK_PLATFORMS)
+    if mock_success_count != len(MOCK_PLATFORMS):
+        failures.append(
+            f"mock publish success for {mock_success_count}/{len(MOCK_PLATFORMS)} platforms",
+        )
 
     if not tg_connected:
         report["telegram_live"]["skip_reason"] = (
@@ -293,6 +379,8 @@ def main() -> int:
         for f in failures:
             print(" -", f)
         return 1
+
+    print("PASS publishing truth — blocked path + mock success paths verified")
     return 0
 
 
