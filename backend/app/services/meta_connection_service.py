@@ -18,8 +18,13 @@ from app.services.meta_graph_client import (
     get_user_pages,
     meta_oauth_configured,
     missing_connection_permissions,
+    missing_facebook_publish_permissions,
     pick_page,
     token_is_expired,
+)
+from app.services.publishing_destination_registry import (
+    platform_implementation,
+    tenant_destination_status,
 )
 from app.utils.token_vault import decrypt_token, encrypt_token
 
@@ -187,6 +192,31 @@ class MetaConnectionService:
         else:
             health = "disconnected"
 
+        expired_flag = token_is_expired(account.expires_at)
+        has_page_token = bool(account.access_token_encrypted)
+        is_demo = bool(metadata.get("demo"))
+        dest_status = tenant_destination_status(
+            account.platform,
+            has_account=True,
+            account_status=effective_status,
+            facebook_page_id=account.facebook_page_id,
+            permissions=permissions,
+            token_expired=expired_flag,
+            has_page_token=has_page_token,
+            is_demo=is_demo,
+        )
+        implementation = platform_implementation(
+            account.platform,
+            dest_status=dest_status,
+            account_status=effective_status,
+            facebook_page_id=account.facebook_page_id,
+            permissions=permissions,
+            token_expired=expired_flag,
+            has_page_token=has_page_token,
+            is_demo=is_demo,
+        )
+        publish_ready = account.platform == "facebook" and implementation == "live"
+
         return {
             "platform": account.platform,
             "account_id": str(account.id),
@@ -201,8 +231,8 @@ class MetaConnectionService:
             "missing_permissions": missing_perms,
             "metadata": metadata,
             "blockers": blockers,
-            "publish_ready": False,
-            "implementation": "mock",
+            "publish_ready": publish_ready,
+            "implementation": implementation,
         }
 
     @staticmethod
@@ -251,7 +281,9 @@ class MetaConnectionService:
             "token_expired": fb_health["token_expired"] if fb_health else False,
             "health": fb_health["health"] if fb_health else ("not_configured" if not configured else "disconnected"),
             "blockers": list(dict.fromkeys(blockers)),
-            "publish_implementation": "mock",
+            "publish_implementation": (
+                fb_health.get("implementation", "mock") if fb_health else "mock"
+            ),
         }
 
     @staticmethod
@@ -421,6 +453,28 @@ class MetaConnectionService:
             cleared += 1
         await db.commit()
         return {"ok": True, "message": f"Disconnected {cleared} Meta publishing account(s)"}
+
+    @staticmethod
+    def facebook_publish_blockers(account: PublishingAccount) -> list[str]:
+        """Publish-time blockers specific to Facebook Page live posts."""
+        if account.platform != "facebook" or account.status == "mock":
+            return []
+        if MetaConnectionService.account_metadata(account).get("demo"):
+            return ["Facebook demo account cannot publish live — connect a real Meta account"]
+        blockers = MetaConnectionService.readiness_blockers(account)
+        if blockers:
+            return blockers
+        permissions = MetaConnectionService.account_permissions(account)
+        missing_publish = missing_facebook_publish_permissions(permissions)
+        if missing_publish:
+            return [f"Facebook publish permission missing: {', '.join(missing_publish)}"]
+        if not account.facebook_page_id:
+            return ["Facebook Page ID is missing — reconnect Meta account"]
+        if not account.access_token_encrypted:
+            return ["Facebook Page access token is missing — reconnect Meta account"]
+        if token_is_expired(account.expires_at):
+            return ["Meta access token expired — reconnect or refresh the connection"]
+        return []
 
     @staticmethod
     def readiness_blockers(account: PublishingAccount) -> list[str]:

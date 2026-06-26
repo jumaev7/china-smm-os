@@ -21,6 +21,9 @@ from app.services.content_service import ContentService
 from app.services.publish_context import PublishContext
 from app.services.publishing_account_service import PublishingAccountService
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
+from app.services.meta_connection_service import MetaConnectionService
+from app.services.meta_graph_client import token_is_expired
+from app.utils.token_vault import decrypt_token
 from app.services import (
     telegram_publisher,
     facebook_publisher,
@@ -243,6 +246,20 @@ class PublishService:
         effective_name = account.account_name
         if telegram_destination_chat_id and telegram_publish_title:
             effective_name = telegram_publish_title
+
+        facebook_page_id = None
+        page_access_token = None
+        permissions: list[str] = []
+        token_expired = token_is_expired(account.expires_at)
+        if platform == "facebook":
+            facebook_page_id = account.facebook_page_id
+            if account.access_token_encrypted:
+                try:
+                    page_access_token = decrypt_token(account.access_token_encrypted)
+                except Exception:
+                    page_access_token = None
+            permissions = MetaConnectionService.account_permissions(account)
+
         return PublishContext(
             content_id=str(item.id),
             client_id=str(item.client_id),
@@ -258,6 +275,10 @@ class PublishService:
             publishing_account_id=str(account.id),
             account_status=account.status,
             selected_media=list(payload.get("selected_media") or []),
+            facebook_page_id=facebook_page_id,
+            page_access_token=page_access_token,
+            permissions=permissions,
+            token_expired=token_expired,
         )
 
     @staticmethod

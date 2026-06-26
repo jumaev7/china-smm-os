@@ -83,6 +83,8 @@ class Settings(BaseSettings):
         "pages_show_list,pages_read_engagement,instagram_basic,business_management,"
         "pages_manage_posts,instagram_content_publish"
     )
+    # Opt-in gate for real Facebook Page posts (verification smoke + manual live tests).
+    ENABLE_FACEBOOK_LIVE_SMOKE: bool = False
 
     @property
     def admin_secret_key(self) -> str:

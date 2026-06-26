@@ -18,13 +18,14 @@ from app.services.content_readiness_service import ContentReadinessService, _has
 from app.services.content_review_service import client_review_required, is_client_approved
 from app.services.content_service import ContentService
 from app.services.publishing_account_service import PublishingAccountService
+from app.services.meta_connection_service import MetaConnectionService
+from app.services.meta_graph_client import token_is_expired
 from app.services.publishing_destination_registry import (
     global_destination_status,
     platform_implementation,
     telegram_bot_configured,
     tenant_destination_status,
 )
-from app.services.meta_connection_service import MetaConnectionService
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 
 logger = logging.getLogger(__name__)
@@ -217,16 +218,38 @@ class PublishSafetyService:
             except HTTPException as exc:
                 account_error = _http_detail_str(exc.detail)
 
+            permissions = (
+                MetaConnectionService.account_permissions(account)
+                if account and MetaConnectionService.is_meta_platform(platform)
+                else []
+            )
+            expired_flag = token_is_expired(account.expires_at) if account else False
+            account_metadata = (
+                MetaConnectionService.account_metadata(account)
+                if account and MetaConnectionService.is_meta_platform(platform)
+                else {}
+            )
+            is_demo = bool(account_metadata.get("demo"))
             dest_status = tenant_destination_status(
                 platform,
                 has_account=account is not None,
                 account_status=account.status if account else None,
                 telegram_publish_chat_id=client_tg_dest,
+                facebook_page_id=account.facebook_page_id if account else None,
+                permissions=permissions,
+                token_expired=expired_flag,
+                has_page_token=bool(account and account.access_token_encrypted),
+                is_demo=is_demo,
             )
             impl = platform_implementation(
                 platform,
                 dest_status=dest_status,
                 account_status=account.status if account else None,
+                facebook_page_id=account.facebook_page_id if account else None,
+                permissions=permissions,
+                token_expired=expired_flag,
+                has_page_token=bool(account and account.access_token_encrypted),
+                is_demo=is_demo,
             )
             entry: dict = {
                 "status": dest_status,
@@ -242,9 +265,20 @@ class PublishSafetyService:
                     entry["blockers"].append(
                         "Telegram account is mock — test publish returns fake post id",
                     )
+                elif platform == "instagram":
+                    entry["blockers"].append(
+                        "Instagram adapter is mock-only — no real post is created",
+                    )
                 else:
                     entry["blockers"].append(
                         "Platform adapter is mock-only — no real post is created",
+                    )
+            elif impl == "live" and platform == "facebook":
+                from app.core.config import settings
+
+                if not settings.ENABLE_FACEBOOK_LIVE_SMOKE:
+                    entry["blockers"].append(
+                        "Facebook is live-ready but ENABLE_FACEBOOK_LIVE_SMOKE is not set — posts are blocked",
                     )
             elif impl == "blocked" and platform == "telegram":
                 if not telegram_bot_configured():
@@ -316,7 +350,10 @@ class PublishSafetyService:
                     add_error(f"account_{platform}", _http_detail_str(exc.detail))
                     continue
                 if platform in ("facebook", "instagram"):
-                    meta_blockers = MetaConnectionService.readiness_blockers(account)
+                    if platform == "facebook":
+                        meta_blockers = MetaConnectionService.facebook_publish_blockers(account)
+                    else:
+                        meta_blockers = MetaConnectionService.readiness_blockers(account)
                     for idx, blocker in enumerate(meta_blockers):
                         add_error(
                             f"account_{platform}" if idx == 0 else f"account_{platform}_{idx}",
@@ -462,6 +499,13 @@ class PublishSafetyService:
             )
 
         await PublishSafetyService._check_media_or_caption(db, item, add_error)
+
+        for platform in target_platforms:
+            if platform == "facebook":
+                add_error(
+                    "platform_facebook",
+                    "Facebook scheduled live publish is not enabled in this milestone",
+                )
 
         if not item.scheduled_for:
             add_error(

@@ -29,6 +29,18 @@ const STATUS_BADGE: Record<string, string> = {
   blocked: "bg-red-100 text-red-800",
 };
 
+const IMPLEMENTATION_BADGE: Record<string, string> = {
+  mock: "bg-amber-100 text-amber-800",
+  blocked: "bg-red-100 text-red-800",
+  live: "bg-emerald-100 text-emerald-800",
+};
+
+function implementationLabel(impl: string | undefined): string {
+  if (impl === "live") return "live-ready";
+  if (impl === "blocked") return "blocked";
+  return "mock";
+}
+
 const HEALTH_BADGE: Record<string, string> = {
   healthy: "bg-emerald-100 text-emerald-800",
   mock: "bg-amber-100 text-amber-800",
@@ -214,7 +226,8 @@ export default function PublishingPage() {
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Connect Meta (Facebook + Instagram)</h3>
             <p className="text-xs text-indigo-900/80 mt-0.5">
-              OAuth foundation only — publishing still uses mock adapters until the next milestone.
+              Facebook Page publishing is live-ready when connected with publish permissions.
+              Instagram remains mock-only in this milestone.
             </p>
           </div>
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0", HEALTH_BADGE[metaHealth] ?? "bg-gray-100 text-gray-600")}>
@@ -229,18 +242,34 @@ export default function PublishingPage() {
             {metaConnection?.connected ? (
               <div className="text-xs text-gray-700 space-y-1">
                 {metaConnection.facebook && (
-                  <p>
-                    <span className="font-medium">Facebook Page:</span>{" "}
-                    {metaConnection.facebook.account_name}{" "}
-                    <span className="font-mono text-gray-400">({metaConnection.facebook.facebook_page_id})</span>
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p>
+                      <span className="font-medium">Facebook Page:</span>{" "}
+                      {metaConnection.facebook.account_name}{" "}
+                      <span className="font-mono text-gray-400">({metaConnection.facebook.facebook_page_id})</span>
+                    </p>
+                    <span className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-full font-medium",
+                      IMPLEMENTATION_BADGE[metaConnection.facebook.implementation ?? "mock"] ?? "bg-gray-100 text-gray-600",
+                    )}>
+                      Facebook: {implementationLabel(metaConnection.facebook.implementation)}
+                    </span>
+                  </div>
                 )}
                 {metaConnection.instagram && (
-                  <p>
-                    <span className="font-medium">Instagram Business:</span>{" "}
-                    {metaConnection.instagram.account_name}{" "}
-                    <span className="font-mono text-gray-400">({metaConnection.instagram.instagram_business_account_id})</span>
-                  </p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p>
+                      <span className="font-medium">Instagram Business:</span>{" "}
+                      {metaConnection.instagram.account_name}{" "}
+                      <span className="font-mono text-gray-400">({metaConnection.instagram.instagram_business_account_id})</span>
+                    </p>
+                    <span className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-full font-medium",
+                      IMPLEMENTATION_BADGE.mock,
+                    )}>
+                      Instagram: mock
+                    </span>
+                  </div>
                 )}
                 <p>
                   <span className="font-medium">Token expiry:</span>{" "}
@@ -461,6 +490,28 @@ export default function PublishingPage() {
                   <p className="text-xs text-gray-400 font-mono mt-0.5">{account.account_id}</p>
                   {(account.platform === "facebook" || account.platform === "instagram") && account.status !== "mock" && (
                     <div className="mt-2 space-y-0.5 text-[10px] text-gray-500">
+                      {account.platform === "facebook" && (
+                        <p>
+                          Publish:{" "}
+                          <span className={cn(
+                            "font-medium px-1.5 py-0.5 rounded",
+                            IMPLEMENTATION_BADGE[
+                              (account.account_metadata as { demo?: boolean } | undefined)?.demo
+                                ? "blocked"
+                                : metaConnection?.facebook?.implementation ?? "blocked"
+                            ] ?? "bg-gray-100 text-gray-600",
+                          )}>
+                            {(account.account_metadata as { demo?: boolean } | undefined)?.demo
+                              ? "blocked (demo)"
+                              : implementationLabel(metaConnection?.facebook?.implementation)}
+                          </span>
+                        </p>
+                      )}
+                      {account.platform === "instagram" && (
+                        <p>
+                          Publish: <span className="font-medium text-amber-700">mock</span>
+                        </p>
+                      )}
                       {account.expires_at && (
                         <p>
                           Token expires: {new Date(account.expires_at).toLocaleString()}

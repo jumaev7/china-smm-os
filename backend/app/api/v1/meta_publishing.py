@@ -75,7 +75,7 @@ async def meta_connection_health(db: AsyncSession = Depends(get_db)):
         "facebook": summary["facebook"],
         "instagram": summary["instagram"],
         "blockers": summary["blockers"],
-        "publish_implementation": "mock",
+        "publish_implementation": summary["publish_implementation"],
     }
 
 

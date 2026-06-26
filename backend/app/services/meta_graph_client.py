@@ -26,6 +26,10 @@ FUTURE_PUBLISH_PERMISSIONS = frozenset({
     "instagram_content_publish",
 })
 
+REQUIRED_FACEBOOK_PUBLISH_PERMISSIONS = frozenset({
+    "pages_manage_posts",
+})
+
 
 def meta_oauth_configured() -> bool:
     return bool(
@@ -67,6 +71,77 @@ async def _get_json(path: str, *, params: dict[str, Any] | None = None) -> dict[
             message = error.get("message") or response.text
             raise RuntimeError(f"Meta Graph API error: {message}")
         return payload
+
+
+async def _post_json(path: str, *, params: dict[str, Any]) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        response = await client.post(_graph_url(path), data=params)
+        payload = response.json()
+        if response.status_code >= 400 or "error" in payload:
+            error = payload.get("error") or {}
+            message = error.get("message") or response.text
+            raise RuntimeError(f"Meta Graph API error: {message}")
+        return payload
+
+
+def facebook_post_url(platform_post_id: str) -> str | None:
+    post_id = (platform_post_id or "").strip()
+    if not post_id:
+        return None
+    if "_" in post_id:
+        page_id, story_id = post_id.split("_", 1)
+        if page_id and story_id:
+            return f"https://www.facebook.com/{page_id}/posts/{story_id}"
+    return f"https://www.facebook.com/{post_id}"
+
+
+async def publish_page_feed_post(
+    *,
+    page_id: str,
+    page_access_token: str,
+    message: str,
+) -> dict[str, Any]:
+    """Publish a text-only post to a Facebook Page feed."""
+    payload = await _post_json(
+        f"{page_id}/feed",
+        params={
+            "access_token": page_access_token,
+            "message": message,
+        },
+    )
+    post_id = str(payload.get("id") or "")
+    if not post_id:
+        raise RuntimeError("Meta Graph API returned no post id for page feed publish")
+    return {
+        "platform_post_id": post_id,
+        "post_url": facebook_post_url(post_id),
+        "raw": payload,
+    }
+
+
+async def publish_page_photo_post(
+    *,
+    page_id: str,
+    page_access_token: str,
+    image_url: str,
+    caption: str = "",
+) -> dict[str, Any]:
+    """Publish a single image post to a Facebook Page (image URL must be publicly reachable)."""
+    params: dict[str, Any] = {
+        "access_token": page_access_token,
+        "url": image_url,
+    }
+    if caption:
+        params["caption"] = caption
+    payload = await _post_json(f"{page_id}/photos", params=params)
+    post_id = str(payload.get("post_id") or payload.get("id") or "")
+    if not post_id:
+        raise RuntimeError("Meta Graph API returned no post id for page photo publish")
+    return {
+        "platform_post_id": post_id,
+        "post_url": facebook_post_url(post_id),
+        "raw": payload,
+    }
 
 
 async def exchange_code_for_token(code: str) -> dict[str, Any]:
@@ -141,6 +216,11 @@ def extract_granted_permissions(debug_data: dict[str, Any]) -> list[str]:
 def missing_connection_permissions(granted: list[str]) -> list[str]:
     granted_set = set(granted)
     return sorted(REQUIRED_CONNECTION_PERMISSIONS - granted_set)
+
+
+def missing_facebook_publish_permissions(granted: list[str]) -> list[str]:
+    granted_set = set(granted)
+    return sorted(REQUIRED_FACEBOOK_PUBLISH_PERMISSIONS - granted_set)
 
 
 def pick_page(pages: list[dict[str, Any]]) -> dict[str, Any] | None:

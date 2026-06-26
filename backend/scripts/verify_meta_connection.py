@@ -166,10 +166,15 @@ def main() -> int:
         if code != 200:
             print("FAIL health_endpoint", code, health)
             return 1
-        if health.get("publish_implementation") != "mock":
-            print("FAIL publish_implementation must remain mock")
+        if health.get("publish_implementation") not in ("mock", "blocked", "live"):
+            print("FAIL publish_implementation unexpected value", health.get("publish_implementation"))
             return 1
-        print("OK health_endpoint publish_implementation=mock")
+        ig_impl = (health.get("instagram") or {}).get("implementation")
+        if ig_impl == "live":
+            print("FAIL instagram implementation must remain mock")
+            return 1
+        fb_impl = (health.get("facebook") or {}).get("implementation") or health.get("publish_implementation")
+        print("OK health_endpoint facebook_implementation=", fb_impl, "instagram_implementation=", ig_impl or "mock")
 
         code, accounts = auth_req("GET", "/publishing/accounts?platform=facebook")
         if code != 200:
