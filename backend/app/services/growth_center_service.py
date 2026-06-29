@@ -40,7 +40,11 @@ MARKER = "[Growth Center]"
 
 ACTIVE_LEAD_STATUSES = frozenset({"new", "contacted", "qualified"})
 ACTIVE_BUYER_STATUSES = frozenset({"interested", "negotiating", "active_buyer"})
-OPEN_DEAL_STAGES = frozenset({"new_lead", "contacted", "negotiation", "proposal_sent"})
+OPEN_DEAL_STAGES = frozenset({
+    "lead", "qualified", "contacted", "meeting_scheduled",
+    "proposal_sent", "negotiation", "contract_pending",
+    "client_active", "publishing_active", "expansion_upsell",
+})
 _STALE_LEAD_DAYS = 7
 _STALE_DEAL_DAYS = 14
 _PROPOSAL_STALL_DAYS = 7
@@ -249,8 +253,8 @@ class GrowthCenterService:
         follow_ups_due: int,
     ) -> GrowthCenterOverviewKpis:
         open_deals = [d for d in deals if d.stage in OPEN_DEAL_STAGES]
-        won_deals = [d for d in deals if d.stage == "won"]
-        lost_deals = [d for d in deals if d.stage == "lost"]
+        won_deals = [d for d in deals if d.stage == "closed_won"]
+        lost_deals = [d for d in deals if d.stage == "closed_lost"]
         active_leads = [l for l in leads if l.status in ACTIVE_LEAD_STATUSES]
         active_buyers = [b for b in buyers if b.status in ACTIVE_BUYER_STATUSES]
 
@@ -343,8 +347,8 @@ class GrowthCenterService:
         buyer_score = int(min(100, max(0, (active_buyers / total_buyers) * 100 - (inactive / total_buyers) * 25)))
 
         total_deals = len(deals) or 1
-        won = sum(1 for d in deals if d.stage == "won")
-        lost = sum(1 for d in deals if d.stage == "lost")
+        won = sum(1 for d in deals if d.stage == "closed_won")
+        lost = sum(1 for d in deals if d.stage == "closed_lost")
         open_deals = sum(1 for d in deals if d.stage in OPEN_DEAL_STAGES)
         deal_score = int(min(100, max(0, (won / total_deals) * 60 + (open_deals / total_deals) * 40 - (lost / total_deals) * 20)))
 
@@ -450,7 +454,7 @@ class GrowthCenterService:
                 continue
             updated = _aware(deal.updated_at) or now
             if (now - updated).days >= _STALE_DEAL_DAYS:
-                action = "Move to Negotiation" if deal.stage in ("contacted", "new_lead") else "Advance deal stage"
+                action = "Move to Negotiation" if deal.stage in ("contacted", "lead", "qualified") else "Advance deal stage"
                 recs.append(GrowthCenterRecommendation(
                     id=str(uuid4()),
                     priority="high" if _decimal(deal.value) >= Decimal("10000") else "medium",

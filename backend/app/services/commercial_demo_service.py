@@ -909,14 +909,14 @@ class CommercialDemoService:
         active_deals = int(await db.scalar(
             select(func.count()).select_from(SalesDeal).where(
                 SalesDeal.tenant_id == tenant_id,
-                SalesDeal.stage.notin_(["won", "lost", "closed"]),
+                SalesDeal.stage.notin_(["closed_won", "closed_lost"]),
             ),
         ) or 0)
 
         pipeline_value = await db.scalar(
             select(func.coalesce(func.sum(SalesDeal.value), 0)).where(
                 SalesDeal.tenant_id == tenant_id,
-                SalesDeal.stage.notin_(["won", "lost", "closed"]),
+                SalesDeal.stage.notin_(["closed_won", "closed_lost"]),
             ),
         )
         pipeline_value_usd = float(pipeline_value or 0)

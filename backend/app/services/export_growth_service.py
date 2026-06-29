@@ -514,7 +514,7 @@ class ExportGrowthService:
         buyer_score = int(min(100, (active_buyers / buyer_total) * 70 + min(recent_buyers, 5) * 6))
 
         open_deals = [d for d in deals if d.stage in OPEN_DEAL_STAGES]
-        won = sum(1 for d in deals if d.stage == "won")
+        won = sum(1 for d in deals if d.stage == "closed_won")
         deal_total = max(len(deals), 1)
         deal_score = int(min(100, (len(open_deals) / deal_total) * 50 + (won / deal_total) * 50))
 

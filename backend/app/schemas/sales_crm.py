@@ -11,11 +11,36 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 LeadStatus = Literal["new", "contacted", "qualified", "converted", "lost"]
 LeadPriority = Literal["high", "medium", "low"]
 LeadSource = Literal["manual", "website", "referral", "exhibition", "social", "other"]
-DealStage = Literal["new_lead", "contacted", "negotiation", "proposal_sent", "won", "lost"]
+DealStage = Literal[
+    "lead",
+    "qualified",
+    "contacted",
+    "meeting_scheduled",
+    "proposal_sent",
+    "negotiation",
+    "contract_pending",
+    "client_active",
+    "publishing_active",
+    "expansion_upsell",
+    "closed_won",
+    "closed_lost",
+]
+StageSource = Literal["manual", "auto", "proposal"]
 ActivityType = Literal["call", "email", "meeting", "note", "task", "other"]
 
 DEAL_STAGES: list[DealStage] = [
-    "new_lead", "contacted", "negotiation", "proposal_sent", "won", "lost",
+    "lead",
+    "qualified",
+    "contacted",
+    "meeting_scheduled",
+    "proposal_sent",
+    "negotiation",
+    "contract_pending",
+    "client_active",
+    "publishing_active",
+    "expansion_upsell",
+    "closed_won",
+    "closed_lost",
 ]
 
 
@@ -30,6 +55,9 @@ class SalesCustomerBase(BaseModel):
     country: str | None = Field(None, max_length=100)
     city: str | None = Field(None, max_length=100)
     notes: str | None = None
+    client_id: UUID | None = None
+    owner_id: UUID | None = None
+    primary_publishing_account_id: UUID | None = None
 
 
 class SalesCustomerCreate(SalesCustomerBase):
@@ -47,6 +75,9 @@ class SalesCustomerUpdate(BaseModel):
     country: str | None = Field(None, max_length=100)
     city: str | None = Field(None, max_length=100)
     notes: str | None = None
+    client_id: UUID | None = None
+    owner_id: UUID | None = None
+    primary_publishing_account_id: UUID | None = None
 
 
 class SalesCustomerResponse(SalesCustomerBase):
@@ -58,6 +89,8 @@ class SalesCustomerResponse(SalesCustomerBase):
     updated_at: datetime
     deal_count: int = 0
     lead_count: int = 0
+    owner_email: str | None = None
+    client_name: str | None = None
 
 
 class SalesCustomerListResponse(BaseModel):
@@ -125,9 +158,13 @@ class SalesDealBase(BaseModel):
     lead_id: UUID | None = None
     value: Decimal | None = Field(None, ge=0)
     currency: str = Field("USD", max_length=10)
-    stage: DealStage = "new_lead"
-    probability: int = Field(10, ge=0, le=100)
+    stage: DealStage = "lead"
+    probability: int = Field(5, ge=0, le=100)
     expected_close_date: datetime | None = None
+    closed_at: datetime | None = None
+    owner_id: UUID | None = None
+    stage_source: StageSource = "manual"
+    stage_override: bool = False
     notes: str | None = None
 
 
@@ -144,11 +181,17 @@ class SalesDealUpdate(BaseModel):
     stage: DealStage | None = None
     probability: int | None = Field(None, ge=0, le=100)
     expected_close_date: datetime | None = None
+    closed_at: datetime | None = None
+    owner_id: UUID | None = None
+    stage_source: StageSource | None = None
+    stage_override: bool | None = None
     notes: str | None = None
 
 
 class SalesDealStageUpdate(BaseModel):
     stage: DealStage
+    stage_override: bool = True
+    probability: int | None = Field(None, ge=0, le=100)
 
 
 class SalesDealResponse(SalesDealBase):
@@ -160,6 +203,7 @@ class SalesDealResponse(SalesDealBase):
     updated_at: datetime
     customer_name: str | None = None
     lead_name: str | None = None
+    owner_email: str | None = None
 
 
 class SalesDealListResponse(BaseModel):
@@ -299,6 +343,7 @@ class SalesProposalUpdate(BaseModel):
 
 class SalesProposalStatusUpdate(BaseModel):
     status: ProposalStatus
+    close_deal_on_reject: bool = False
 
 
 class SalesProposalResponse(SalesProposalBase):
@@ -310,6 +355,10 @@ class SalesProposalResponse(SalesProposalBase):
     subtotal: Decimal
     total: Decimal
     status: ProposalStatus
+    version: int = 1
+    sent_at: datetime | None = None
+    accepted_at: datetime | None = None
+    attachment_url: str | None = None
     status_history: list[SalesProposalStatusEvent] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

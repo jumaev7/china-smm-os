@@ -12,10 +12,12 @@ from sqlalchemy.orm import selectinload
 
 from app.models.sales_crm import (
     DEAL_STAGES,
+    DEFAULT_STAGE_PROBABILITY,
     LEAD_PRIORITIES,
     LEAD_SOURCES,
     LEAD_STATUSES,
     ACTIVITY_TYPES,
+    TERMINAL_STAGES,
     SalesActivity,
     SalesCustomer,
     SalesDeal,
@@ -108,11 +110,16 @@ class SalesCrmService:
             "stage": deal.stage,
             "probability": deal.probability,
             "expected_close_date": deal.expected_close_date,
+            "closed_at": deal.closed_at,
+            "owner_id": deal.owner_id,
+            "stage_source": deal.stage_source,
+            "stage_override": deal.stage_override,
             "notes": deal.notes,
             "created_at": deal.created_at,
             "updated_at": deal.updated_at,
             "customer_name": customer_name,
             "lead_name": lead_name,
+            "owner_email": None,
         }
 
     # ─── Dashboard ───────────────────────────────────────────────────────────
@@ -146,8 +153,8 @@ class SalesCrmService:
                 total_value=sum((d.value or Decimal(0)) for d in stage_deals),
             ))
 
-        won_deals = [d for d in deals if d.stage == "won"]
-        open_deals = [d for d in deals if d.stage not in ("won", "lost")]
+        won_deals = [d for d in deals if d.stage == "closed_won"]
+        open_deals = [d for d in deals if d.stage not in TERMINAL_STAGES]
 
         activity_q = select(SalesActivity).order_by(SalesActivity.activity_date.desc()).limit(15)
         if tenant_id is not None:
@@ -480,6 +487,17 @@ class SalesCrmService:
         row = await cls._load_deal(db, deal_id, tenant_id)
         old_stage = row.stage
         row.stage = body.stage
+        row.stage_source = "manual"
+        if body.stage_override:
+            row.stage_override = True
+        if body.probability is not None:
+            row.probability = body.probability
+        elif body.stage in DEFAULT_STAGE_PROBABILITY:
+            row.probability = DEFAULT_STAGE_PROBABILITY[body.stage]
+        if body.stage in TERMINAL_STAGES:
+            row.closed_at = datetime.now(timezone.utc)
+        elif old_stage in TERMINAL_STAGES:
+            row.closed_at = None
         activity = SalesActivity(
             tenant_id=row.tenant_id,
             type="note",

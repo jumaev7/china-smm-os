@@ -271,7 +271,7 @@ class CustomerSuccessService:
         buyer_count = await cls._count_table(db, Buyer, tenant_id)
         active_buyers = await cls._count_table(db, Buyer, tenant_id, Buyer.status.in_(tuple(ACTIVE_BUYER_STATUSES)))
         deal_count = await cls._count_table(db, SalesDeal, tenant_id)
-        won_deals = await cls._count_table(db, SalesDeal, tenant_id, SalesDeal.stage == "won")
+        won_deals = await cls._count_table(db, SalesDeal, tenant_id, SalesDeal.stage == "closed_won")
         pipeline_value = await cls._sum_column(
             db, SalesDeal, SalesDeal.value, tenant_id, SalesDeal.stage.in_(tuple(OPEN_DEAL_STAGES)),
         )
@@ -283,7 +283,7 @@ class CustomerSuccessService:
             SalesDeal.stage.in_(tuple(OPEN_DEAL_STAGES)),
         )
         proposal_value = await cls._sum_column(db, SalesProposal, SalesProposal.total, tenant_id)
-        won_revenue = await cls._sum_column(db, SalesDeal, SalesDeal.value, tenant_id, SalesDeal.stage == "won")
+        won_revenue = await cls._sum_column(db, SalesDeal, SalesDeal.value, tenant_id, SalesDeal.stage == "closed_won")
         comm_messages = await cls._count_communication_messages(db, tenant_id)
         content_items = await cls._count_content_items(db, tenant_id)
         period_activity = await cls._count_period_activity(db, tenant_id, since)
@@ -404,7 +404,7 @@ class CustomerSuccessService:
     ) -> RoiCalculation:
         cfg = config or RoiConfigWeights()
         open_deals = [d for d in deals if d.stage in OPEN_DEAL_STAGES]
-        won_deals = [d for d in deals if d.stage == "won"]
+        won_deals = [d for d in deals if d.stage == "closed_won"]
 
         pipeline_value = sum((_decimal(d.value) for d in open_deals), Decimal("0"))
         proposal_value = sum((_decimal(p.total) for p in proposals), Decimal("0"))
@@ -463,7 +463,7 @@ class CustomerSuccessService:
         content_items: int,
     ) -> FactoryRoiKpis:
         open_deals = [d for d in deals if d.stage in OPEN_DEAL_STAGES]
-        won_deals = [d for d in deals if d.stage == "won"]
+        won_deals = [d for d in deals if d.stage == "closed_won"]
         active_buyers = [b for b in buyers if b.status in ACTIVE_BUYER_STATUSES]
         pipeline_value = sum((_decimal(d.value) for d in open_deals), Decimal("0"))
         proposal_value = sum((_decimal(p.total) for p in proposals), Decimal("0"))
@@ -590,14 +590,14 @@ class CustomerSuccessService:
 
         progression_days: list[float] = []
         for deal in deals:
-            if deal.stage == "won":
+            if deal.stage == "closed_won":
                 created = _aware(deal.created_at)
                 updated = _aware(deal.updated_at)
                 if created and updated:
                     progression_days.append((updated - created).days)
 
         avg_progression = sum(progression_days) / len(progression_days) if progression_days else 0.0
-        won_value = sum((_decimal(d.value) for d in deals if d.stage == "won"), Decimal("0"))
+        won_value = sum((_decimal(d.value) for d in deals if d.stage == "closed_won"), Decimal("0"))
         pipeline_created = sum((_decimal(d.value) for d in deals if d.stage in OPEN_DEAL_STAGES), Decimal("0"))
 
         return BusinessImpactMetrics(

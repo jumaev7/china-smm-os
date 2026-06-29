@@ -138,7 +138,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def create_tables():
     """Create all tables (dev only — use Alembic in production)."""
     async with engine.begin() as conn:
-        from app.models import client, media, content, calendar, telegram_buffer, publishing_account, publish_attempt, content_plan, client_knowledge_base, operator_task, content_factory, crm_lead, crm_proposal, crm_document, crm_deal, deal_room, attribution_source, revenue_event, partner, partner_network, sales_agent_recommendation, sales_assistant_recommendation, sales_workflow_recommendation, product, export_agent, campaign, media_library, communication, attribution_link, landing_page, buyer_recommendation, buyer_discovery, buyer_network, buyer_crm, marketplace, ai_command, whatsapp, wechat_sync, wechat_provider, whatsapp_sync, whatsapp_provider, factory_partner_application, customer_portal_account, factory_platform_profile, factory_profile, tenant, admin_user, sales_crm  # noqa
+        from app.models import client, media, content, calendar, telegram_buffer, publishing_account, publish_attempt, content_plan, client_knowledge_base, operator_task, content_factory, crm_lead, crm_proposal, crm_document, crm_deal, crm_pipeline_event, deal_room, attribution_source, revenue_event, partner, partner_network, sales_agent_recommendation, sales_assistant_recommendation, sales_workflow_recommendation, product, export_agent, campaign, media_library, communication, attribution_link, landing_page, buyer_recommendation, buyer_discovery, buyer_network, buyer_crm, marketplace, ai_command, whatsapp, wechat_sync, wechat_provider, whatsapp_sync, whatsapp_provider, factory_partner_application, customer_portal_account, factory_platform_profile, factory_profile, tenant, admin_user, sales_crm  # noqa
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_client_brand_columns)
         await conn.run_sync(_ensure_telegram_buffer_columns)
@@ -182,6 +182,95 @@ async def ensure_dev_schema_patches() -> None:
         await conn.run_sync(_ensure_content_factory_ai_columns)
         await conn.run_sync(_ensure_meta_publishing_columns)
         await conn.run_sync(_ensure_publishing_accounts_tenant_id)
+        await conn.run_sync(_ensure_executive_crm_pipeline_columns)
+
+
+def _ensure_executive_crm_pipeline_columns(connection) -> None:
+    """Executive CRM pipeline — 12-stage lifecycle, timeline events, commercial links."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+
+    if "sales_customers" in tables:
+        for sql in (
+            "ALTER TABLE sales_customers ADD COLUMN IF NOT EXISTS client_id UUID "
+            "REFERENCES clients(id) ON DELETE SET NULL",
+            "ALTER TABLE sales_customers ADD COLUMN IF NOT EXISTS owner_id UUID "
+            "REFERENCES tenant_users(id) ON DELETE SET NULL",
+            "ALTER TABLE sales_customers ADD COLUMN IF NOT EXISTS primary_publishing_account_id UUID "
+            "REFERENCES publishing_accounts(id) ON DELETE SET NULL",
+            "CREATE INDEX IF NOT EXISTS ix_sales_customers_client_id ON sales_customers (client_id)",
+            "CREATE INDEX IF NOT EXISTS ix_sales_customers_owner_id ON sales_customers (owner_id)",
+            "CREATE INDEX IF NOT EXISTS ix_sales_customers_primary_publishing_account_id "
+            "ON sales_customers (primary_publishing_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "sales_deals" in tables:
+        for sql in (
+            "ALTER TABLE sales_deals ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ",
+            "ALTER TABLE sales_deals ADD COLUMN IF NOT EXISTS owner_id UUID "
+            "REFERENCES tenant_users(id) ON DELETE SET NULL",
+            "ALTER TABLE sales_deals ADD COLUMN IF NOT EXISTS stage_source VARCHAR(20) "
+            "NOT NULL DEFAULT 'manual'",
+            "ALTER TABLE sales_deals ADD COLUMN IF NOT EXISTS stage_override BOOLEAN "
+            "NOT NULL DEFAULT false",
+            "CREATE INDEX IF NOT EXISTS ix_sales_deals_owner_id ON sales_deals (owner_id)",
+        ):
+            connection.execute(text(sql))
+        connection.execute(text(
+            "UPDATE sales_deals SET stage = 'lead' WHERE stage = 'new_lead'"
+        ))
+        connection.execute(text(
+            "UPDATE sales_deals SET stage = 'closed_won' WHERE stage = 'won'"
+        ))
+        connection.execute(text(
+            "UPDATE sales_deals SET stage = 'closed_lost' WHERE stage = 'lost'"
+        ))
+
+    if "sales_proposals" in tables:
+        for sql in (
+            "ALTER TABLE sales_proposals ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE sales_proposals ADD COLUMN IF NOT EXISTS sent_at TIMESTAMPTZ",
+            "ALTER TABLE sales_proposals ADD COLUMN IF NOT EXISTS accepted_at TIMESTAMPTZ",
+            "ALTER TABLE sales_proposals ADD COLUMN IF NOT EXISTS attachment_url VARCHAR(1024)",
+        ):
+            connection.execute(text(sql))
+
+    if "crm_pipeline_events" not in tables:
+        connection.execute(text(
+            """
+            CREATE TABLE IF NOT EXISTS crm_pipeline_events (
+                id UUID PRIMARY KEY,
+                tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+                event_type VARCHAR(40) NOT NULL,
+                title VARCHAR(255) NOT NULL,
+                description TEXT,
+                payload JSONB,
+                customer_id UUID REFERENCES sales_customers(id) ON DELETE SET NULL,
+                lead_id UUID REFERENCES sales_leads(id) ON DELETE SET NULL,
+                deal_id UUID REFERENCES sales_deals(id) ON DELETE SET NULL,
+                actor VARCHAR(255),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_crm_pipeline_events_tenant_id "
+            "ON crm_pipeline_events (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_crm_pipeline_events_event_type "
+            "ON crm_pipeline_events (event_type)",
+            "CREATE INDEX IF NOT EXISTS ix_crm_pipeline_events_customer_id "
+            "ON crm_pipeline_events (customer_id)",
+            "CREATE INDEX IF NOT EXISTS ix_crm_pipeline_events_lead_id "
+            "ON crm_pipeline_events (lead_id)",
+            "CREATE INDEX IF NOT EXISTS ix_crm_pipeline_events_deal_id "
+            "ON crm_pipeline_events (deal_id)",
+            "CREATE INDEX IF NOT EXISTS ix_crm_pipeline_events_created_at "
+            "ON crm_pipeline_events (created_at)",
+        ):
+            connection.execute(text(sql))
 
 
 def _ensure_meta_publishing_columns(connection) -> None:

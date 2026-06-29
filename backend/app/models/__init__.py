@@ -70,6 +70,7 @@ from app.models.buyer_discovery import BuyerDiscoveryEntry
 from app.models.buyer_network import BuyerNetworkProfile, BuyerRelationship
 from app.models.client_brief import ClientBrief
 from app.models.sales_crm import SalesActivity, SalesCustomer, SalesDeal, SalesLead
+from app.models.crm_pipeline_event import CrmPipelineEvent
 from app.models.buyer_crm import Buyer, BuyerActivity, BuyerEntityLink, BuyerNote, BuyerStatusHistory
 from app.models.marketplace import (
     MarketplaceOpportunity,
@@ -98,6 +99,7 @@ __all__ = [
     "SalesLead",
     "SalesDeal",
     "SalesActivity",
+    "CrmPipelineEvent",
     "Buyer",
     "BuyerActivity",
     "BuyerNote",

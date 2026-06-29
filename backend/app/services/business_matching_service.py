@@ -136,7 +136,7 @@ class BusinessMatchingService:
         )
         for deal in deals_r.scalars().all():
             deal_count += 1
-            if deal.stage == "won":
+            if deal.stage == "closed_won":
                 won_count += 1
 
         prop_r = await db.execute(

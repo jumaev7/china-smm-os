@@ -750,7 +750,11 @@ class SalesAssistantService:
     ) -> None:
         """Scan tenant-scoped Sales CRM (leads, deals, proposals, buyers)."""
         active_lead_statuses = frozenset({"new", "contacted", "qualified"})
-        open_deal_stages = frozenset({"new_lead", "contacted", "negotiation", "proposal_sent"})
+        open_deal_stages = frozenset({
+            "lead", "qualified", "contacted", "meeting_scheduled",
+            "proposal_sent", "negotiation", "contract_pending",
+            "client_active", "publishing_active", "expansion_upsell",
+        })
 
         leads_r = await db.execute(
             select(SalesLead).where(SalesLead.status.in_(tuple(active_lead_statuses)))

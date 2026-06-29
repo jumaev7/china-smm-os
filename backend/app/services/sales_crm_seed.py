@@ -113,7 +113,7 @@ async def seed_sales_crm_demo(db: AsyncSession) -> None:
             value=Decimal("85000"),
             currency="USD",
             stage="negotiation",
-            probability=60,
+            probability=55,
             expected_close_date=now + timedelta(days=30),
             notes="Volume discount under discussion.",
         )
@@ -124,8 +124,8 @@ async def seed_sales_crm_demo(db: AsyncSession) -> None:
             title="Shanghai Electronics — Component Supply",
             value=Decimal("42000"),
             currency="USD",
-            stage="new_lead",
-            probability=20,
+            stage="lead",
+            probability=5,
             expected_close_date=now + timedelta(days=60),
         )
         deal3 = SalesDeal(
@@ -137,7 +137,7 @@ async def seed_sales_crm_demo(db: AsyncSession) -> None:
             value=Decimal("120000"),
             currency="USD",
             stage="proposal_sent",
-            probability=75,
+            probability=40,
             expected_close_date=now + timedelta(days=14),
         )
         db.add_all([deal1, deal2, deal3])

@@ -119,6 +119,10 @@ class SalesProposalService:
             "tax": proposal.tax,
             "total": proposal.total,
             "status": proposal.status,
+            "version": proposal.version,
+            "sent_at": proposal.sent_at,
+            "accepted_at": proposal.accepted_at,
+            "attachment_url": proposal.attachment_url,
             "notes": proposal.notes,
             "terms": proposal.terms,
             "status_history": history,
@@ -439,12 +443,115 @@ class SalesProposalService:
         proposal_id: UUID,
         body: SalesProposalStatusUpdate,
         tenant_id: UUID | None,
+        *,
+        actor: str | None = None,
     ) -> dict:
         cls._assert_status(body.status)
         proposal = await cls._load_proposal(db, proposal_id, tenant_id)
-        if proposal.status != body.status:
+        effective_tenant = proposal.tenant_id
+        now = datetime.now(timezone.utc)
+        status_changed = proposal.status != body.status
+
+        if status_changed:
             proposal.status = body.status
             cls._append_status(proposal, body.status)
+
+        if body.status == "sent" and proposal.sent_at is None:
+            proposal.sent_at = now
+        if body.status == "accepted" and proposal.accepted_at is None:
+            proposal.accepted_at = now
+
+        if status_changed and proposal.deal_id:
+            from app.services.crm_pipeline_service import CrmPipelineService
+            from app.schemas.crm_pipeline import PipelineStageUpdate
+
+            deal = (await db.execute(
+                select(SalesDeal).where(
+                    SalesDeal.id == proposal.deal_id,
+                    SalesDeal.tenant_id == effective_tenant,
+                )
+            )).scalar_one_or_none()
+
+            if deal:
+                if body.status == "sent":
+                    from app.services.crm_pipeline_timeline_service import CrmPipelineTimelineService
+
+                    await CrmPipelineTimelineService.proposal_sent(
+                        db,
+                        tenant_id=effective_tenant,
+                        proposal_id=proposal.id,
+                        proposal_number=proposal.proposal_number,
+                        deal_id=deal.id,
+                        customer_id=proposal.customer_id,
+                        lead_id=proposal.lead_id,
+                        actor=actor,
+                    )
+                    await CrmPipelineService.transition_stage(
+                        db,
+                        deal.id,
+                        effective_tenant,
+                        PipelineStageUpdate(stage="proposal_sent", stage_override=False),
+                        stage_source="proposal",
+                        actor=actor,
+                    )
+                elif body.status == "accepted":
+                    target_stage = await CrmPipelineService.resolve_acceptance_stage(
+                        db, proposal.customer_id,
+                    )
+                    from app.services.crm_pipeline_timeline_service import CrmPipelineTimelineService
+
+                    await CrmPipelineTimelineService.proposal_accepted(
+                        db,
+                        tenant_id=effective_tenant,
+                        proposal_id=proposal.id,
+                        proposal_number=proposal.proposal_number,
+                        target_stage=target_stage,
+                        deal_id=deal.id,
+                        customer_id=proposal.customer_id,
+                        lead_id=proposal.lead_id,
+                        actor=actor,
+                    )
+                    await CrmPipelineService.transition_stage(
+                        db,
+                        deal.id,
+                        effective_tenant,
+                        PipelineStageUpdate(stage=target_stage, stage_override=False),
+                        stage_source="proposal",
+                        actor=actor,
+                    )
+                elif body.status in ("rejected", "expired"):
+                    from app.services.crm_pipeline_timeline_service import CrmPipelineTimelineService
+
+                    await CrmPipelineTimelineService.proposal_rejected(
+                        db,
+                        tenant_id=effective_tenant,
+                        proposal_id=proposal.id,
+                        proposal_number=proposal.proposal_number,
+                        status=body.status,
+                        deal_id=deal.id,
+                        customer_id=proposal.customer_id,
+                        lead_id=proposal.lead_id,
+                        actor=actor,
+                    )
+                    if body.close_deal_on_reject:
+                        await CrmPipelineService.transition_stage(
+                            db,
+                            deal.id,
+                            effective_tenant,
+                            PipelineStageUpdate(stage="closed_lost", stage_override=False),
+                            stage_source="proposal",
+                            actor=actor,
+                        )
+                else:
+                    await db.commit()
+                    return await cls.get_proposal(db, proposal_id, tenant_id)
+            else:
+                await db.commit()
+                return await cls.get_proposal(db, proposal_id, tenant_id)
+        else:
+            await db.commit()
+            return await cls.get_proposal(db, proposal_id, tenant_id)
+
         await db.commit()
         return await cls.get_proposal(db, proposal_id, tenant_id)
 
