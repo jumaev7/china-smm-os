@@ -8207,6 +8207,45 @@ export interface CrmPipelineManagerPerformance {
   generated_at: string;
 }
 
+export type CrmPipelineEventType =
+  | "deal_created"
+  | "lead_created"
+  | "status_changed"
+  | "stage_changed"
+  | "proposal_sent"
+  | "proposal_accepted"
+  | "proposal_rejected"
+  | "meeting_added"
+  | "publishing_connected"
+  | "campaign_launched"
+  | "client_message"
+  | "manual_note"
+  | "ai_recommendation"
+  | "owner_changed"
+  | "client_linked";
+
+export interface CrmPipelineEvent {
+  id: string;
+  tenant_id: string;
+  event_type: CrmPipelineEventType;
+  title: string;
+  description: string | null;
+  payload: Record<string, unknown> | null;
+  customer_id: string | null;
+  lead_id: string | null;
+  deal_id: string | null;
+  actor: string | null;
+  created_at: string;
+}
+
+export interface CrmPipelineStageUpdate {
+  stage: SalesDealStage;
+  probability?: number | null;
+  expected_close_date?: string | null;
+  notes?: string | null;
+  stage_override?: boolean;
+}
+
 export const crmPipelineApi = {
   listDeals: (params?: {
     stage?: SalesDealStage;
@@ -8215,6 +8254,32 @@ export const crmPipelineApi = {
     skip?: number;
     limit?: number;
   }) => api.get<{ items: SalesDeal[]; total: number }>("/crm-pipeline/deals", { params }),
+  updateDealStage: (id: string, data: CrmPipelineStageUpdate, params?: { tenant_id?: string }) =>
+    api.patch<SalesDeal>(`/crm-pipeline/deals/${id}/stage`, data, { params }),
+  getDealTimeline: (
+    id: string,
+    params?: { tenant_id?: string; skip?: number; limit?: number },
+  ) => api.get<{ items: CrmPipelineEvent[]; total: number }>(`/crm-pipeline/deals/${id}/timeline`, { params }),
+  addNote: (
+    id: string,
+    data: { title?: string | null; description: string },
+    params?: { tenant_id?: string },
+  ) => api.post<CrmPipelineEvent>(`/crm-pipeline/deals/${id}/notes`, data, { params }),
+  scheduleMeeting: (
+    id: string,
+    data: {
+      title: string;
+      description?: string | null;
+      scheduled_at?: string | null;
+      advance_stage?: boolean;
+    },
+    params?: { tenant_id?: string },
+  ) =>
+    api.post<{ event: CrmPipelineEvent; deal: SalesDeal }>(
+      `/crm-pipeline/deals/${id}/meetings`,
+      data,
+      { params },
+    ),
   dashboard: (params?: { tenant_id?: string }) =>
     api.get<CrmPipelineDashboardKpis>("/crm-pipeline/dashboard", { params }),
   revenueForecast: (params?: { tenant_id?: string }) =>

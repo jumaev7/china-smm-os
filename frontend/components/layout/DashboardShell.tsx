@@ -102,6 +102,8 @@ import {
 
   Briefcase,
 
+  Kanban,
+
   UsersRound,
 
   Target,
@@ -281,6 +283,8 @@ const NAV_SECTIONS: NavSection[] = [
 
       { href: "/sales", icon: TrendingUp, labelKey: "nav.salesDashboard" },
 
+      { href: "/crm-pipeline", icon: Kanban, labelKey: "nav.crmPipeline" },
+
       { href: "/leads", icon: Contact, labelKey: "nav.leads" },
 
       { href: "/deals", icon: Briefcase, labelKey: "nav.deals" },
@@ -449,6 +453,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
   {
     sectionKey: "nav.sectionTenantSales",
     items: [
+      { href: "/crm-pipeline", icon: Kanban, labelKey: "nav.crmPipeline" },
       { href: "/crm", icon: Contact, labelKey: "nav.crm" },
       { href: "/leads", icon: Contact, labelKey: "nav.leads" },
       { href: "/customers", icon: Users, labelKey: "nav.customers" },
