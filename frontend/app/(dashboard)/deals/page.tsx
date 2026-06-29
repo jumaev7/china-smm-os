@@ -16,15 +16,7 @@ import { useTranslation } from "@/lib/I18nProvider";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 import { RelatedEntitiesPanel } from "@/components/platform/RelatedEntitiesPanel";
-
-const STAGE_STYLE: Record<SalesDealStage, string> = {
-  new_lead: "border-sky-200 bg-sky-50/50",
-  contacted: "border-amber-200 bg-amber-50/50",
-  negotiation: "border-violet-200 bg-violet-50/50",
-  proposal_sent: "border-indigo-200 bg-indigo-50/50",
-  won: "border-emerald-200 bg-emerald-50/50",
-  lost: "border-gray-200 bg-gray-50/50",
-};
+import { CRM_PIPELINE_STAGE_COLORS } from "@/lib/crm-pipeline";
 
 function fmtMoney(value: number | null, currency = "USD") {
   if (value == null) return "—";
@@ -51,7 +43,7 @@ const EMPTY_FORM: DealForm = {
   title: "",
   value: "",
   currency: "USD",
-  stage: "new_lead",
+  stage: "lead",
   probability: "10",
   expected_close_date: "",
   notes: "",
@@ -108,14 +100,9 @@ export default function DealsPage() {
   const items = normalizeList(data) as SalesDeal[];
 
   const byStage = useMemo(() => {
-    const map: Record<SalesDealStage, SalesDeal[]> = {
-      new_lead: [],
-      contacted: [],
-      negotiation: [],
-      proposal_sent: [],
-      won: [],
-      lost: [],
-    };
+    const map = Object.fromEntries(
+      SALES_DEAL_STAGES.map((stage) => [stage, [] as SalesDeal[]]),
+    ) as Record<SalesDealStage, SalesDeal[]>;
     for (const deal of items) {
       if (map[deal.stage]) map[deal.stage].push(deal);
     }
@@ -187,7 +174,7 @@ export default function DealsPage() {
           {SALES_DEAL_STAGES.map((stage) => (
             <div
               key={stage}
-              className={cn("min-w-[220px] flex-1 rounded-xl border p-3", STAGE_STYLE[stage])}
+              className={cn("min-w-[220px] flex-1 rounded-xl border p-3", CRM_PIPELINE_STAGE_COLORS[stage])}
             >
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-gray-700 capitalize">
@@ -221,7 +208,7 @@ export default function DealsPage() {
                     <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
                       <button
                         type="button"
-                        disabled={stage === "new_lead" || moveMutation.isPending}
+                        disabled={stage === "lead" || moveMutation.isPending}
                         onClick={() => moveStage(deal, -1)}
                         className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
                         aria-label="Previous stage"
@@ -231,7 +218,7 @@ export default function DealsPage() {
                       <span className="text-[10px] text-gray-500">{deal.probability}%</span>
                       <button
                         type="button"
-                        disabled={stage === "lost" || moveMutation.isPending}
+                        disabled={stage === "closed_lost" || moveMutation.isPending}
                         onClick={() => moveStage(deal, 1)}
                         className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
                         aria-label="Next stage"
