@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -192,3 +193,64 @@ class PipelineMeetingCreate(BaseModel):
 class PipelineDealListResponse(BaseModel):
     items: list[dict]
     total: int
+
+
+class CrmPipelinePublishingHealthSummary(BaseModel):
+    total_accounts: int = 0
+    meta_connected_count: int = 0
+    healthy_count: int = 0
+    warning_count: int = 0
+    disconnected_count: int = 0
+    mock_count: int = 0
+    by_platform: dict[str, int] = Field(default_factory=dict)
+    by_health: dict[str, int] = Field(default_factory=dict)
+
+
+class CrmPipelineDashboardKpis(BaseModel):
+    pipeline_value: Decimal = Decimal("0")
+    weighted_expected_revenue: Decimal = Decimal("0")
+    win_rate: float | None = None
+    average_deal_time_days: float | None = None
+    open_deals_count: int = 0
+    stale_deals_count: int = 0
+    clients_active_count: int = 0
+    clients_publishing_count: int = 0
+    clients_connected_to_meta: int = 0
+    deals_won_count: int = 0
+    deals_lost_count: int = 0
+    publishing_health: CrmPipelinePublishingHealthSummary = Field(
+        default_factory=CrmPipelinePublishingHealthSummary,
+    )
+    generated_at: datetime
+
+
+class CrmPipelineForecastRow(BaseModel):
+    month: str
+    stage: str
+    deal_count: int = 0
+    pipeline_value: Decimal = Decimal("0")
+    weighted_revenue: Decimal = Decimal("0")
+
+
+class CrmPipelineRevenueForecastResponse(BaseModel):
+    rows: list[CrmPipelineForecastRow] = Field(default_factory=list)
+    total_weighted_revenue: Decimal = Decimal("0")
+    generated_at: datetime
+
+
+class CrmPipelineManagerPerformanceRow(BaseModel):
+    owner_id: UUID | None = None
+    owner_email: str | None = None
+    open_deals: int = 0
+    pipeline_value: Decimal = Decimal("0")
+    weighted_expected_revenue: Decimal = Decimal("0")
+    deals_won: int = 0
+    deals_lost: int = 0
+    win_rate: float | None = None
+    stale_deals: int = 0
+
+
+class CrmPipelineManagerPerformanceResponse(BaseModel):
+    managers: list[CrmPipelineManagerPerformanceRow] = Field(default_factory=list)
+    unassigned: CrmPipelineManagerPerformanceRow | None = None
+    generated_at: datetime

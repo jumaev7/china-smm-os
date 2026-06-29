@@ -7962,21 +7962,34 @@ export type SalesLeadStatus = "new" | "contacted" | "qualified" | "converted" | 
 export type SalesLeadPriority = "high" | "medium" | "low";
 export type SalesLeadSource = "manual" | "website" | "referral" | "exhibition" | "social" | "other";
 export type SalesDealStage =
-  | "new_lead"
+  | "lead"
+  | "qualified"
   | "contacted"
-  | "negotiation"
+  | "meeting_scheduled"
   | "proposal_sent"
-  | "won"
-  | "lost";
+  | "negotiation"
+  | "contract_pending"
+  | "client_active"
+  | "publishing_active"
+  | "expansion_upsell"
+  | "closed_won"
+  | "closed_lost";
+export type SalesStageSource = "manual" | "auto" | "proposal";
 export type SalesActivityType = "call" | "email" | "meeting" | "note" | "task" | "other";
 
 export const SALES_DEAL_STAGES: SalesDealStage[] = [
-  "new_lead",
+  "lead",
+  "qualified",
   "contacted",
-  "negotiation",
+  "meeting_scheduled",
   "proposal_sent",
-  "won",
-  "lost",
+  "negotiation",
+  "contract_pending",
+  "client_active",
+  "publishing_active",
+  "expansion_upsell",
+  "closed_won",
+  "closed_lost",
 ];
 
 export interface SalesCustomer {
@@ -7992,10 +8005,15 @@ export interface SalesCustomer {
   country: string | null;
   city: string | null;
   notes: string | null;
+  client_id?: string | null;
+  owner_id?: string | null;
+  primary_publishing_account_id?: string | null;
   created_at: string;
   updated_at: string;
   deal_count?: number;
   lead_count?: number;
+  owner_email?: string | null;
+  client_name?: string | null;
 }
 
 export interface SalesLead {
@@ -8031,11 +8049,16 @@ export interface SalesDeal {
   stage: SalesDealStage;
   probability: number;
   expected_close_date: string | null;
+  closed_at?: string | null;
+  owner_id?: string | null;
+  stage_source?: SalesStageSource;
+  stage_override?: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
   customer_name?: string | null;
   lead_name?: string | null;
+  owner_email?: string | null;
 }
 
 export interface SalesActivity {
@@ -8121,6 +8144,83 @@ export const salesCrmApi = {
     api.post<SalesActivity>("/sales-crm/activities", data),
   getLeadRelated: (id: string) => api.get<PlatformRelationships>(`/sales-crm/leads/${id}/related`),
   getDealRelated: (id: string) => api.get<PlatformRelationships>(`/sales-crm/deals/${id}/related`),
+};
+
+// ─── Executive CRM Pipeline (tenant-scoped) ───────────────────────────────────
+
+export interface CrmPipelinePublishingHealthSummary {
+  total_accounts: number;
+  meta_connected_count: number;
+  healthy_count: number;
+  warning_count: number;
+  disconnected_count: number;
+  mock_count: number;
+  by_platform: Record<string, number>;
+  by_health: Record<string, number>;
+}
+
+export interface CrmPipelineDashboardKpis {
+  pipeline_value: number;
+  weighted_expected_revenue: number;
+  win_rate: number | null;
+  average_deal_time_days: number | null;
+  open_deals_count: number;
+  stale_deals_count: number;
+  clients_active_count: number;
+  clients_publishing_count: number;
+  clients_connected_to_meta: number;
+  deals_won_count: number;
+  deals_lost_count: number;
+  publishing_health: CrmPipelinePublishingHealthSummary;
+  generated_at: string;
+}
+
+export interface CrmPipelineForecastRow {
+  month: string;
+  stage: SalesDealStage;
+  deal_count: number;
+  pipeline_value: number;
+  weighted_revenue: number;
+}
+
+export interface CrmPipelineRevenueForecast {
+  rows: CrmPipelineForecastRow[];
+  total_weighted_revenue: number;
+  generated_at: string;
+}
+
+export interface CrmPipelineManagerPerformanceRow {
+  owner_id: string | null;
+  owner_email: string | null;
+  open_deals: number;
+  pipeline_value: number;
+  weighted_expected_revenue: number;
+  deals_won: number;
+  deals_lost: number;
+  win_rate: number | null;
+  stale_deals: number;
+}
+
+export interface CrmPipelineManagerPerformance {
+  managers: CrmPipelineManagerPerformanceRow[];
+  unassigned: CrmPipelineManagerPerformanceRow | null;
+  generated_at: string;
+}
+
+export const crmPipelineApi = {
+  listDeals: (params?: {
+    stage?: SalesDealStage;
+    customer_id?: string;
+    tenant_id?: string;
+    skip?: number;
+    limit?: number;
+  }) => api.get<{ items: SalesDeal[]; total: number }>("/crm-pipeline/deals", { params }),
+  dashboard: (params?: { tenant_id?: string }) =>
+    api.get<CrmPipelineDashboardKpis>("/crm-pipeline/dashboard", { params }),
+  revenueForecast: (params?: { tenant_id?: string }) =>
+    api.get<CrmPipelineRevenueForecast>("/crm-pipeline/revenue-forecast", { params }),
+  managerPerformance: (params?: { tenant_id?: string }) =>
+    api.get<CrmPipelineManagerPerformance>("/crm-pipeline/manager-performance", { params }),
 };
 
 // ─── Platform cross-module relationships ───────────────────────────────────────

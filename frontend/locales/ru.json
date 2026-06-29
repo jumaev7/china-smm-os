@@ -1130,12 +1130,18 @@
     "stage": "Этап",
     "probability": "Вероятность %",
     "expectedClose": "Ожидаемое закрытие",
-    "stage.new_lead": "Новый лид",
+    "stage.lead": "Лид",
+    "stage.qualified": "Квалифицирован",
     "stage.contacted": "Контакт",
-    "stage.negotiation": "Переговоры",
+    "stage.meeting_scheduled": "Встреча назначена",
     "stage.proposal_sent": "КП отправлено",
-    "stage.won": "Выиграна",
-    "stage.lost": "Проиграна"
+    "stage.negotiation": "Переговоры",
+    "stage.contract_pending": "Ожидание договора",
+    "stage.client_active": "Клиент активен",
+    "stage.publishing_active": "Публикации активны",
+    "stage.expansion_upsell": "Расширение / допродажа",
+    "stage.closed_won": "Сделка выиграна",
+    "stage.closed_lost": "Сделка проиграна"
   },
   "clientBrief": {
     "title": "Отправить бриф кампании",

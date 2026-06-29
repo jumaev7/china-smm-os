@@ -1101,12 +1101,18 @@
     "stage": "阶段",
     "probability": "概率 %",
     "expectedClose": "预计成交日",
-    "stage.new_lead": "新线索",
+    "stage.lead": "线索",
+    "stage.qualified": "已筛选",
     "stage.contacted": "已联系",
-    "stage.negotiation": "谈判中",
+    "stage.meeting_scheduled": "会议已安排",
     "stage.proposal_sent": "已发提案",
-    "stage.won": "已成交",
-    "stage.lost": "已丢失"
+    "stage.negotiation": "谈判中",
+    "stage.contract_pending": "待签合同",
+    "stage.client_active": "客户活跃",
+    "stage.publishing_active": "发布活跃",
+    "stage.expansion_upsell": "扩展 / 追加销售",
+    "stage.closed_won": "已成交",
+    "stage.closed_lost": "已丢失"
   },
   "clientBrief": {
     "title": "提交活动简报",

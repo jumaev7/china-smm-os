@@ -1265,12 +1265,18 @@
     "stage": "Stage",
     "probability": "Probability %",
     "expectedClose": "Expected Close",
-    "stage.new_lead": "New Lead",
+    "stage.lead": "Lead",
+    "stage.qualified": "Qualified",
     "stage.contacted": "Contacted",
-    "stage.negotiation": "Negotiation",
+    "stage.meeting_scheduled": "Meeting Scheduled",
     "stage.proposal_sent": "Proposal Sent",
-    "stage.won": "Won",
-    "stage.lost": "Lost"
+    "stage.negotiation": "Negotiation",
+    "stage.contract_pending": "Contract Pending",
+    "stage.client_active": "Client Active",
+    "stage.publishing_active": "Publishing Active",
+    "stage.expansion_upsell": "Expansion / Upsell",
+    "stage.closed_won": "Closed Won",
+    "stage.closed_lost": "Closed Lost"
   },
   "clientBrief": {
     "title": "Submit Campaign Brief",

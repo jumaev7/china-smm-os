@@ -9,14 +9,18 @@ from app.core.database import get_db
 from app.core.endpoint_guard import run_guarded
 from app.core.pagination import DEFAULT_LIMIT, MAX_LIMIT
 from app.schemas.crm_pipeline import (
+    CrmPipelineDashboardKpis,
     CrmPipelineEventListResponse,
     CrmPipelineEventResponse,
+    CrmPipelineManagerPerformanceResponse,
+    CrmPipelineRevenueForecastResponse,
     PipelineMeetingCreate,
     PipelineNoteCreate,
     PipelineStageUpdate,
 )
 from app.schemas.sales_crm import SalesDealListResponse, SalesDealResponse
 from app.services.admin_rbac_service import CurrentAdminUser
+from app.services.crm_pipeline_dashboard_service import CrmPipelineDashboardService
 from app.services.crm_pipeline_service import CrmPipelineService
 from app.services.publishing_tenant_scope import resolve_publishing_tenant_id
 from app.services.tenant_auth_service import CurrentTenantUser, TenantAuthService
@@ -182,4 +186,49 @@ async def schedule_deal_meeting(
             db, deal_id, scope, body, actor=actor,
         ),
         label="crm-pipeline.deals.meetings",
+    )
+
+
+@router.get("/dashboard", response_model=CrmPipelineDashboardKpis)
+async def crm_pipeline_dashboard(
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_pipeline_view(user, admin)
+    scope = _resolve_tenant_scope(user, admin, tenant_id)
+    return await run_guarded(
+        CrmPipelineDashboardService.dashboard(db, scope),
+        label="crm-pipeline.dashboard",
+    )
+
+
+@router.get("/revenue-forecast", response_model=CrmPipelineRevenueForecastResponse)
+async def crm_pipeline_revenue_forecast(
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_pipeline_view(user, admin)
+    scope = _resolve_tenant_scope(user, admin, tenant_id)
+    return await run_guarded(
+        CrmPipelineDashboardService.revenue_forecast(db, scope),
+        label="crm-pipeline.revenue-forecast",
+    )
+
+
+@router.get("/manager-performance", response_model=CrmPipelineManagerPerformanceResponse)
+async def crm_pipeline_manager_performance(
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_pipeline_view(user, admin)
+    scope = _resolve_tenant_scope(user, admin, tenant_id)
+    return await run_guarded(
+        CrmPipelineDashboardService.manager_performance(db, scope),
+        label="crm-pipeline.manager-performance",
     )
