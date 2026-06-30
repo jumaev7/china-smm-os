@@ -16,7 +16,9 @@ import { useDashboardAuthGates } from "@/lib/useDashboardAuthGates";
 import { PLATFORM_CONFIG, cn } from "@/lib/utils";
 import Link from "next/link";
 import { Plus, Trash2, Radio, Link2, Unlink, CalendarDays, ListOrdered, RefreshCw, ShieldCheck, AlertTriangle, Building2 } from "lucide-react";
-import toast from "react-hot-toast";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
+import { PageHeader, PageShell } from "@/components/ui/design-system";
+import { useTranslation } from "@/lib/I18nProvider";
 
 const ALL_PLATFORMS: Platform[] = ["telegram", "instagram", "facebook", "tiktok", "linkedin"];
 
@@ -69,6 +71,7 @@ const QUICK_MOCK_BUTTONS: { platform: Platform; label: string }[] = [
 ];
 
 export default function PublishingPage() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const searchParams = useSearchParams();
   const { adminWidgetsEnabled, authReady } = useDashboardAuthGates();
@@ -240,28 +243,27 @@ export default function PublishingPage() {
   const metaMissing = metaConnection?.missing_permissions ?? [];
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Publishing Accounts</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Tenant-scoped publishing accounts — each tenant sees only its own connections.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link href="/publishing/calendar" className="btn-secondary flex items-center gap-1.5">
-            <CalendarDays size={15} />
-            Publish Calendar
-          </Link>
-          <Link href="/publishing/queue" className="btn-secondary flex items-center gap-1.5">
-            <ListOrdered size={15} />
-            Publishing Queue
-          </Link>
-          <button className="btn-primary" onClick={() => setShowAdd(true)}>
-            <Plus size={15} /> Add mock account
-          </button>
-        </div>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("publishingAccounts.title")}
+        subtitle={t("publishingAccounts.subtitle")}
+        icon={Radio}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link href="/publishing/calendar" className="btn-secondary flex items-center gap-1.5 text-sm">
+              <CalendarDays size={15} />
+              {t("nav.publishCalendar")}
+            </Link>
+            <Link href="/publishing/queue" className="btn-secondary flex items-center gap-1.5 text-sm">
+              <ListOrdered size={15} />
+              {t("nav.publishingQueue")}
+            </Link>
+            <button className="btn-primary text-sm" onClick={() => setShowAdd(true)}>
+              <Plus size={15} /> {t("publishingAccounts.addMock")}
+            </button>
+          </div>
+        }
+      />
 
       {adminWidgetsEnabled && (
         <div className="card p-4 mb-4 border-violet-100 bg-violet-50/40">
@@ -290,9 +292,14 @@ export default function PublishingPage() {
       )}
 
       {!tenantId ? (
-        <div className="card p-8 text-center text-sm text-gray-500">
-          {adminWidgetsEnabled ? "Select a tenant to view publishing accounts." : "Loading tenant scope…"}
-        </div>
+        <LoadingState
+          message={
+            adminWidgetsEnabled
+              ? t("publishingAccounts.selectTenant")
+              : t("common.loading")
+          }
+          variant="card"
+        />
       ) : (
         <>
       <div className="card p-4 mb-4 border-indigo-100 bg-indigo-50/40">
@@ -535,16 +542,28 @@ export default function PublishingPage() {
       )}
 
       {isLoading ? (
-        <div className="card p-8 animate-pulse">
-          <div className="h-4 bg-gray-100 rounded w-48 mb-3" />
-          <div className="h-3 bg-gray-100 rounded w-full" />
-        </div>
+        <LoadingState message={t("publishingAccounts.loading")} variant="card" />
       ) : accounts.length === 0 ? (
-        <div className="card p-8 text-center">
-          <Radio size={28} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-500">No publishing accounts yet.</p>
-          <p className="text-xs text-gray-400 mt-1">Add a mock account to test publishing from Content.</p>
-        </div>
+        <EmptyState
+          title={t("publishingAccounts.emptyTitle")}
+          description={t("publishingAccounts.emptyDescription")}
+          action={
+            <div className="flex flex-wrap gap-2 justify-center mt-2">
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                onClick={() => createMutation.mutate("telegram")}
+                disabled={createMutation.isPending}
+              >
+                <Plus size={14} />
+                {t("publishingAccounts.addTelegramMock")}
+              </button>
+              <Link href="/content" className="btn-secondary text-sm">
+                {t("publishingAccounts.goToContent")}
+              </Link>
+            </div>
+          }
+        />
       ) : (
         <div className="space-y-2">
           {accounts.map((account) => {
@@ -640,6 +659,6 @@ export default function PublishingPage() {
       )}
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Kanban, RefreshCw } from "lucide-react";
@@ -236,6 +237,11 @@ export default function CrmPipelinePage() {
         <EmptyState
           title={t("crmPipeline.noDeals")}
           description={t("crmPipeline.noDealsHint")}
+          action={
+            <Link href="/deals" className="btn-primary text-sm mt-2">
+              {t("crmPipeline.createDeal")}
+            </Link>
+          }
         />
       ) : (
         <div className="overflow-x-auto pb-4 -mx-1 px-1">

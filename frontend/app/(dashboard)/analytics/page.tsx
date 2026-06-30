@@ -1,47 +1,23 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { analyticsApi, Platform } from "@/lib/api";
 import { PLATFORM_CONFIG, cn } from "@/lib/utils";
 import { SimpleBarChart, HorizontalBarChart } from "@/components/analytics/SimpleBarChart";
+import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
+import { KpiCard, PageHeader, PageSection, PageShell } from "@/components/ui/design-system";
+import { useTranslation } from "@/lib/I18nProvider";
 import {
   BarChart3,
   FileText,
   CalendarClock,
   CheckCircle2,
   XCircle,
-  Activity,
-  TrendingUp,
-  type LucideIcon,
+  Plus,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-}: {
-  label: string;
-  value: number | string;
-  icon: LucideIcon;
-  color: string;
-}) {
-  return (
-    <div className="card p-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-[10px] uppercase tracking-wide text-gray-400 font-medium">{label}</p>
-          <p className="text-2xl font-semibold text-gray-900 mt-1 tabular-nums">{value}</p>
-        </div>
-        <div className={cn("w-9 h-9 rounded-lg flex items-center justify-center", color)}>
-          <Icon size={18} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function formatDayLabel(isoDate: string): string {
   try {
@@ -51,23 +27,33 @@ function formatDayLabel(isoDate: string): string {
   }
 }
 
+const QUERY_OPTS = { staleTime: 60_000, refetchOnWindowFocus: false } as const;
+
 export default function AnalyticsPage() {
   const router = useRouter();
+  const { t } = useTranslation();
 
-  const { data: overview, isLoading: overviewLoading } = useQuery({
+  const overviewQuery = useQuery({
     queryKey: ["analytics-overview"],
     queryFn: () => analyticsApi.overview().then((r) => r.data),
+    ...QUERY_OPTS,
   });
 
-  const { data: platforms, isLoading: platformsLoading } = useQuery({
+  const platformsQuery = useQuery({
     queryKey: ["analytics-platforms"],
     queryFn: () => analyticsApi.platforms().then((r) => r.data),
+    ...QUERY_OPTS,
   });
 
-  const { data: activity, isLoading: activityLoading } = useQuery({
+  const activityQuery = useQuery({
     queryKey: ["analytics-activity"],
     queryFn: () => analyticsApi.activity().then((r) => r.data),
+    ...QUERY_OPTS,
   });
+
+  const overview = overviewQuery.data;
+  const platforms = platformsQuery.data;
+  const activity = activityQuery.data;
 
   const postsChartData =
     overview?.posts_over_time.map((d) => ({
@@ -79,14 +65,17 @@ export default function AnalyticsPage() {
     activity?.daily_publishing.map((d) => ({
       label: formatDayLabel(d.date),
       value: d.attempts,
-      sublabel: `${d.success} ok`,
+      sublabel: t("analyticsPage.okCount", { count: d.success }),
     })) ?? [];
 
   const platformBarData =
     platforms?.platforms.map((p) => ({
       label: PLATFORM_CONFIG[p.platform]?.label ?? p.platform,
       value: p.post_count,
-      sublabel: `${p.success_count}/${p.attempt_count} publishes`,
+      sublabel: t("analyticsPage.publishRatio", {
+        success: p.success_count,
+        total: p.attempt_count,
+      }),
     })) ?? [];
 
   const clientBarData =
@@ -95,57 +84,92 @@ export default function AnalyticsPage() {
       value: c.post_count,
     })) ?? [];
 
-  const isLoading = overviewLoading || platformsLoading || activityLoading;
+  const isInitialLoading = overviewQuery.isLoading;
+  const isError = overviewQuery.isError;
+  const hasNoData =
+    !isInitialLoading &&
+    !isError &&
+    (overview?.total_posts ?? 0) === 0 &&
+    (overview?.publish_attempts_total ?? 0) === 0;
+
+  if (isInitialLoading) {
+    return (
+      <PageShell>
+        <LoadingState message={t("analyticsPage.loading")} />
+      </PageShell>
+    );
+  }
+
+  if (isError) {
+    return (
+      <PageShell>
+        <ErrorState
+          error={overviewQuery.error}
+          onRetry={() => {
+            overviewQuery.refetch();
+            platformsQuery.refetch();
+            activityQuery.refetch();
+          }}
+        />
+      </PageShell>
+    );
+  }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex items-center gap-2 mb-1">
-        <BarChart3 size={22} className="text-brand-600" />
-        <h1 className="text-xl font-semibold text-gray-900">Analytics</h1>
-      </div>
-      <p className="text-sm text-gray-500 mb-6">
-        Publishing performance and content activity (last 30 days)
-      </p>
+    <PageShell wide className="space-y-5">
+      <PageHeader
+        title={t("analyticsPage.title")}
+        subtitle={t("analyticsPage.subtitle")}
+        icon={BarChart3}
+      />
 
-      {isLoading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card p-4 h-24 animate-pulse bg-gray-50" />
-          ))}
-        </div>
+      {hasNoData ? (
+        <EmptyState
+          title={t("analyticsPage.emptyTitle")}
+          description={t("analyticsPage.emptyDescription")}
+          action={
+            <div className="flex flex-wrap gap-2 justify-center mt-2">
+              <Link href="/content" className="btn-primary text-sm">
+                <Plus size={14} />
+                {t("analyticsPage.goToContent")}
+              </Link>
+              <Link href="/publishing" className="btn-secondary text-sm">
+                {t("analyticsPage.goToPublishing")}
+              </Link>
+            </div>
+          }
+        />
       ) : (
         <>
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <StatCard
-              label="Total posts"
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <KpiCard
+              label={t("analyticsPage.kpiTotalPosts")}
               value={overview?.total_posts ?? 0}
               icon={FileText}
-              color="bg-slate-100 text-slate-600"
+              iconClassName="bg-slate-100 text-slate-600 dark-tenant:bg-white/[0.06] dark-tenant:text-slate-300"
             />
-            <StatCard
-              label="Scheduled"
+            <KpiCard
+              label={t("analyticsPage.kpiScheduled")}
               value={overview?.scheduled_posts ?? 0}
               icon={CalendarClock}
-              color="bg-purple-100 text-purple-600"
+              iconClassName="bg-purple-100 text-purple-600 dark-tenant:bg-violet-500/15 dark-tenant:text-violet-400"
             />
-            <StatCard
-              label="Published"
+            <KpiCard
+              label={t("analyticsPage.kpiPublished")}
               value={overview?.published_posts ?? 0}
               icon={CheckCircle2}
-              color="bg-emerald-100 text-emerald-600"
+              iconClassName="bg-emerald-100 text-emerald-600 dark-tenant:bg-emerald-500/15 dark-tenant:text-emerald-400"
             />
-            <StatCard
-              label="Failed"
+            <KpiCard
+              label={t("analyticsPage.kpiFailed")}
               value={overview?.failed_posts ?? 0}
               icon={XCircle}
-              color="bg-red-100 text-red-600"
+              iconClassName="bg-red-100 text-red-600 dark-tenant:bg-red-500/15 dark-tenant:text-red-400"
             />
           </div>
 
-          {/* Posts per platform — card row */}
-          <div className="card p-4 mb-6">
-            <h2 className="text-sm font-semibold text-gray-900 mb-3">Posts per platform</h2>
+          <PageSection title={t("analyticsPage.postsPerPlatform")}>
+            <div className="card p-4">
             {platforms?.platforms.length ? (
               <div className="flex flex-wrap gap-3">
                 {platforms.platforms.map((p) => {
@@ -161,86 +185,91 @@ export default function AnalyticsPage() {
                       <p className="text-xs font-bold">{cfg?.icon ?? p.platform}</p>
                       <p className="text-lg font-semibold tabular-nums">{p.post_count}</p>
                       <p className="text-[10px] opacity-70">
-                        {p.attempt_count} publish{p.attempt_count !== 1 ? "es" : ""}
+                        {t("analyticsPage.publishCount", { count: p.attempt_count })}
                       </p>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-xs text-gray-400">No platform data yet.</p>
+              <p className="text-xs text-gray-400 dark-tenant:text-slate-500">
+                {t("analyticsPage.noPlatformData")}
+              </p>
             )}
-          </div>
-
-          {/* Charts row */}
-          <div className="grid md:grid-cols-2 gap-4 mb-6">
-            <div className="card p-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-1">Posts over time</h2>
-              <p className="text-[10px] text-gray-400 mb-3">New content created per day</p>
-              <SimpleBarChart data={postsChartData} barClassName="bg-brand-500" />
             </div>
+          </PageSection>
 
-            <div className="card p-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-1">Publishing success rate</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <PageSection title={t("analyticsPage.postsOverTime")} description={t("analyticsPage.postsOverTimeHint")}>
+              <div className="card p-4">
+              <SimpleBarChart data={postsChartData} barClassName="bg-brand-500" />
+              </div>
+            </PageSection>
+
+            <PageSection title={t("analyticsPage.successRate")}>
+              <div className="card p-4">
               <div className="flex items-end gap-3 mb-4">
-                <span className="text-4xl font-bold text-brand-700 tabular-nums">
+                <span className="text-4xl font-bold text-brand-700 tabular-nums dark-tenant:text-violet-300">
                   {overview?.publishing_success_rate ?? 0}%
                 </span>
-                <span className="text-xs text-gray-500 pb-1">
-                  {overview?.publish_attempts_success ?? 0} / {overview?.publish_attempts_total ?? 0}{" "}
-                  attempts
+                <span className="text-xs text-gray-500 pb-1 dark-tenant:text-slate-400">
+                  {t("analyticsPage.attemptsRatio", {
+                    success: overview?.publish_attempts_success ?? 0,
+                    total: overview?.publish_attempts_total ?? 0,
+                  })}
                 </span>
               </div>
-              <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-3 bg-gray-100 rounded-full overflow-hidden dark-tenant:bg-white/[0.06]">
                 <div
                   className="h-full bg-emerald-500 rounded-full transition-all"
                   style={{ width: `${overview?.publishing_success_rate ?? 0}%` }}
                 />
               </div>
-              <p className="text-[10px] text-gray-400 mt-4 mb-2">Daily publish attempts</p>
+              <p className="text-[10px] text-gray-400 mt-4 mb-2 dark-tenant:text-slate-500">
+                {t("analyticsPage.dailyAttempts")}
+              </p>
               <SimpleBarChart
                 data={publishingChartData}
                 maxBars={14}
                 barClassName="bg-emerald-500"
               />
-            </div>
+              </div>
+            </PageSection>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4 mb-6">
-            <div className="card p-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-3">Posts by platform</h2>
+          <div className="grid md:grid-cols-2 gap-4">
+            <PageSection title={t("analyticsPage.postsByPlatform")}>
+              <div className="card p-4">
               <HorizontalBarChart data={platformBarData} barClassName="bg-brand-400" />
-            </div>
+              </div>
+            </PageSection>
 
-            <div className="card p-4">
-              <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
-                <TrendingUp size={14} className="text-brand-600" />
-                Most active clients
-              </h2>
+            <PageSection title={t("analyticsPage.mostActiveClients")}>
+              <div className="card p-4">
               <HorizontalBarChart data={clientBarData} barClassName="bg-violet-500" />
-            </div>
+              </div>
+            </PageSection>
           </div>
         </>
       )}
 
-      {/* Activity feed */}
-      <div className="card p-4">
-        <h2 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-1.5">
-          <Activity size={14} className="text-brand-600" />
-          Recent publishing activity
-        </h2>
-        {activityLoading ? (
-          <div className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="h-12 bg-gray-50 rounded animate-pulse" />
-            ))}
-          </div>
+      <PageSection title={t("analyticsPage.recentActivity")}>
+        <div className="card p-4">
+        {activityQuery.isLoading ? (
+          <LoadingState variant="inline" message={t("common.loading")} />
         ) : !activity?.recent_activity.length ? (
-          <p className="text-xs text-gray-400 py-4 text-center">
-            No publish attempts yet. Test publish from a content item to see activity here.
-          </p>
+          <EmptyState
+            title={t("analyticsPage.noActivityTitle")}
+            description={t("analyticsPage.noActivityDescription")}
+            action={
+              <Link href="/content" className="btn-primary text-sm mt-2">
+                {t("analyticsPage.goToContent")}
+              </Link>
+            }
+            className="p-6"
+          />
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-gray-100 dark-tenant:divide-white/[0.06]">
             {activity.recent_activity.map((item) => {
               const cfg = PLATFORM_CONFIG[item.platform as Platform];
               const ok = item.status === "success";
@@ -249,7 +278,7 @@ export default function AnalyticsPage() {
                   <button
                     type="button"
                     onClick={() => router.push(`/content/${item.content_id}`)}
-                    className="w-full flex items-start gap-3 py-3 text-left hover:bg-gray-50 rounded-lg px-2 -mx-2 transition-colors"
+                    className="w-full flex items-start gap-3 py-3 text-left hover:bg-gray-50 dark-tenant:hover:bg-white/[0.03] rounded-lg px-2 -mx-2 transition-colors"
                   >
                     <span
                       className={cn(
@@ -259,7 +288,7 @@ export default function AnalyticsPage() {
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-gray-900">
+                        <span className="text-sm font-medium text-gray-900 dark-tenant:text-slate-100">
                           {item.company_name}
                         </span>
                         <span
@@ -279,12 +308,14 @@ export default function AnalyticsPage() {
                           {item.status}
                         </span>
                       </div>
-                      <p className="text-xs text-gray-500 truncate">{item.content_title}</p>
+                      <p className="text-xs text-gray-500 truncate dark-tenant:text-slate-400">
+                        {item.content_title}
+                      </p>
                       {item.error && (
                         <p className="text-[10px] text-red-500 truncate mt-0.5">{item.error}</p>
                       )}
                     </div>
-                    <time className="text-[10px] text-gray-400 shrink-0">
+                    <time className="text-[10px] text-gray-400 shrink-0 dark-tenant:text-slate-500">
                       {format(parseISO(item.created_at), "MMM d, HH:mm")}
                     </time>
                   </button>
@@ -293,7 +324,8 @@ export default function AnalyticsPage() {
             })}
           </ul>
         )}
-      </div>
-    </div>
+        </div>
+      </PageSection>
+    </PageShell>
   );
 }

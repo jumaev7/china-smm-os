@@ -22,19 +22,21 @@ import {
   StatusBadge,
 } from "@/components/ui/design-system";
 
-const FILTERS = [
-  { label: "All", value: "" },
-  { label: "Needs Review", value: "needs_review" },
-  { label: "Needs Caption", value: "needs_caption" },
-  { label: "Draft", value: "draft" },
-  { label: "Ready", value: "ready" },
-  { label: "Approved", value: "approved" },
-  { label: "Scheduled", value: "scheduled" },
-  { label: "Published", value: "published" },
-  { label: "Failed", value: "failed" },
-  { label: "Telegram", value: "telegram" },
-  { label: "Telegram Group", value: "telegram_group" },
-];
+import { useTranslation } from "@/lib/I18nProvider";
+
+const FILTER_KEYS = [
+  { labelKey: "contentPage.filterAll", value: "" },
+  { labelKey: "contentPage.filterNeedsReview", value: "needs_review" },
+  { labelKey: "contentPage.filterNeedsCaption", value: "needs_caption" },
+  { labelKey: "contentPage.filterDraft", value: "draft" },
+  { labelKey: "contentPage.filterReady", value: "ready" },
+  { labelKey: "contentPage.filterApproved", value: "approved" },
+  { labelKey: "contentPage.filterScheduled", value: "scheduled" },
+  { labelKey: "contentPage.filterPublished", value: "published" },
+  { labelKey: "contentPage.filterFailed", value: "failed" },
+  { labelKey: "contentPage.filterTelegram", value: "telegram" },
+  { labelKey: "contentPage.filterTelegramGroup", value: "telegram_group" },
+] as const;
 
 const STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" | "neutral"> = {
   published: "success",
@@ -49,6 +51,7 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" |
 };
 
 export default function ContentPage() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
@@ -111,30 +114,31 @@ export default function ContentPage() {
 
   const items = normalizeList<ContentItem>(data);
   const clientMap = Object.fromEntries(clientOptions.map((c) => [c.id, c]));
+  const filters = FILTER_KEYS.map((f) => ({ label: t(f.labelKey), value: f.value }));
 
   return (
     <PageShell>
       <PageHeader
-        title="Content Studio"
-        subtitle={`${data?.total ?? 0} items in your library`}
+        title={t("contentPage.title")}
+        subtitle={t("contentPage.subtitle", { count: data?.total ?? 0 })}
         icon={FileText}
         iconClassName="text-violet-400"
         actions={
           <button className="btn-primary" onClick={() => setShowNew(true)}>
-            <Plus size={15} /> New content
+            <Plus size={15} /> {t("contentPage.newContent")}
           </button>
         }
       />
 
       <ActionBar>
         <Filter size={14} className="text-slate-400 shrink-0" />
-        <FilterBar options={FILTERS} value={activeFilter} onChange={handleFilter} />
+        <FilterBar options={filters} value={activeFilter} onChange={handleFilter} />
         <select
           className="input w-auto text-xs min-w-[140px]"
           value={clientFilter}
           onChange={(e) => setClientFilter(e.target.value)}
         >
-          <option value="">All clients</option>
+          <option value="">{t("contentPage.allClients")}</option>
           {clientOptions.map((c) => (
             <option key={c.id} value={c.id}>{c.company_name}</option>
           ))}
@@ -147,23 +151,23 @@ export default function ContentPage() {
         <ErrorState error={error} onRetry={() => refetch()} />
       ) : items.length === 0 ? (
         <EmptyState
-          title={activeFilter ? "No matching content" : "No content yet"}
+          title={activeFilter ? t("contentPage.emptyFiltered") : t("contentPage.emptyTitle")}
           description={
             activeFilter
-              ? "Try a different filter or create content manually."
+              ? t("contentPage.emptyFilteredHint")
               : telegramConnected
-                ? "Post a photo or video to your linked Telegram group — it will appear here. You can also create content manually."
-                : "Connect your Telegram group first (Onboarding → Channels), then post media to the group or upload manually."
+                ? t("contentPage.emptyTelegramConnected")
+                : t("contentPage.emptyNoTelegram")
           }
           action={
             <div className="flex flex-wrap gap-2 justify-center mt-2">
               {!telegramConnected && (
                 <Link href="/onboarding/channels" className="btn-primary text-sm">
-                  Connect Telegram
+                  {t("contentPage.connectTelegram")}
                 </Link>
               )}
               <button className="btn-secondary text-sm" onClick={() => setShowNew(true)}>
-                <Plus size={14} /> Create manually
+                <Plus size={14} /> {t("contentPage.createManually")}
               </button>
             </div>
           }

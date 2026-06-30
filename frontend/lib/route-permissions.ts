@@ -38,6 +38,7 @@ export const TENANT_NAV_PATHS = [
   "/communications/templates",
   "/wechat",
   "/whatsapp",
+  "/analytics",
   "/growth-center",
   "/export-growth",
   "/customer-success",

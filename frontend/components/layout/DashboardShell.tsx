@@ -471,7 +471,8 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
   {
     sectionKey: "nav.sectionTenantAnalytics",
     items: [
-      { href: "/growth-center", icon: BarChart3, labelKey: "nav.growthCenter" },
+      { href: "/analytics", icon: BarChart3, labelKey: "nav.analytics" },
+      { href: "/growth-center", icon: TrendingUp, labelKey: "nav.growthCenter" },
       { href: "/export-growth", icon: Globe, labelKey: "nav.exportGrowth" },
       { href: "/customer-success", icon: Sparkles, labelKey: "nav.customerSuccess" },
     ],

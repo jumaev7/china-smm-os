@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "@/lib/I18nProvider";
 import { cn } from "@/lib/utils";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
+import { PageHeader, PageShell } from "@/components/ui/design-system";
 
 const STATUSES: SalesProposalStatus[] = ["draft", "sent", "viewed", "accepted", "rejected", "expired"];
 
@@ -94,20 +95,18 @@ export default function ProposalsPage() {
   const deals = normalizeList(dealsData);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="page-title flex items-center gap-2">
-            <FileSignature size={22} className="text-brand-600" />
-            {t("commercialProposals.title")}
-          </h1>
-          <p className="text-sm text-gray-500 mt-1">{t("commercialProposals.subtitle")}</p>
-        </div>
-        <Link href="/proposals/new" className="btn-primary text-sm flex items-center gap-1.5">
-          <Plus size={15} />
-          {t("commercialProposals.create")}
-        </Link>
-      </div>
+    <PageShell>
+      <PageHeader
+        title={t("commercialProposals.title")}
+        subtitle={t("commercialProposals.subtitle")}
+        icon={FileSignature}
+        actions={
+          <Link href="/proposals/new" className="btn-primary text-sm flex items-center gap-1.5">
+            <Plus size={15} />
+            {t("commercialProposals.create")}
+          </Link>
+        }
+      />
 
       <div className="card p-4 flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-[200px]">
@@ -244,6 +243,6 @@ export default function ProposalsPage() {
           </table>
         </div>
       )}
-    </div>
+    </PageShell>
   );
 }
