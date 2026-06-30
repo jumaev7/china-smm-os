@@ -8207,6 +8207,84 @@ export interface CrmPipelineManagerPerformance {
   generated_at: string;
 }
 
+export type CrmPipelineRecommendationCategory =
+  | "follow_up_required"
+  | "likely_to_close"
+  | "deal_at_risk"
+  | "proposal_expiring"
+  | "proposal_waiting_too_long"
+  | "publishing_opportunity"
+  | "meta_connection_opportunity"
+  | "upsell_opportunity"
+  | "inactive_customer"
+  | "high_value_lead"
+  | "stale_deal"
+  | "manager_overload";
+
+export type CrmPipelineRecommendationSeverity = "critical" | "high" | "medium" | "low";
+
+export interface CrmPipelineIntelligenceRecommendation {
+  rule_id: string;
+  category: CrmPipelineRecommendationCategory;
+  category_label: string;
+  severity: CrmPipelineRecommendationSeverity;
+  confidence: number;
+  business_reason: string;
+  recommended_action: string;
+  deal_id: string | null;
+  deal_title: string | null;
+  customer_id: string | null;
+  customer_name: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  proposal_id: string | null;
+  proposal_title: string | null;
+  owner_id: string | null;
+  owner_email: string | null;
+  priority_score: number;
+  generated_at: string;
+}
+
+export interface CrmPipelineIntelligence {
+  recommendations: CrmPipelineIntelligenceRecommendation[];
+  total: number;
+  generated_at: string;
+}
+
+export interface CrmPipelineManagerInsightRow {
+  owner_id: string | null;
+  owner_email: string | null;
+  open_deals: number;
+  pipeline_value: number;
+  weighted_expected_revenue: number;
+  stale_deals: number;
+  likely_wins: number;
+  workload_score: number;
+  avg_response_time_days: number | null;
+  deals_won: number;
+  deals_lost: number;
+  win_rate: number | null;
+}
+
+export interface CrmPipelineManagerInsights {
+  managers: CrmPipelineManagerInsightRow[];
+  unassigned: CrmPipelineManagerInsightRow | null;
+  generated_at: string;
+}
+
+export interface CrmPipelineMorningBrief {
+  todays_priorities: CrmPipelineIntelligenceRecommendation[];
+  top_risks: CrmPipelineIntelligenceRecommendation[];
+  top_opportunities: CrmPipelineIntelligenceRecommendation[];
+  revenue_forecast: CrmPipelineRevenueForecast;
+  pipeline_health: CrmPipelineDashboardKpis;
+  manager_workload: CrmPipelineManagerInsights;
+  publishing_health: CrmPipelinePublishingHealthSummary;
+  meta_health: CrmPipelinePublishingHealthSummary;
+  all_recommendations: CrmPipelineIntelligenceRecommendation[];
+  generated_at: string;
+}
+
 export type CrmPipelineEventType =
   | "deal_created"
   | "lead_created"
@@ -8286,6 +8364,12 @@ export const crmPipelineApi = {
     api.get<CrmPipelineRevenueForecast>("/crm-pipeline/revenue-forecast", { params }),
   managerPerformance: (params?: { tenant_id?: string }) =>
     api.get<CrmPipelineManagerPerformance>("/crm-pipeline/manager-performance", { params }),
+  intelligenceRecommendations: (params?: { tenant_id?: string }) =>
+    api.get<CrmPipelineIntelligence>("/crm-pipeline/intelligence/recommendations", { params }),
+  morningBrief: (params?: { tenant_id?: string }) =>
+    api.get<CrmPipelineMorningBrief>("/crm-pipeline/intelligence/morning-brief", { params }),
+  managerInsights: (params?: { tenant_id?: string }) =>
+    api.get<CrmPipelineManagerInsights>("/crm-pipeline/intelligence/manager-insights", { params }),
 };
 
 // ─── Platform cross-module relationships ───────────────────────────────────────

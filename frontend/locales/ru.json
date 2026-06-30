@@ -1203,6 +1203,23 @@
       "metaConnected": "Meta подключён",
       "managerPerformance": "Активные менеджеры",
       "activeManagers": "с открытыми сделками"
+    },
+    "executiveBrief": {
+      "title": "Исполнительный бриф",
+      "subtitle": "Детерминированная аналитика продаж — приоритеты без AI-чата",
+      "ruleEngine": "Движок правил v1",
+      "confidence": "уверенность",
+      "priorities": "Приоритеты на сегодня",
+      "risks": "Главные риски",
+      "opportunities": "Возможности",
+      "pipelineValue": "Воронка",
+      "weightedRevenue": "Взвешенная",
+      "openDeals": "Открытые",
+      "alerts": "Алерты",
+      "noAlerts": "Нет срочных алертов — воронка в норме.",
+      "likelyWins": "Вероятные победы",
+      "avgResponse": "Ср. отклик",
+      "workload": "Нагрузка"
     }
   },
   "clientBrief": {

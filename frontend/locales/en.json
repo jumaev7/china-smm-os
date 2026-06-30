@@ -1338,6 +1338,23 @@
       "metaConnected": "Meta Connected",
       "managerPerformance": "Active Managers",
       "activeManagers": "with open deals"
+    },
+    "executiveBrief": {
+      "title": "Executive Brief",
+      "subtitle": "Rule-based sales intelligence — deterministic priorities, no AI chat",
+      "ruleEngine": "Rule engine v1",
+      "confidence": "confidence",
+      "priorities": "Today's Priorities",
+      "risks": "Top Risks",
+      "opportunities": "Top Opportunities",
+      "pipelineValue": "Pipeline",
+      "weightedRevenue": "Weighted",
+      "openDeals": "Open Deals",
+      "alerts": "Alerts",
+      "noAlerts": "No actionable alerts — pipeline looks healthy.",
+      "likelyWins": "Likely Wins",
+      "avgResponse": "Avg Response",
+      "workload": "Workload"
     }
   },
   "clientBrief": {

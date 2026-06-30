@@ -1,6 +1,6 @@
 "use client";
 
-import type { CrmPipelineManagerPerformance } from "@/lib/api";
+import type { CrmPipelineManagerInsights } from "@/lib/api";
 import { crmPipelineFmtMoney } from "@/lib/crm-pipeline";
 import { useTranslation } from "@/lib/I18nProvider";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,7 @@ export function ManagerPerformancePanel({
   data,
   className,
 }: {
-  data: CrmPipelineManagerPerformance;
+  data: CrmPipelineManagerInsights;
   className?: string;
 }) {
   const { t } = useTranslation();
@@ -40,9 +40,10 @@ export function ManagerPerformancePanel({
               <th className="px-4 py-2.5 font-medium">{t("crmPipeline.manager")}</th>
               <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.openDeals")}</th>
               <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.pipelineValue")}</th>
-              <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.weighted")}</th>
-              <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.winRate")}</th>
+              <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.executiveBrief.likelyWins")}</th>
               <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.stale")}</th>
+              <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.executiveBrief.avgResponse")}</th>
+              <th className="px-4 py-2.5 font-medium text-right">{t("crmPipeline.executiveBrief.workload")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50 dark-tenant:divide-white/[0.04]">
@@ -60,11 +61,8 @@ export function ManagerPerformancePanel({
                 <td className="px-4 py-2.5 text-right tabular-nums font-medium text-gray-900 dark-tenant:text-slate-100">
                   {crmPipelineFmtMoney(row.pipeline_value)}
                 </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-gray-600 dark-tenant:text-slate-400">
-                  {crmPipelineFmtMoney(row.weighted_expected_revenue)}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-gray-600 dark-tenant:text-slate-400">
-                  {row.win_rate != null ? `${row.win_rate}%` : "—"}
+                <td className="px-4 py-2.5 text-right tabular-nums text-emerald-600 dark-tenant:text-emerald-400">
+                  {row.likely_wins}
                 </td>
                 <td className="px-4 py-2.5 text-right tabular-nums">
                   {row.stale_deals > 0 ? (
@@ -74,6 +72,23 @@ export function ManagerPerformancePanel({
                   ) : (
                     <span className="text-gray-400">0</span>
                   )}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-gray-600 dark-tenant:text-slate-400">
+                  {row.avg_response_time_days != null ? `${row.avg_response_time_days}d` : "—"}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums">
+                  <span
+                    className={cn(
+                      "text-xs font-medium px-1.5 py-0.5 rounded",
+                      row.workload_score >= 70
+                        ? "bg-red-100 text-red-700 dark-tenant:bg-red-500/15 dark-tenant:text-red-300"
+                        : row.workload_score >= 40
+                          ? "bg-amber-100 text-amber-700 dark-tenant:bg-amber-500/15 dark-tenant:text-amber-300"
+                          : "bg-gray-100 text-gray-600 dark-tenant:bg-white/5 dark-tenant:text-slate-400",
+                    )}
+                  >
+                    {row.workload_score}
+                  </span>
                 </td>
               </tr>
             ))}

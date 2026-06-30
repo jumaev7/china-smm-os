@@ -1174,6 +1174,23 @@
       "metaConnected": "Meta 已连接",
       "managerPerformance": "活跃经理",
       "activeManagers": "有进行中交易"
+    },
+    "executiveBrief": {
+      "title": "执行简报",
+      "subtitle": "基于规则的销售洞察 — 确定性优先级，无 AI 聊天",
+      "ruleEngine": "规则引擎 v1",
+      "confidence": "置信度",
+      "priorities": "今日优先事项",
+      "risks": "主要风险",
+      "opportunities": "主要机会",
+      "pipelineValue": "管道",
+      "weightedRevenue": "加权",
+      "openDeals": "进行中",
+      "alerts": "警报",
+      "noAlerts": "无可操作警报 — 管道状态良好。",
+      "likelyWins": "可能成交",
+      "avgResponse": "平均响应",
+      "workload": "工作量"
     }
   },
   "clientBrief": {

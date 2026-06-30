@@ -12,7 +12,10 @@ from app.schemas.crm_pipeline import (
     CrmPipelineDashboardKpis,
     CrmPipelineEventListResponse,
     CrmPipelineEventResponse,
+    CrmPipelineIntelligenceResponse,
+    CrmPipelineManagerInsightsResponse,
     CrmPipelineManagerPerformanceResponse,
+    CrmPipelineMorningBrief,
     CrmPipelineRevenueForecastResponse,
     PipelineMeetingCreate,
     PipelineNoteCreate,
@@ -21,6 +24,7 @@ from app.schemas.crm_pipeline import (
 from app.schemas.sales_crm import SalesDealListResponse, SalesDealResponse
 from app.services.admin_rbac_service import CurrentAdminUser
 from app.services.crm_pipeline_dashboard_service import CrmPipelineDashboardService
+from app.services.crm_pipeline_intelligence_service import CrmPipelineIntelligenceService
 from app.services.crm_pipeline_service import CrmPipelineService
 from app.services.publishing_tenant_scope import resolve_publishing_tenant_id
 from app.services.tenant_auth_service import CurrentTenantUser, TenantAuthService
@@ -231,4 +235,49 @@ async def crm_pipeline_manager_performance(
     return await run_guarded(
         CrmPipelineDashboardService.manager_performance(db, scope),
         label="crm-pipeline.manager-performance",
+    )
+
+
+@router.get("/intelligence/recommendations", response_model=CrmPipelineIntelligenceResponse)
+async def crm_pipeline_intelligence_recommendations(
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_pipeline_view(user, admin)
+    scope = _resolve_tenant_scope(user, admin, tenant_id)
+    return await run_guarded(
+        CrmPipelineIntelligenceService.generate_recommendations(db, scope),
+        label="crm-pipeline.intelligence.recommendations",
+    )
+
+
+@router.get("/intelligence/morning-brief", response_model=CrmPipelineMorningBrief)
+async def crm_pipeline_intelligence_morning_brief(
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_pipeline_view(user, admin)
+    scope = _resolve_tenant_scope(user, admin, tenant_id)
+    return await run_guarded(
+        CrmPipelineIntelligenceService.morning_brief(db, scope),
+        label="crm-pipeline.intelligence.morning-brief",
+    )
+
+
+@router.get("/intelligence/manager-insights", response_model=CrmPipelineManagerInsightsResponse)
+async def crm_pipeline_intelligence_manager_insights(
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_pipeline_view(user, admin)
+    scope = _resolve_tenant_scope(user, admin, tenant_id)
+    return await run_guarded(
+        CrmPipelineIntelligenceService.manager_insights(db, scope),
+        label="crm-pipeline.intelligence.manager-insights",
     )

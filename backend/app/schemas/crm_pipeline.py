@@ -254,3 +254,115 @@ class CrmPipelineManagerPerformanceResponse(BaseModel):
     managers: list[CrmPipelineManagerPerformanceRow] = Field(default_factory=list)
     unassigned: CrmPipelineManagerPerformanceRow | None = None
     generated_at: datetime
+
+
+# ─── Executive AI Sales Assistant (rule engine v1) ─────────────────────────────
+
+RecommendationCategory = Literal[
+    "follow_up_required",
+    "likely_to_close",
+    "deal_at_risk",
+    "proposal_expiring",
+    "proposal_waiting_too_long",
+    "publishing_opportunity",
+    "meta_connection_opportunity",
+    "upsell_opportunity",
+    "inactive_customer",
+    "high_value_lead",
+    "stale_deal",
+    "manager_overload",
+]
+
+RecommendationSeverity = Literal["critical", "high", "medium", "low"]
+
+RECOMMENDATION_CATEGORIES: list[RecommendationCategory] = [
+    "follow_up_required",
+    "likely_to_close",
+    "deal_at_risk",
+    "proposal_expiring",
+    "proposal_waiting_too_long",
+    "publishing_opportunity",
+    "meta_connection_opportunity",
+    "upsell_opportunity",
+    "inactive_customer",
+    "high_value_lead",
+    "stale_deal",
+    "manager_overload",
+]
+
+RECOMMENDATION_CATEGORY_LABELS: dict[str, str] = {
+    "follow_up_required": "Follow-up Required",
+    "likely_to_close": "Likely To Close",
+    "deal_at_risk": "Deal At Risk",
+    "proposal_expiring": "Proposal Expiring",
+    "proposal_waiting_too_long": "Proposal Waiting Too Long",
+    "publishing_opportunity": "Publishing Opportunity",
+    "meta_connection_opportunity": "Meta Connection Opportunity",
+    "upsell_opportunity": "Upsell Opportunity",
+    "inactive_customer": "Inactive Customer",
+    "high_value_lead": "High Value Lead",
+    "stale_deal": "Stale Deal",
+    "manager_overload": "Manager Overload",
+}
+
+
+class CrmPipelineIntelligenceRecommendation(BaseModel):
+    rule_id: str
+    category: RecommendationCategory
+    category_label: str
+    severity: RecommendationSeverity
+    confidence: int = Field(ge=0, le=100)
+    business_reason: str
+    recommended_action: str
+    deal_id: UUID | None = None
+    deal_title: str | None = None
+    customer_id: UUID | None = None
+    customer_name: str | None = None
+    lead_id: UUID | None = None
+    lead_name: str | None = None
+    proposal_id: UUID | None = None
+    proposal_title: str | None = None
+    owner_id: UUID | None = None
+    owner_email: str | None = None
+    priority_score: int = 0
+    generated_at: datetime
+
+
+class CrmPipelineIntelligenceResponse(BaseModel):
+    recommendations: list[CrmPipelineIntelligenceRecommendation] = Field(default_factory=list)
+    total: int = 0
+    generated_at: datetime
+
+
+class CrmPipelineManagerInsightRow(BaseModel):
+    owner_id: UUID | None = None
+    owner_email: str | None = None
+    open_deals: int = 0
+    pipeline_value: Decimal = Decimal("0")
+    weighted_expected_revenue: Decimal = Decimal("0")
+    stale_deals: int = 0
+    likely_wins: int = 0
+    workload_score: int = Field(ge=0, le=100)
+    avg_response_time_days: float | None = None
+    deals_won: int = 0
+    deals_lost: int = 0
+    win_rate: float | None = None
+
+
+class CrmPipelineManagerInsightsResponse(BaseModel):
+    managers: list[CrmPipelineManagerInsightRow] = Field(default_factory=list)
+    unassigned: CrmPipelineManagerInsightRow | None = None
+    generated_at: datetime
+
+
+class CrmPipelineMorningBrief(BaseModel):
+    todays_priorities: list[CrmPipelineIntelligenceRecommendation] = Field(default_factory=list)
+    top_risks: list[CrmPipelineIntelligenceRecommendation] = Field(default_factory=list)
+    top_opportunities: list[CrmPipelineIntelligenceRecommendation] = Field(default_factory=list)
+    revenue_forecast: CrmPipelineRevenueForecastResponse
+    pipeline_health: CrmPipelineDashboardKpis
+    manager_workload: CrmPipelineManagerInsightsResponse
+    publishing_health: CrmPipelinePublishingHealthSummary
+    meta_health: CrmPipelinePublishingHealthSummary
+    all_recommendations: list[CrmPipelineIntelligenceRecommendation] = Field(default_factory=list)
+    generated_at: datetime

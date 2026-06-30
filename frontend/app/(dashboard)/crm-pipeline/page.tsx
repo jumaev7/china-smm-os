@@ -13,6 +13,7 @@ import {
   type CrmPipelineFilters,
 } from "@/components/crm-pipeline/CrmPipelineFilters";
 import { DealDrawer } from "@/components/crm-pipeline/DealDrawer";
+import { ExecutiveBriefPanel } from "@/components/crm-pipeline/ExecutiveBriefPanel";
 import { ManagerPerformancePanel } from "@/components/crm-pipeline/ManagerPerformancePanel";
 import { PipelineColumn } from "@/components/crm-pipeline/PipelineColumn";
 import { PipelineKpiRow } from "@/components/crm-pipeline/PipelineKpiRow";
@@ -77,8 +78,14 @@ export default function CrmPipelinePage() {
   });
 
   const managerQuery = useQuery({
-    queryKey: [...QUERY_ROOT, "manager-performance"],
-    queryFn: () => crmPipelineApi.managerPerformance().then((r) => r.data),
+    queryKey: [...QUERY_ROOT, "manager-insights"],
+    queryFn: () => crmPipelineApi.managerInsights().then((r) => r.data),
+  });
+
+  const briefQuery = useQuery({
+    queryKey: [...QUERY_ROOT, "morning-brief"],
+    queryFn: () => crmPipelineApi.morningBrief().then((r) => r.data),
+    staleTime: 120_000,
   });
 
   const dealsQuery = useQuery({
@@ -173,6 +180,7 @@ export default function CrmPipelinePage() {
     dashboardQuery.refetch();
     dealsQuery.refetch();
     managerQuery.refetch();
+    briefQuery.refetch();
     customersQuery.refetch();
     accountsQuery.refetch();
   };
@@ -226,6 +234,8 @@ export default function CrmPipelinePage() {
           </button>
         }
       />
+
+      <ExecutiveBriefPanel brief={briefQuery.data} isLoading={briefQuery.isLoading} />
 
       <PipelineKpiRow dashboard={dashboard} managerPerf={managerPerf} />
 

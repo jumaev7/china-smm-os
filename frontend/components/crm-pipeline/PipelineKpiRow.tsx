@@ -9,7 +9,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import type { CrmPipelineDashboardKpis, CrmPipelineManagerPerformance } from "@/lib/api";
+import type { CrmPipelineDashboardKpis, CrmPipelineManagerInsights } from "@/lib/api";
 import { crmPipelineFmtMoney } from "@/lib/crm-pipeline";
 import { useTranslation } from "@/lib/I18nProvider";
 import { KpiCard } from "@/components/ui/design-system/KpiCard";
@@ -19,7 +19,7 @@ export function PipelineKpiRow({
   managerPerf,
 }: {
   dashboard: CrmPipelineDashboardKpis;
-  managerPerf: CrmPipelineManagerPerformance;
+  managerPerf: CrmPipelineManagerInsights;
 }) {
   const { t } = useTranslation();
   const activeManagers = managerPerf.managers.filter((m) => m.open_deals > 0).length;
