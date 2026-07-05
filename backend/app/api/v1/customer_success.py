@@ -16,8 +16,16 @@ from app.schemas.customer_success import (
     ExecutiveReport,
     RoiConfigWeights,
 )
+from app.schemas.customer_success_journey import (
+    CustomerSuccessJourneyDashboard,
+    JourneyAdminOverview,
+    JourneyDismissRecommendationResponse,
+    JourneyRefreshResponse,
+    NorthStarGoalOption,
+)
 from app.services.admin_rbac_service import CurrentAdminUser
 from app.services.customer_success_service import CustomerSuccessService
+from app.services.customer_success_journey_service import CustomerSuccessJourneyService
 from app.services.tenant_auth_service import CurrentTenantUser
 
 router = APIRouter(prefix="/customer-success", tags=["customer-success"])
@@ -51,6 +59,97 @@ def _require_customer_success_view(
 def _require_admin(admin: CurrentAdminUser | None) -> None:
     if not admin:
         raise HTTPException(status_code=403, detail="Admin access required")
+
+
+@router.get("/journey", response_model=CustomerSuccessJourneyDashboard)
+async def customer_success_journey(
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_customer_success_view(user, admin)
+    if admin:
+        raise HTTPException(status_code=400, detail="Journey dashboard requires tenant context")
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return await run_guarded(
+        CustomerSuccessJourneyService.dashboard(db, user.tenant_id),
+        label="customer-success.journey",
+    )
+
+
+@router.get("/journey/checkpoints", response_model=CustomerSuccessJourneyDashboard)
+async def customer_success_journey_checkpoints(
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_customer_success_view(user, admin)
+    if admin:
+        raise HTTPException(status_code=400, detail="Journey checkpoints require tenant context")
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return await run_guarded(
+        CustomerSuccessJourneyService.dashboard(db, user.tenant_id),
+        label="customer-success.journey.checkpoints",
+    )
+
+
+@router.get("/journey/north-star-options", response_model=list[NorthStarGoalOption])
+async def customer_success_journey_north_star_options():
+    return CustomerSuccessJourneyService.north_star_options()
+
+
+@router.post("/journey/refresh", response_model=JourneyRefreshResponse)
+async def customer_success_journey_refresh(
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_customer_success_view(user, admin)
+    if admin:
+        raise HTTPException(status_code=400, detail="Journey refresh requires tenant context")
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return await run_guarded(
+        CustomerSuccessJourneyService.refresh(db, user.tenant_id),
+        label="customer-success.journey.refresh",
+    )
+
+
+@router.post(
+    "/journey/recommendations/{recommendation_id}/dismiss",
+    response_model=JourneyDismissRecommendationResponse,
+)
+async def customer_success_journey_dismiss_recommendation(
+    recommendation_id: str,
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_customer_success_view(user, admin)
+    if admin:
+        raise HTTPException(status_code=400, detail="Journey dismiss requires tenant context")
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return await run_guarded(
+        CustomerSuccessJourneyService.dismiss_recommendation(
+            db, user.tenant_id, recommendation_id,
+        ),
+        label="customer-success.journey.dismiss",
+    )
+
+
+@router.get("/admin/journey-overview", response_model=JourneyAdminOverview)
+async def admin_journey_overview(
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_admin(admin)
+    return await run_guarded(
+        CustomerSuccessJourneyService.admin_overview(db),
+        label="customer-success.admin.journey-overview",
+    )
 
 
 @router.get("/dashboard", response_model=CustomerSuccessDashboardResponse)

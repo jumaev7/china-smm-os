@@ -55,6 +55,26 @@ class TenantOnboardingProgress(Base):
     growth_center_viewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+    platform_readiness_percent: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
+    )
+    business_readiness_percent: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
+    )
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    executive_walkthrough_progress: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    first_success_state: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    auto_config_applied: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False,
+    )
+    auto_config_applied_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    onboarding_version: Mapped[int] = mapped_column(
+        Integer, default=2, server_default="2", nullable=False,
+    )
+    north_star_goal: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    platform_ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(),
     )

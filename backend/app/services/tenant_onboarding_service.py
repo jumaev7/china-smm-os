@@ -22,43 +22,57 @@ from app.models.tenant import Tenant
 from app.models.tenant_onboarding import TenantOnboardingProgress
 from app.schemas.tenant_onboarding import (
     OnboardingAdminAnalytics,
+    OnboardingAdminReadinessOverview,
     OnboardingAdminTenantItem,
+    OnboardingAdminTenantReadinessItem,
     OnboardingAssistantResponse,
     OnboardingChannelStatus,
     OnboardingCompanyProfile,
     OnboardingDashboardResponse,
     OnboardingMilestoneMessage,
+    OnboardingReadinessResponse,
     OnboardingStepItem,
 )
 from app.services.ai_service import _validate_api_key, get_openai
 from app.services.factory_profile_service import FactoryProfileService
+from app.services.onboarding_readiness_service import (
+    BUSINESS_STEP_DEFS,
+    PLATFORM_STEP_DEFS,
+    OnboardingReadinessService,
+)
 from app.services.tenant_onboarding_demo_service import TenantOnboardingDemoService
 from app.services.tenant_service import TenantService
 
 logger = logging.getLogger(__name__)
 
-CHECKLIST_STEPS: tuple[tuple[str, str, str, int], ...] = (
-    ("company_profile", "Company profile completed", "/onboarding/company", 5),
-    ("telegram_connected", "Telegram connected", "/onboarding/channels", 8),
-    ("first_content", "First content uploaded", "/onboarding/content", 10),
-    ("first_lead", "First lead created", "/onboarding/crm", 5),
-    ("first_buyer", "First buyer created", "/onboarding/crm", 5),
-    ("first_deal", "First deal created", "/onboarding/crm", 5),
-    ("first_proposal", "First proposal created", "/onboarding/proposal", 8),
-    ("growth_center_viewed", "Growth Center viewed", "/onboarding/growth-center", 3),
+CHECKLIST_STEPS: tuple[tuple[str, str, str, int], ...] = tuple(
+    (s.id, s.label, s.route, s.estimated_minutes) for s in PLATFORM_STEP_DEFS
+) + tuple(
+    (s.id, s.label, s.route, s.estimated_minutes) for s in BUSINESS_STEP_DEFS
 )
 
 TOTAL_STEPS = len(CHECKLIST_STEPS)
+PLATFORM_STEP_COUNT = len(PLATFORM_STEP_DEFS)
 
 MILESTONE_MESSAGES: dict[str, str] = {
+    "company_info": "Your company profile is set up.",
     "company_profile": "Your company profile is set up.",
+    "industry_selection": "Your industry is configured.",
+    "logo_branding": "Your brand identity is ready.",
+    "team_members": "Your team workspace is active.",
     "telegram_connected": "Telegram is connected to your workspace.",
+    "facebook_connected": "Facebook is connected for publishing.",
+    "instagram_connected": "Instagram is connected for publishing.",
+    "products_imported": "Your product catalog is imported.",
+    "first_ai_content": "Your first content item is ready.",
     "first_content": "Your first content item is ready.",
+    "publishing_readiness": "Publishing is ready to go live.",
+    "executive_walkthrough": "You've toured the executive dashboard.",
+    "growth_center_viewed": "Your business dashboard is active.",
     "first_lead": "Your first lead has been created.",
     "first_buyer": "Your first buyer is now in the system.",
     "first_deal": "Your first deal is tracking in the pipeline.",
     "first_proposal": "Your first proposal is ready.",
-    "growth_center_viewed": "Your business dashboard is active.",
 }
 
 _RULE_GUIDANCE: list[tuple[re.Pattern[str], str, str | None]] = [
@@ -151,10 +165,12 @@ class TenantOnboardingService:
             select(FactoryPlatformProfile).where(FactoryPlatformProfile.tenant_id == tenant_id),
         )).scalar_one_or_none()
         company_data = progress.company_profile or {}
-        if (profile and profile.company_name and profile.industry and profile.country) or (
-            company_data.get("company_name") and company_data.get("industry")
-        ):
-            detected["company_profile"] = now
+        if (profile and profile.company_name and profile.country) or company_data.get("company_name"):
+            detected["company_info"] = now
+        if (profile and profile.industry) or company_data.get("industry"):
+            detected["industry_selection"] = now
+        if profile and profile.logo_url:
+            detected["logo_branding"] = now
 
         client_ids = await TenantService.get_client_ids_for_tenant(db, tenant_id)
         if client_ids:
@@ -174,7 +190,7 @@ class TenantOnboardingService:
                 select(func.count()).select_from(MediaFile).where(MediaFile.client_id.in_(client_ids)),
             )).scalar_one()
             if content_count > 0 or media_count > 0:
-                detected["first_content"] = now
+                detected["first_ai_content"] = now
 
         if (await db.execute(
             select(func.count()).select_from(SalesLead).where(SalesLead.tenant_id == tenant_id),
@@ -197,7 +213,12 @@ class TenantOnboardingService:
             detected["first_proposal"] = now
 
         if progress.growth_center_viewed_at:
+            detected["executive_walkthrough"] = progress.growth_center_viewed_at
             detected["growth_center_viewed"] = progress.growth_center_viewed_at
+
+        walkthrough = progress.executive_walkthrough_progress or {}
+        if len(walkthrough.get("completed_panels") or []) >= 5:
+            detected["executive_walkthrough"] = _utcnow()
 
         return detected
 
@@ -222,7 +243,7 @@ class TenantOnboardingService:
         tenant_id: UUID,
         *,
         return_new_milestones: bool = True,
-    ) -> tuple[TenantOnboardingProgress, list[OnboardingMilestoneMessage]]:
+    ) -> tuple[TenantOnboardingProgress, list[OnboardingMilestoneMessage], OnboardingReadinessResponse]:
         progress = await TenantOnboardingService.get_or_create_progress(db, tenant_id)
         detected = await TenantOnboardingService._detect_step_completion(db, tenant_id, progress)
         steps_completed: dict[str, str] = dict(progress.steps_completed or {})
@@ -235,7 +256,7 @@ class TenantOnboardingService:
         for step_id, ts in detected.items():
             if step_id not in steps_completed:
                 steps_completed[step_id] = ts.isoformat()
-                if step_id == "first_content" and not progress.first_content_at:
+                if step_id in ("first_ai_content", "first_content") and not progress.first_content_at:
                     progress.first_content_at = ts
                 elif step_id == "first_lead" and not progress.first_lead_at:
                     progress.first_lead_at = ts
@@ -262,11 +283,20 @@ class TenantOnboardingService:
 
         completed_count = sum(1 for s, _, _, _ in CHECKLIST_STEPS if s in steps_completed)
         progress.steps_completed = steps_completed
-        progress.progress_percent = round(completed_count / TOTAL_STEPS * 100)
 
-        if completed_count == 0 and progress.status == "not_started":
+        readiness = await OnboardingReadinessService.sync_progress(db, tenant_id, progress)
+        progress.progress_percent = readiness.overall_percent
+
+        if progress.manually_completed:
+            progress.status = "completed"
+            progress.progress_percent = 100
+            if not progress.completed_at:
+                progress.completed_at = now
+        elif completed_count == 0 and progress.status == "not_started":
             pass
-        elif completed_count >= TOTAL_STEPS or progress.manually_completed:
+        elif readiness.platform_ready and all(
+            s.status == "completed" for s in readiness.business_steps if s.required
+        ):
             progress.status = "completed"
             if not progress.completed_at:
                 progress.completed_at = now
@@ -276,13 +306,58 @@ class TenantOnboardingService:
                 progress.started_at = now
 
         await db.flush()
-        return progress, new_milestones
+        return progress, new_milestones, readiness
 
     @staticmethod
     def _dashboard_from_progress(
         progress: TenantOnboardingProgress,
         new_milestones: list[OnboardingMilestoneMessage] | None = None,
+        readiness: OnboardingReadinessResponse | None = None,
     ) -> OnboardingDashboardResponse:
+        if readiness:
+            steps = [
+                OnboardingStepItem(
+                    id=s.id,
+                    label=s.label,
+                    completed=s.status == "completed",
+                    completed_at=s.completed_at,
+                    route=s.route,
+                    estimated_minutes=s.estimated_minutes,
+                )
+                for s in readiness.platform_steps + readiness.business_steps
+            ]
+            completed = sum(1 for s in steps if s.completed)
+            remaining = [s for s in steps if not s.completed]
+            next_legacy = None
+            if readiness.next_step:
+                next_legacy = OnboardingStepItem(
+                    id=readiness.next_step.id,
+                    label=readiness.next_step.label,
+                    completed=False,
+                    route=readiness.next_step.route,
+                    estimated_minutes=readiness.next_step.estimated_minutes,
+                )
+            return OnboardingDashboardResponse(
+                tenant_id=progress.tenant_id,
+                status=progress.status,
+                progress_percent=readiness.overall_percent,
+                completed_steps=completed,
+                total_steps=len(steps),
+                remaining_steps=len(remaining),
+                estimated_minutes_remaining=readiness.estimated_minutes_remaining,
+                steps=steps,
+                next_step=next_legacy,
+                demo_data_generated=progress.demo_data_generated,
+                new_milestones=new_milestones or [],
+                started_at=progress.started_at,
+                completed_at=progress.completed_at,
+                platform_readiness_percent=readiness.platform_readiness_percent,
+                business_readiness_percent=readiness.business_readiness_percent,
+                overall_percent=readiness.overall_percent,
+                platform_ready=readiness.platform_ready,
+                readiness=readiness,
+            )
+
         steps = TenantOnboardingService._build_steps(progress.steps_completed or {})
         completed = sum(1 for s in steps if s.completed)
         remaining = [s for s in steps if not s.completed]
@@ -307,8 +382,50 @@ class TenantOnboardingService:
 
     @staticmethod
     async def dashboard(db: AsyncSession, tenant_id: UUID) -> OnboardingDashboardResponse:
-        progress, milestones = await TenantOnboardingService.refresh_progress(db, tenant_id)
-        return TenantOnboardingService._dashboard_from_progress(progress, milestones)
+        progress, milestones, readiness = await TenantOnboardingService.refresh_progress(db, tenant_id)
+        return TenantOnboardingService._dashboard_from_progress(progress, milestones, readiness)
+
+    @staticmethod
+    async def readiness(db: AsyncSession, tenant_id: UUID) -> OnboardingReadinessResponse:
+        progress = await TenantOnboardingService.get_or_create_progress(db, tenant_id)
+        _, _, readiness = await TenantOnboardingService.refresh_progress(db, tenant_id)
+        return readiness
+
+    @staticmethod
+    async def record_executive_walkthrough_panel(
+        db: AsyncSession,
+        tenant_id: UUID,
+        panel_id: str,
+    ) -> OnboardingReadinessResponse:
+        progress = await TenantOnboardingService.get_or_create_progress(db, tenant_id)
+        return await OnboardingReadinessService.record_walkthrough_panel(
+            db, tenant_id, progress, panel_id,
+        )
+
+    @staticmethod
+    async def save_north_star_goal(
+        db: AsyncSession,
+        tenant_id: UUID,
+        goal: str,
+    ) -> tuple[str, str]:
+        valid = {
+            "export_leads", "better_publishing", "more_buyers",
+            "better_sales_pipeline", "brand_awareness",
+        }
+        if goal not in valid:
+            raise HTTPException(status_code=400, detail="Invalid north star goal")
+        labels = {
+            "export_leads": "More export leads",
+            "better_publishing": "Better publishing",
+            "more_buyers": "More buyers",
+            "better_sales_pipeline": "Better sales pipeline",
+            "brand_awareness": "Brand awareness",
+        }
+        progress = await TenantOnboardingService.get_or_create_progress(db, tenant_id)
+        progress.north_star_goal = goal
+        progress.last_activity_at = _utcnow()
+        await db.commit()
+        return goal, labels[goal]
 
     @staticmethod
     async def save_company_profile(
@@ -355,8 +472,8 @@ class TenantOnboardingService:
                     client.company_name = profile.company_name
 
         await db.flush()
-        progress, milestones = await TenantOnboardingService.refresh_progress(db, tenant_id)
-        return TenantOnboardingService._dashboard_from_progress(progress, milestones)
+        progress, milestones, readiness = await TenantOnboardingService.refresh_progress(db, tenant_id)
+        return TenantOnboardingService._dashboard_from_progress(progress, milestones, readiness)
 
     @staticmethod
     async def channel_status(db: AsyncSession, tenant_id: UUID) -> OnboardingChannelStatus:
@@ -408,8 +525,8 @@ class TenantOnboardingService:
             progress.started_at = _utcnow()
             progress.status = "in_progress"
         await db.flush()
-        progress, milestones = await TenantOnboardingService.refresh_progress(db, tenant_id)
-        return counts, TenantOnboardingService._dashboard_from_progress(progress, milestones)
+        progress, milestones, readiness = await TenantOnboardingService.refresh_progress(db, tenant_id)
+        return counts, TenantOnboardingService._dashboard_from_progress(progress, milestones, readiness)
 
     @staticmethod
     async def record_growth_center_visit(
@@ -420,8 +537,8 @@ class TenantOnboardingService:
         if not progress.growth_center_viewed_at:
             progress.growth_center_viewed_at = _utcnow()
         await db.flush()
-        progress, milestones = await TenantOnboardingService.refresh_progress(db, tenant_id)
-        return TenantOnboardingService._dashboard_from_progress(progress, milestones)
+        progress, milestones, readiness = await TenantOnboardingService.refresh_progress(db, tenant_id)
+        return TenantOnboardingService._dashboard_from_progress(progress, milestones, readiness)
 
     @staticmethod
     async def assistant_chat(
@@ -547,6 +664,9 @@ class TenantOnboardingService:
                 company_name=tenant.company_name,
                 status=status,
                 progress_percent=p.progress_percent if p else 0,
+                platform_readiness_percent=p.platform_readiness_percent if p else 0,
+                business_readiness_percent=p.business_readiness_percent if p else 0,
+                platform_ready=bool(p and p.platform_readiness_percent >= 100),
                 completed_steps=completed_count,
                 total_steps=TOTAL_STEPS,
                 demo_data_generated=bool(p and p.demo_data_generated),
@@ -576,6 +696,90 @@ class TenantOnboardingService:
             avg_time_to_first_proposal_hours=_avg(t_proposal),
             avg_time_to_growth_center_hours=_avg(t_gc),
             drop_off_by_step=drop_offs,
+            tenants=items,
+        )
+
+    @staticmethod
+    async def admin_readiness_overview(db: AsyncSession) -> OnboardingAdminReadinessOverview:
+        tenants = (
+            await db.execute(select(Tenant).order_by(Tenant.created_at.desc()).limit(200))
+        ).scalars().all()
+        progress_rows = (await db.execute(select(TenantOnboardingProgress))).scalars().all()
+        by_tenant = {p.tenant_id: p for p in progress_rows}
+
+        items: list[OnboardingAdminTenantReadinessItem] = []
+        missing_counts: dict[str, int] = {}
+        platform_scores: list[int] = []
+        business_scores: list[int] = []
+        overall_scores: list[int] = []
+        platform_ready_count = blocked_count = inactive_count = 0
+        inactivity_threshold = _utcnow().timestamp() - (7 * 24 * 3600)
+
+        for tenant in tenants:
+            p = by_tenant.get(tenant.id)
+            platform_pct = p.platform_readiness_percent if p else 0
+            business_pct = p.business_readiness_percent if p else 0
+            overall_pct = p.progress_percent if p else 0
+            platform_scores.append(platform_pct)
+            business_scores.append(business_pct)
+            overall_scores.append(overall_pct)
+
+            readiness_row = None
+            if p:
+                readiness_row = await OnboardingReadinessService.evaluate(db, tenant.id, p)
+
+            platform_ready = bool(readiness_row and readiness_row.platform_ready)
+            if platform_ready:
+                platform_ready_count += 1
+
+            top_missing: str | None = None
+            blocked = False
+            if readiness_row and readiness_row.next_step:
+                top_missing = readiness_row.next_step.id
+                if readiness_row.next_step.status == "blocked":
+                    blocked = True
+                    blocked_count += 1
+                elif readiness_row.next_step.status == "missing":
+                    missing_counts[top_missing] = missing_counts.get(top_missing, 0) + 1
+
+            last_at = p.last_activity_at if p else None
+            inactive = False
+            if p and p.status == "in_progress" and last_at:
+                inactive = last_at.timestamp() < inactivity_threshold
+                if inactive:
+                    inactive_count += 1
+
+            items.append(OnboardingAdminTenantReadinessItem(
+                tenant_id=tenant.id,
+                company_name=tenant.company_name,
+                status=p.status if p else "not_started",
+                platform_readiness_percent=platform_pct,
+                business_readiness_percent=business_pct,
+                overall_percent=overall_pct,
+                platform_ready=platform_ready,
+                estimated_minutes_remaining=(
+                    readiness_row.estimated_minutes_remaining if readiness_row else 0
+                ),
+                last_activity_at=last_at,
+                top_missing_step=top_missing,
+                blocked=blocked,
+                inactive=inactive,
+            ))
+
+        total = len(tenants)
+
+        def _avg(vals: list[int]) -> float:
+            return round(sum(vals) / len(vals), 1) if vals else 0.0
+
+        return OnboardingAdminReadinessOverview(
+            total_tenants=total,
+            average_platform_readiness=_avg(platform_scores),
+            average_business_readiness=_avg(business_scores),
+            average_overall_readiness=_avg(overall_scores),
+            platform_ready_count=platform_ready_count,
+            blocked_tenant_count=blocked_count,
+            inactive_tenant_count=inactive_count,
+            top_missing_steps=missing_counts,
             tenants=items,
         )
 

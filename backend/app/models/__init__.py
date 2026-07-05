@@ -80,6 +80,7 @@ from app.models.marketplace import (
 )
 from app.models.business_matching import BusinessMatchingOpportunity
 from app.models.tenant_onboarding import TenantOnboardingProgress
+from app.models.customer_success_journey import TenantCustomerSuccessJourney
 from app.models.platform_ops import (
     PilotFactory,
     PlatformFeedback,
@@ -183,6 +184,7 @@ __all__ = [
     "WhatsAppProviderConfiguration",
     "WhatsAppProviderWebhookEvent",
     "TenantOnboardingProgress",
+    "TenantCustomerSuccessJourney",
     "PilotFactory",
     "PlatformFeedback",
     "PlatformAuditLog",

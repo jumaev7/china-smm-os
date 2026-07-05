@@ -11,6 +11,7 @@ from app.core.tenant_access import get_current_tenant_user
 from app.schemas.tenant_onboarding import (
     OnboardingAdminActionResponse,
     OnboardingAdminAnalytics,
+    OnboardingAdminReadinessOverview,
     OnboardingAssistantRequest,
     OnboardingAssistantResponse,
     OnboardingChannelStatus,
@@ -19,13 +20,45 @@ from app.schemas.tenant_onboarding import (
     OnboardingDashboardResponse,
     OnboardingDemoDataResponse,
     OnboardingGrowthCenterVisitResponse,
+    OnboardingNorthStarGoalRequest,
+    OnboardingNorthStarGoalResponse,
+    OnboardingReadinessResponse,
     OnboardingRefreshResponse,
+    ExecutiveWalkthroughPanelRequest,
+    ExecutiveWalkthroughPanelResponse,
 )
 from app.services.admin_rbac_service import CurrentAdminUser
 from app.services.tenant_auth_service import CurrentTenantUser
 from app.services.tenant_onboarding_service import TenantOnboardingService
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+
+@router.get("/readiness", response_model=OnboardingReadinessResponse)
+async def onboarding_readiness(
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await run_guarded(
+        TenantOnboardingService.readiness(db, user.tenant_id),
+        label="onboarding.readiness",
+    )
+
+
+@router.post("/executive-walkthrough/panel", response_model=ExecutiveWalkthroughPanelResponse)
+async def onboarding_executive_walkthrough_panel(
+    body: ExecutiveWalkthroughPanelRequest,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    readiness = await TenantOnboardingService.record_executive_walkthrough_panel(
+        db, user.tenant_id, body.panel_id,
+    )
+    return ExecutiveWalkthroughPanelResponse(
+        recorded=True,
+        panel_id=body.panel_id,
+        readiness=readiness,
+    )
 
 
 @router.get("/dashboard", response_model=OnboardingDashboardResponse)
@@ -46,6 +79,18 @@ async def onboarding_refresh(
 ):
     progress = await TenantOnboardingService.dashboard(db, user.tenant_id)
     return OnboardingRefreshResponse(refreshed=True, progress=progress)
+
+
+@router.post("/north-star-goal", response_model=OnboardingNorthStarGoalResponse)
+async def onboarding_save_north_star_goal(
+    body: OnboardingNorthStarGoalRequest,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    goal, label = await TenantOnboardingService.save_north_star_goal(
+        db, user.tenant_id, body.goal,
+    )
+    return OnboardingNorthStarGoalResponse(saved=True, goal=goal, label=label)
 
 
 @router.post("/company", response_model=OnboardingCompanySaveResponse)
@@ -97,6 +142,17 @@ async def onboarding_assistant_chat(
 ):
     return await TenantOnboardingService.assistant_chat(
         db, user.tenant_id, body.message, body.context_step,
+    )
+
+
+@router.get("/admin/readiness", response_model=OnboardingAdminReadinessOverview)
+async def onboarding_admin_readiness(
+    admin: CurrentAdminUser = Depends(require_admin_permission("tenants.read")),
+    db: AsyncSession = Depends(get_db),
+):
+    return await run_guarded(
+        TenantOnboardingService.admin_readiness_overview(db),
+        label="onboarding.admin_readiness",
     )
 
 

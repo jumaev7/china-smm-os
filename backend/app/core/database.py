@@ -183,6 +183,80 @@ async def ensure_dev_schema_patches() -> None:
         await conn.run_sync(_ensure_meta_publishing_columns)
         await conn.run_sync(_ensure_publishing_accounts_tenant_id)
         await conn.run_sync(_ensure_executive_crm_pipeline_columns)
+        await conn.run_sync(_ensure_tenant_onboarding_v2_columns)
+        await conn.run_sync(_ensure_customer_success_journey_columns)
+
+
+def _ensure_customer_success_journey_columns(connection) -> None:
+    """Customer Success Journey — post-platform-ready adoption engine."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+
+    if "tenant_onboarding_progress" in tables:
+        for sql in (
+            "ALTER TABLE tenant_onboarding_progress "
+            "ADD COLUMN IF NOT EXISTS north_star_goal VARCHAR(40)",
+            "ALTER TABLE tenant_onboarding_progress "
+            "ADD COLUMN IF NOT EXISTS platform_ready_at TIMESTAMPTZ",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_customer_success_journey" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_customer_success_journey ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'not_started', "
+            "started_at TIMESTAMPTZ, "
+            "completed_at TIMESTAMPTZ, "
+            "current_checkpoint VARCHAR(20), "
+            "milestones_achieved JSONB, "
+            "timeline_entries JSONB, "
+            "weekly_wins JSONB, "
+            "dismissed_recommendations JSONB, "
+            "last_refreshed_at TIMESTAMPTZ, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_tenant_customer_success_journey_tenant_id "
+            "ON tenant_customer_success_journey (tenant_id)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_customer_success_journey_status "
+            "ON tenant_customer_success_journey (status)"
+        ))
+
+
+def _ensure_tenant_onboarding_v2_columns(connection) -> None:
+    """Customer onboarding v2 — dual readiness metrics and walkthrough state."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    if "tenant_onboarding_progress" not in inspector.get_table_names():
+        return
+    for sql in (
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS platform_readiness_percent INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS business_readiness_percent INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS executive_walkthrough_progress JSONB",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS first_success_state JSONB",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS auto_config_applied BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS auto_config_applied_at TIMESTAMPTZ",
+        "ALTER TABLE tenant_onboarding_progress "
+        "ADD COLUMN IF NOT EXISTS onboarding_version INTEGER NOT NULL DEFAULT 2",
+    ):
+        connection.execute(text(sql))
 
 
 def _ensure_executive_crm_pipeline_columns(connection) -> None:

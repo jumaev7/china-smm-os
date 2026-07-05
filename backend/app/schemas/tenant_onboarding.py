@@ -2,10 +2,87 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+StepReadinessStatus = Literal["completed", "missing", "recommended", "blocked"]
+StepCategory = Literal["platform", "business", "first_success"]
+
+
+class OnboardingStepReadiness(BaseModel):
+    id: str
+    label: str
+    category: StepCategory
+    status: StepReadinessStatus
+    route: str
+    estimated_minutes: int = 3
+    weight: int = 5
+    required: bool = True
+    completed_at: datetime | None = None
+    why_it_matters: str = ""
+    next_action: str = ""
+    business_value: str = ""
+
+
+class ExecutiveWalkthroughPanel(BaseModel):
+    id: str
+    label: str
+    route: str
+    estimated_minutes: int = 2
+    completed: bool = False
+
+
+class ExecutiveWalkthroughState(BaseModel):
+    panels: list[ExecutiveWalkthroughPanel] = Field(default_factory=list)
+    completed_panels: int = 0
+    total_panels: int = 0
+    completed: bool = False
+
+
+class FirstSuccessSummary(BaseModel):
+    achieved_count: int = 0
+    total_count: int = 0
+    percent: int = 0
+    milestones: list[OnboardingStepReadiness] = Field(default_factory=list)
+    celebrated: bool = False
+
+
+class OnboardingNorthStarGoalRequest(BaseModel):
+    goal: Literal[
+        "export_leads",
+        "better_publishing",
+        "more_buyers",
+        "better_sales_pipeline",
+        "brand_awareness",
+    ]
+
+
+class OnboardingNorthStarGoalResponse(BaseModel):
+    saved: bool
+    goal: str
+    label: str
+
+
+class OnboardingReadinessResponse(BaseModel):
+    tenant_id: UUID
+    platform_readiness_percent: int
+    business_readiness_percent: int
+    overall_percent: int
+    estimated_minutes_remaining: int
+    platform_ready: bool
+    platform_steps: list[OnboardingStepReadiness] = Field(default_factory=list)
+    business_steps: list[OnboardingStepReadiness] = Field(default_factory=list)
+    first_success: FirstSuccessSummary | None = None
+    next_step: OnboardingStepReadiness | None = None
+    executive_walkthrough: ExecutiveWalkthroughState
+    publishing_blockers: list[str] = Field(default_factory=list)
+    auto_config_applied: bool = False
+    last_activity_at: datetime | None = None
+    onboarding_version: int = 2
+    north_star_goal: str | None = None
+    north_star_label: str | None = None
 
 
 class OnboardingStepItem(BaseModel):
@@ -37,6 +114,11 @@ class OnboardingDashboardResponse(BaseModel):
     new_milestones: list[OnboardingMilestoneMessage] = Field(default_factory=list)
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    platform_readiness_percent: int = 0
+    business_readiness_percent: int = 0
+    overall_percent: int = 0
+    platform_ready: bool = False
+    readiness: OnboardingReadinessResponse | None = None
 
 
 class OnboardingCompanyProfile(BaseModel):
@@ -91,11 +173,51 @@ class OnboardingGrowthCenterVisitResponse(BaseModel):
     progress: OnboardingDashboardResponse
 
 
+class ExecutiveWalkthroughPanelRequest(BaseModel):
+    panel_id: str
+
+
+class ExecutiveWalkthroughPanelResponse(BaseModel):
+    recorded: bool
+    panel_id: str
+    readiness: OnboardingReadinessResponse
+
+
+class OnboardingAdminTenantReadinessItem(BaseModel):
+    tenant_id: UUID
+    company_name: str
+    status: str
+    platform_readiness_percent: int
+    business_readiness_percent: int
+    overall_percent: int
+    platform_ready: bool
+    estimated_minutes_remaining: int
+    last_activity_at: datetime | None = None
+    top_missing_step: str | None = None
+    blocked: bool = False
+    inactive: bool = False
+
+
+class OnboardingAdminReadinessOverview(BaseModel):
+    total_tenants: int
+    average_platform_readiness: float
+    average_business_readiness: float
+    average_overall_readiness: float
+    platform_ready_count: int
+    blocked_tenant_count: int
+    inactive_tenant_count: int
+    top_missing_steps: dict[str, int] = Field(default_factory=dict)
+    tenants: list[OnboardingAdminTenantReadinessItem] = Field(default_factory=list)
+
+
 class OnboardingAdminTenantItem(BaseModel):
     tenant_id: UUID
     company_name: str
     status: str
     progress_percent: int
+    platform_readiness_percent: int = 0
+    business_readiness_percent: int = 0
+    platform_ready: bool = False
     completed_steps: int
     total_steps: int
     demo_data_generated: bool
