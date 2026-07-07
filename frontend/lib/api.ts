@@ -8995,6 +8995,11 @@ export interface ChurnRiskItem {
   recommendations: string[];
 }
 
+export const customerSuccessJourneyApi = {
+  northStarOptions: () =>
+    pickTenantProductClient().get<NorthStarGoalOption[]>("/customer-success/journey/north-star-options"),
+};
+
 export const customerSuccessApi = {
   summary: () => pickTenantProductClient().get<CustomerSuccessSummary>("/customer-success/summary"),
   dashboard: () => pickTenantProductClient().get<CustomerSuccessDashboard>("/customer-success/dashboard"),
@@ -12724,6 +12729,86 @@ export const adminAuthApi = {
 
 // ─── Factory Tenant Onboarding ───────────────────────────────────────────────
 
+export type OnboardingStepReadinessStatus = "completed" | "missing" | "recommended" | "blocked";
+export type OnboardingStepCategory = "platform" | "business" | "first_success";
+
+export interface OnboardingStepReadiness {
+  id: string;
+  label: string;
+  category: OnboardingStepCategory;
+  status: OnboardingStepReadinessStatus;
+  route: string;
+  estimated_minutes: number;
+  weight: number;
+  required: boolean;
+  completed_at?: string | null;
+  why_it_matters: string;
+  next_action: string;
+  business_value: string;
+}
+
+export interface ExecutiveWalkthroughPanel {
+  id: string;
+  label: string;
+  route: string;
+  estimated_minutes: number;
+  completed: boolean;
+}
+
+export interface ExecutiveWalkthroughState {
+  panels: ExecutiveWalkthroughPanel[];
+  completed_panels: number;
+  total_panels: number;
+  completed: boolean;
+}
+
+export interface FirstSuccessSummary {
+  achieved_count: number;
+  total_count: number;
+  percent: number;
+  milestones: OnboardingStepReadiness[];
+  celebrated: boolean;
+}
+
+export type NorthStarGoalKey =
+  | "export_leads"
+  | "better_publishing"
+  | "more_buyers"
+  | "better_sales_pipeline"
+  | "brand_awareness";
+
+export interface NorthStarGoalOption {
+  key: NorthStarGoalKey;
+  label: string;
+  description: string;
+}
+
+export interface OnboardingNorthStarGoalResponse {
+  saved: boolean;
+  goal: NorthStarGoalKey;
+  label: string;
+}
+
+export interface OnboardingReadinessResponse {
+  tenant_id: string;
+  platform_readiness_percent: number;
+  business_readiness_percent: number;
+  overall_percent: number;
+  estimated_minutes_remaining: number;
+  platform_ready: boolean;
+  platform_steps: OnboardingStepReadiness[];
+  business_steps: OnboardingStepReadiness[];
+  first_success: FirstSuccessSummary | null;
+  next_step: OnboardingStepReadiness | null;
+  executive_walkthrough: ExecutiveWalkthroughState;
+  publishing_blockers: string[];
+  auto_config_applied: boolean;
+  last_activity_at?: string | null;
+  onboarding_version: number;
+  north_star_goal?: NorthStarGoalKey | null;
+  north_star_label?: string | null;
+}
+
 export interface OnboardingStepItem {
   id: string;
   label: string;
@@ -12753,6 +12838,11 @@ export interface OnboardingDashboard {
   new_milestones: OnboardingMilestoneMessage[];
   started_at?: string | null;
   completed_at?: string | null;
+  platform_readiness_percent?: number;
+  business_readiness_percent?: number;
+  overall_percent?: number;
+  platform_ready?: boolean;
+  readiness?: OnboardingReadinessResponse | null;
 }
 
 export interface OnboardingCompanyProfile {
@@ -12812,6 +12902,14 @@ export interface OnboardingAdminAnalytics {
 
 export const tenantOnboardingApi = {
   dashboard: () => api.get<OnboardingDashboard>("/onboarding/dashboard"),
+  readiness: () => api.get<OnboardingReadinessResponse>("/onboarding/readiness"),
+  saveNorthStarGoal: (goal: NorthStarGoalKey) =>
+    api.post<OnboardingNorthStarGoalResponse>("/onboarding/north-star-goal", { goal }),
+  recordWalkthroughPanel: (panel_id: string) =>
+    api.post<{ recorded: boolean; panel_id: string; readiness: OnboardingReadinessResponse }>(
+      "/onboarding/executive-walkthrough/panel",
+      { panel_id },
+    ),
   refresh: () => api.post<{ refreshed: boolean; progress: OnboardingDashboard }>("/onboarding/refresh"),
   saveCompany: (data: OnboardingCompanyProfile) =>
     api.post<{ saved: boolean; profile: OnboardingCompanyProfile; progress: OnboardingDashboard }>(

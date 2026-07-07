@@ -1,125 +1,249 @@
 "use client";
 
-import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, CheckCircle2, Clock, MessageCircle } from "lucide-react";
-import { tenantOnboardingApi } from "@/lib/api";
-import { cn } from "@/lib/utils";
-import { LoadingState } from "@/components/ui/PageStates";
-import { OnboardingLayout } from "@/components/onboarding/OnboardingLayout";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Facebook,
+  Instagram,
+  Linkedin,
+  MessageCircle,
+  Music2,
+  Send,
+  Youtube,
+} from "lucide-react";
+import toast from "react-hot-toast";
+import { metaPublishingApi, publishingApi, tenantOnboardingApi } from "@/lib/api";
+import { OnboardingCardsSkeleton } from "@/components/onboarding/OnboardingEmptyState";
+import { PlatformConnectionCard } from "@/components/onboarding/PlatformConnectionCard";
+import { OnboardingWizardShell } from "@/components/onboarding/OnboardingWizardShell";
+import { ErrorState } from "@/components/ui/PageStates";
+import { useOnboardingReadiness, useOnboardingTenantId } from "@/lib/onboarding-hooks";
+
+type PlatformKey =
+  | "instagram"
+  | "facebook"
+  | "telegram"
+  | "linkedin"
+  | "youtube"
+  | "tiktok"
+  | "wechat";
+
+const PLATFORMS: {
+  key: PlatformKey;
+  name: string;
+  icon: typeof Instagram;
+  description: string;
+  connectHref?: string;
+  comingSoon?: boolean;
+}[] = [
+  {
+    key: "instagram",
+    name: "Instagram",
+    icon: Instagram,
+    description: "Visual product discovery for international buyers.",
+    connectHref: "/onboarding/channels/instagram",
+  },
+  {
+    key: "facebook",
+    name: "Facebook",
+    icon: Facebook,
+    description: "Meta Business integration for cross-posting.",
+    connectHref: "/onboarding/channels/facebook",
+  },
+  {
+    key: "telegram",
+    name: "Telegram",
+    icon: Send,
+    description: "Content intake and buyer inquiries from your factory group.",
+    connectHref: "/clients",
+  },
+  {
+    key: "linkedin",
+    name: "LinkedIn",
+    icon: Linkedin,
+    description: "Professional B2B reach and industry networking.",
+    connectHref: "/publishing",
+  },
+  {
+    key: "youtube",
+    name: "YouTube",
+    icon: Youtube,
+    description: "Long-form product and factory storytelling.",
+    comingSoon: true,
+  },
+  {
+    key: "tiktok",
+    name: "TikTok",
+    icon: Music2,
+    description: "Short-form video for product discovery.",
+    connectHref: "/publishing",
+  },
+  {
+    key: "wechat",
+    name: "WeChat",
+    icon: MessageCircle,
+    description: "China domestic buyer networks.",
+    connectHref: "/onboarding/channels/wechat",
+    comingSoon: true,
+  },
+];
 
 export default function OnboardingChannelsPage() {
-  const { data: channels, isLoading } = useQuery({
+  const qc = useQueryClient();
+  const tenantId = useOnboardingTenantId();
+  const scopeParams = tenantId ? { tenant_id: tenantId } : undefined;
+  const { data: readiness } = useOnboardingReadiness();
+
+  const {
+    data: channels,
+    isLoading: channelsLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ["onboarding-channels"],
     queryFn: () => tenantOnboardingApi.channelStatus().then((r) => r.data),
   });
 
+  const { data: accounts, isLoading: accountsLoading } = useQuery({
+    queryKey: ["publishing-accounts", tenantId],
+    queryFn: () => publishingApi.listAccounts(scopeParams).then((r) => r.data),
+    enabled: !!tenantId,
+  });
+
+  const { data: meta } = useQuery({
+    queryKey: ["meta-connection", tenantId],
+    queryFn: () => metaPublishingApi.getConnection(scopeParams).then((r) => r.data),
+    enabled: !!tenantId,
+  });
+
+  const connectMeta = useMutation({
+    mutationFn: async (platform: "facebook" | "instagram") => {
+      const { data: start } = await metaPublishingApi.oauthStart(scopeParams);
+      if (start.mode === "demo") {
+        await metaPublishingApi.demoConnect(scopeParams);
+        return platform;
+      }
+      if (start.authorize_url) {
+        window.location.href = start.authorize_url;
+      }
+      return platform;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["meta-connection", tenantId] });
+      qc.invalidateQueries({ queryKey: ["publishing-accounts", tenantId] });
+      qc.invalidateQueries({ queryKey: ["tenant-onboarding-readiness"] });
+      toast.success("Connection updated");
+    },
+    onError: () => toast.error("Could not connect account"),
+  });
+
   const tg = channels?.telegram as {
     connected?: boolean;
-    verification_status?: string;
     group_title?: string | null;
-    guide_steps?: string[];
   } | undefined;
 
+  const isLoading = channelsLoading || accountsLoading;
+
+  function getConnectionState(key: PlatformKey): {
+    connected: boolean;
+    lastSync?: string | null;
+  } {
+    const account = accounts?.items.find((a) => a.platform === key);
+    const accountConnected = account?.status === "connected";
+
+    switch (key) {
+      case "telegram": {
+        const stepDone =
+          readiness?.platform_steps.find((s) => s.id === "telegram_connected")?.status === "completed";
+        return { connected: !!stepDone || !!tg?.connected, lastSync: account?.updated_at };
+      }
+      case "facebook": {
+        const stepDone =
+          readiness?.platform_steps.find((s) => s.id === "facebook_connected")?.status === "completed";
+        return {
+          connected: !!stepDone || !!meta?.connected || accountConnected,
+          lastSync: account?.updated_at ?? meta?.facebook?.expires_at,
+        };
+      }
+      case "instagram": {
+        const stepDone =
+          readiness?.platform_steps.find((s) => s.id === "instagram_connected")?.status === "completed";
+        return {
+          connected: !!stepDone || !!meta?.instagram?.publish_ready || accountConnected,
+          lastSync: account?.updated_at,
+        };
+      }
+      case "linkedin":
+      case "tiktok":
+        return { connected: accountConnected, lastSync: account?.updated_at };
+      default:
+        return { connected: false };
+    }
+  }
+
+  if (isError) {
+    return (
+      <OnboardingWizardShell stepId="connections" title="Platform connections" subtitle="">
+        <ErrorState
+          message={error instanceof Error ? error.message : "Failed to load connections"}
+          onRetry={() => refetch()}
+        />
+      </OnboardingWizardShell>
+    );
+  }
+
+  const connectedCount = PLATFORMS.filter((p) => !p.comingSoon && getConnectionState(p.key).connected).length;
+
   return (
-    <OnboardingLayout
-      title="Communication channels"
-      subtitle="Connect Telegram to ingest content and receive buyer messages."
-      contextStep="channels"
+    <OnboardingWizardShell
+      stepId="connections"
+      title="Platform connections"
+      subtitle="Connect the channels where your buyers discover products. You can add more later."
+      nextLabel="Continue to publishing"
     >
-      {isLoading ? <LoadingState message="Checking channel status…" /> : null}
-
-      <div className="space-y-4 max-w-xl">
-        <ChannelCard
-          name="Telegram"
-          available
-          connected={!!tg?.connected}
-          status={tg?.verification_status === "verified" ? "Connected" : "Setup required"}
-          description={
-            tg?.group_title
-              ? `Linked group: ${tg.group_title}`
-              : "Add the bot to your factory Telegram group for content and inquiries."
-          }
-        >
-          <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1 mt-3">
-            {(tg?.guide_steps ?? []).map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link href="/content" className="text-sm font-medium text-brand-600 hover:underline">
-              Test content upload →
-            </Link>
-            <Link href="/clients" className="text-sm text-gray-600 hover:underline">
-              Client Telegram settings
-            </Link>
-          </div>
-        </ChannelCard>
-
-        <ChannelCard
-          name="WeChat"
-          available={false}
-          connected={false}
-          status="Coming soon"
-          description="WeChat Business integration is on the roadmap."
-        />
-
-        <ChannelCard
-          name="WhatsApp"
-          available={false}
-          connected={false}
-          status="Coming soon"
-          description="WhatsApp Business integration is on the roadmap."
-        />
-
-        <Link
-          href="/onboarding/content"
-          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 text-white font-medium px-5 py-2.5 hover:bg-brand-700 mt-4"
-        >
-          Continue to content
-          <ArrowRight size={18} />
-        </Link>
-      </div>
-    </OnboardingLayout>
-  );
-}
-
-function ChannelCard({
-  name,
-  available,
-  connected,
-  status,
-  description,
-  children,
-}: {
-  name: string;
-  available: boolean;
-  connected: boolean;
-  status: string;
-  children?: React.ReactNode;
-  description: string;
-}) {
-  return (
-    <div className={cn("rounded-xl border p-5", connected ? "border-emerald-200 bg-emerald-50/50" : "border-slate-200 bg-white")}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <MessageCircle size={20} className={connected ? "text-emerald-600" : "text-gray-400"} />
-          <h3 className="font-semibold text-gray-900">{name}</h3>
+      <div className="space-y-6 max-w-2xl">
+        <div className="rounded-2xl border border-brand-100 bg-brand-50/40 px-4 py-3 text-sm text-brand-800 dark-tenant:border-violet-500/20 dark-tenant:bg-violet-500/10 dark-tenant:text-violet-200">
+          {connectedCount > 0
+            ? `${connectedCount} platform${connectedCount !== 1 ? "s" : ""} connected — great start.`
+            : "Connect at least one channel to unlock publishing."}
         </div>
-        {connected ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700">
-            <CheckCircle2 size={12} /> {status}
-          </span>
-        ) : available ? (
-          <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">{status}</span>
+
+        {isLoading ? (
+          <OnboardingCardsSkeleton count={7} />
         ) : (
-          <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-            <Clock size={12} /> {status}
-          </span>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {PLATFORMS.map((platform, i) => {
+              const state = getConnectionState(platform.key);
+
+              return (
+                <PlatformConnectionCard
+                  key={platform.key}
+                  icon={platform.icon}
+                  name={platform.name}
+                  description={platform.description}
+                  connected={state.connected}
+                  comingSoon={platform.comingSoon}
+                  lastSync={state.lastSync}
+                  connectHref={platform.connectHref}
+                  onConnect={
+                    platform.key === "facebook" || platform.key === "instagram"
+                      ? () => connectMeta.mutate(platform.key as "facebook" | "instagram")
+                      : undefined
+                  }
+                  connecting={connectMeta.isPending}
+                  index={i}
+                />
+              );
+            })}
+          </div>
         )}
+
+        {connectedCount === 0 && !isLoading ? (
+          <p className="text-sm text-gray-500 text-center dark-tenant:text-slate-500">
+            Start with Telegram for content intake, then connect Meta for Facebook and Instagram.
+          </p>
+        ) : null}
       </div>
-      <p className="text-sm text-gray-600 mt-2">{description}</p>
-      {children}
-    </div>
+    </OnboardingWizardShell>
   );
 }
