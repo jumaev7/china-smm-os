@@ -126,6 +126,8 @@ import {
 
   Settings,
 
+  Plug,
+
   type LucideIcon,
 
 } from "lucide-react";
@@ -480,6 +482,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
   {
     sectionKey: "nav.sectionTenantSettings",
     items: [
+      { href: "/integrations", icon: Plug, labelKey: "nav.integrations" },
       { href: "/tenant-users", icon: Users, labelKey: "nav.tenantUsers" },
       { href: "/billing", icon: CreditCard, labelKey: "nav.billing" },
     ],
