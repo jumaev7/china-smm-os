@@ -8995,9 +8995,140 @@ export interface ChurnRiskItem {
   recommendations: string[];
 }
 
+export type JourneyStatus = "not_started" | "active" | "completed";
+export type JourneyCheckpointStatus = "locked" | "pending" | "in_progress" | "achieved" | "missed";
+export type JourneyRecommendationPriority = "urgent" | "high" | "medium" | "low";
+export type JourneyTimelineEntryType = "checkpoint" | "feature" | "weekly_win" | "outcome";
+
+export interface JourneyCriterionResult {
+  key: string;
+  label: string;
+  met: boolean;
+  current_value: string;
+  target: string;
+}
+
+export interface JourneyCheckpoint {
+  id: string;
+  day: number;
+  label: string;
+  theme: string;
+  status: JourneyCheckpointStatus;
+  weight: number;
+  achieved_at?: string | null;
+  criteria: JourneyCriterionResult[];
+  completion_percent: number;
+}
+
+export interface JourneyFeatureAdoption {
+  key: string;
+  label: string;
+  adopted: boolean;
+  score: number;
+  first_used_at?: string | null;
+  summary: string;
+}
+
+export interface JourneyRecommendation {
+  id: string;
+  title: string;
+  detail: string;
+  priority: JourneyRecommendationPriority;
+  href?: string | null;
+  checkpoint_day?: number | null;
+  north_star_goal?: NorthStarGoalKey | null;
+  dismissed: boolean;
+}
+
+export interface JourneyWeeklyWin {
+  id: string;
+  title: string;
+  detail: string;
+  category: string;
+  occurred_at: string;
+  href?: string | null;
+}
+
+export interface JourneyTimelineEntry {
+  id: string;
+  entry_type: JourneyTimelineEntryType;
+  title: string;
+  detail: string;
+  occurred_at: string;
+  checkpoint_id?: string | null;
+  feature_key?: string | null;
+}
+
+export interface JourneySuccessScore {
+  score: number;
+  label: string;
+  summary: string;
+  checkpoint_completion_pct: number;
+  feature_breadth_pct: number;
+  outcome_signals_pct: number;
+}
+
+export interface RenewalReadinessScore {
+  score: number;
+  label: string;
+  days_to_renewal?: number | null;
+  subscription_status?: string | null;
+  summary: string;
+}
+
+export interface ExpansionOpportunity {
+  id: string;
+  title: string;
+  detail: string;
+  signal_type: string;
+  href?: string | null;
+  priority: JourneyRecommendationPriority;
+}
+
+export interface CustomerSuccessJourneyDashboard {
+  tenant_id: string;
+  status: JourneyStatus;
+  north_star_goal?: NorthStarGoalKey | null;
+  north_star_label?: string | null;
+  platform_ready: boolean;
+  journey_day: number;
+  days_remaining: number;
+  started_at?: string | null;
+  current_checkpoint?: string | null;
+  checkpoints: JourneyCheckpoint[];
+  features: JourneyFeatureAdoption[];
+  recommendations: JourneyRecommendation[];
+  weekly_wins: JourneyWeeklyWin[];
+  timeline: JourneyTimelineEntry[];
+  success_score: JourneySuccessScore;
+  health_score?: CustomerSuccessHealthScore | null;
+  renewal_readiness: RenewalReadinessScore;
+  expansion_opportunities: ExpansionOpportunity[];
+  generated_at: string;
+}
+
+export interface JourneyRefreshResponse {
+  refreshed: boolean;
+  journey: CustomerSuccessJourneyDashboard;
+}
+
+export interface JourneyDismissRecommendationResponse {
+  dismissed: boolean;
+  recommendation_id: string;
+  journey: CustomerSuccessJourneyDashboard;
+}
+
 export const customerSuccessJourneyApi = {
   northStarOptions: () =>
     pickTenantProductClient().get<NorthStarGoalOption[]>("/customer-success/journey/north-star-options"),
+  journey: () =>
+    pickTenantProductClient().get<CustomerSuccessJourneyDashboard>("/customer-success/journey"),
+  refresh: () =>
+    pickTenantProductClient().post<JourneyRefreshResponse>("/customer-success/journey/refresh"),
+  dismissRecommendation: (recommendationId: string) =>
+    pickTenantProductClient().post<JourneyDismissRecommendationResponse>(
+      `/customer-success/journey/recommendations/${recommendationId}/dismiss`,
+    ),
 };
 
 export const customerSuccessApi = {

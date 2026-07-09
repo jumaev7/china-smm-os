@@ -161,6 +161,7 @@ export const TENANT_BUSINESS_PATHS = [
   "/growth-center",
   "/export-growth",
   "/customer-success",
+  "/customer-success/journey",
   "/customer-success/roi",
   "/customer-success/adoption",
   "/customer-success/business-impact",
