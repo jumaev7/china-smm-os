@@ -87,6 +87,11 @@ from app.models.platform_ops import (
     PlatformAuditLog,
     PlatformErrorReport,
 )
+from app.models.platform_event import (
+    TenantActivityEvent,
+    TenantAutomationTrigger,
+    TenantEventNotification,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -189,4 +194,7 @@ __all__ = [
     "PlatformFeedback",
     "PlatformAuditLog",
     "PlatformErrorReport",
+    "TenantActivityEvent",
+    "TenantEventNotification",
+    "TenantAutomationTrigger",
 ]

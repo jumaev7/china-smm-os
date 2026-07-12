@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-BASE = "http://127.0.0.1:8000/api/v1"
+BASE = os.environ.get("VERIFY_API_BASE", "http://127.0.0.1:8000/api/v1")
 MOCK_PLATFORMS = ("instagram", "telegram")
 PUBLISH_VERIFY_READY_MARKER = "[PUBLISH_VERIFY_READY]"
 

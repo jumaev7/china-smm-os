@@ -13220,3 +13220,86 @@ export const platformOpsApi = {
       refreshed_at: string;
     }>("/platform-ops/launch-readiness"),
 };
+
+// ─── Notification Center ───────────────────────────────────────────────────────
+
+export type NotificationCategory =
+  | "publishing"
+  | "crm"
+  | "integrations"
+  | "automation"
+  | "journey"
+  | "billing"
+  | "security"
+  | "platform";
+
+export type NotificationSeverity = "info" | "success" | "warning" | "error" | "critical";
+
+export interface NotificationItem {
+  id: string;
+  event_id: string;
+  event_type: string;
+  title: string;
+  message: string | null;
+  category: NotificationCategory;
+  severity: NotificationSeverity;
+  is_read: boolean;
+  read_at: string | null;
+  action_url: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  items: NotificationItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface NotificationUnreadCountResponse {
+  unread_count: number;
+}
+
+export interface NotificationFilters {
+  category?: NotificationCategory | "all";
+  severity?: NotificationSeverity | "all";
+  is_read?: boolean;
+  event_type?: string;
+  search?: string;
+  created_from?: string;
+  created_to?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export const notificationApi = {
+  getNotifications: (params?: NotificationFilters) =>
+    api.get<NotificationListResponse>("/notifications", {
+      params: {
+        page: params?.page,
+        page_size: params?.page_size,
+        category: params?.category && params.category !== "all" ? params.category : undefined,
+        severity: params?.severity && params.severity !== "all" ? params.severity : undefined,
+        is_read: params?.is_read,
+        event_type: params?.event_type,
+        search: params?.search?.trim() || undefined,
+        created_from: params?.created_from,
+        created_to: params?.created_to,
+      },
+    }),
+  getNotificationUnreadCount: () =>
+    api.get<NotificationUnreadCountResponse>("/notifications/unread-count"),
+  markNotificationRead: (id: string) =>
+    api.patch<{ id: string; is_read: boolean; read_at: string | null }>(
+      `/notifications/${id}/read`,
+    ),
+  markAllNotificationsRead: () =>
+    api.patch<{ updated_count: number }>("/notifications/actions/read-all"),
+  deleteNotification: (id: string) =>
+    api.delete<{ id: string; deleted: boolean }>(`/notifications/${id}`),
+};
+
+export const NOTIFICATION_UNREAD_COUNT_QUERY_KEY = ["notification-unread-count"] as const;
+export const NOTIFICATION_LIST_QUERY_KEY = ["notifications"] as const;

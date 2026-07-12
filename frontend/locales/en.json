@@ -114,6 +114,8 @@
     "tenants": "Tenants",
     "tenantUsers": "Team & Roles",
     "integrations": "Integrations",
+    "automation": "Automation",
+    "notifications": "Notifications",
     "settings": "Settings",
     "customerPortal": "Customer Portal",
     "customerPortalV2": "Customer Portal v2",
@@ -1800,5 +1802,174 @@
     "emptyDescription": "Add a mock account to test publishing from Content, or connect a real channel.",
     "addTelegramMock": "Add Telegram mock",
     "goToContent": "Go to Content"
+  },
+  "automationCenter": {
+    "title": "Automation Center",
+    "subtitle": "Understand and manage platform automations — triggers, actions, and execution health.",
+    "loading": "Loading automations…",
+    "error": "Could not load automation data",
+    "summaryLabel": "Automation summary",
+    "searchPlaceholder": "Search automations…",
+    "searchClear": "Clear search",
+    "close": "Close",
+    "successRate": "success rate",
+    "executions": "Executions",
+    "lastExecution": "Last run",
+    "neverRun": "Never run",
+    "viewDetails": "Details",
+    "scheduledFor": "Scheduled",
+    "automationSingular": "automation",
+    "automationPlural": "automations",
+    "kpi": {
+      "health": "Automation health",
+      "active": "Active automations",
+      "activeSub": "Running now",
+      "paused": "Paused",
+      "pausedSub": "Needs review",
+      "nonePaused": "None paused",
+      "failed": "Failed",
+      "failedSub": "Needs attention",
+      "noneFailed": "All healthy"
+    },
+    "health": {
+      "excellent": "Excellent",
+      "good": "Good",
+      "attention": "Needs attention"
+    },
+    "filters": {
+      "label": "Automation filters",
+      "all": "All",
+      "active": "Active",
+      "paused": "Paused",
+      "failed": "Failed",
+      "draft": "Draft",
+      "disabled": "Disabled"
+    },
+    "status": {
+      "active": "Active",
+      "paused": "Paused",
+      "failed": "Failed",
+      "draft": "Draft"
+    },
+    "execution": {
+      "success": "Success",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "sections": {
+      "overview": "Overview",
+      "automations": "Automation cards",
+      "filtered": "Filtered automations",
+      "executionHistory": "Execution history",
+      "upcoming": "Upcoming automations",
+      "disabled": "Disabled automations"
+    },
+    "overview": {
+      "subtitle": "Platform automation activity in the last 24 hours",
+      "executions24h": "Executions (24h)",
+      "successRate": "Success rate"
+    },
+    "drawer": {
+      "trigger": "Trigger",
+      "conditions": "Conditions",
+      "actions": "Actions",
+      "executionHistory": "Execution history",
+      "relatedModules": "Related modules"
+    },
+    "actions": {
+      "pause": "Pause",
+      "enable": "Enable"
+    },
+    "empty": {
+      "title": "No automations yet",
+      "hint": "Platform automations will appear here when triggers fire — publishing recovery, CRM workflows, journey milestones, and more.",
+      "filtered": "No matching automations",
+      "filteredHint": "Try adjusting your filters or search query.",
+      "clearFilters": "Clear filters"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "Centralized alerts across publishing, CRM, integrations, and platform operations.",
+    "unread": "Unread",
+    "read": "Read",
+    "markAsRead": "Mark as read",
+    "markAllAsRead": "Mark all as read",
+    "delete": "Delete notification",
+    "details": "Details",
+    "closeDetails": "Close notification details",
+    "unreadCount": "{{count}} unread",
+    "summaryAria": "Notification summary",
+    "categoriesAria": "Notification categories",
+    "filtersAria": "Notification filters",
+    "feedAria": "Notification feed",
+    "searchPlaceholder": "Search notifications…",
+    "clearSearch": "Clear search",
+    "allNotifications": "All notifications",
+    "filteredNotifications": "Filtered notifications",
+    "countLabel": "{{count}} notification(s)",
+    "loadMore": "Load more",
+    "errorTitle": "Could not load notifications",
+    "unreadSub": "Needs review",
+    "allCaughtUp": "All caught up",
+    "critical": "Critical",
+    "criticalSub": "Immediate action",
+    "noCritical": "No critical alerts",
+    "warnings": "Warnings",
+    "warningsSub": "Review soon",
+    "allClear": "All clear",
+    "resolvedToday": "Resolved today",
+    "resolvedTodaySub": "Completed events",
+    "filters": {
+      "severity": "Filter by severity",
+      "status": "Filter by status",
+      "time": "Filter by time"
+    },
+    "readFilter": {
+      "all": "All",
+      "unread": "Unread"
+    },
+    "time": {
+      "all": "All time",
+      "today": "Today",
+      "week": "This week"
+    },
+    "categories": {
+      "all": "All",
+      "publishing": "Publishing",
+      "crm": "CRM",
+      "integrations": "Integrations",
+      "automation": "Automation",
+      "journey": "Customer Success",
+      "billing": "Billing",
+      "security": "Security",
+      "platform": "Platform"
+    },
+    "severities": {
+      "all": "All severities",
+      "info": "Info",
+      "success": "Success",
+      "warning": "Warning",
+      "error": "Error",
+      "critical": "Critical"
+    },
+    "sections": {
+      "overview": "Overview",
+      "suggestedAction": "Suggested action",
+      "timeline": "Timeline",
+      "metadata": "Metadata",
+      "relatedModule": "Related module"
+    },
+    "actions": {
+      "open": "Open",
+      "viewModule": "View module"
+    },
+    "empty": {
+      "title": "You are all caught up",
+      "body": "When publishing fails, integrations need attention, or CRM events occur, they will appear here with suggested actions.",
+      "filteredTitle": "No matching notifications",
+      "filteredBody": "Try adjusting your filters or search query to find what you are looking for.",
+      "clearFilters": "Clear filters"
+    }
   }
 }

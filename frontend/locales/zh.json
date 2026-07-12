@@ -109,6 +109,8 @@
     "tenants": "租户",
     "tenantUsers": "团队与角色",
     "integrations": "集成中心",
+    "automation": "自动化中心",
+    "notifications": "通知中心",
     "settings": "设置",
     "customerPortal": "客户门户",
     "customerPortalV2": "客户门户",
@@ -1444,5 +1446,174 @@
     "emptyDescription": "添加模拟账号以从内容页测试发布，或连接真实渠道。",
     "addTelegramMock": "添加 Telegram 模拟",
     "goToContent": "前往内容"
+  },
+  "automationCenter": {
+    "title": "自动化中心",
+    "subtitle": "了解并管理平台自动化 — 触发器、动作与执行健康度。",
+    "loading": "正在加载自动化…",
+    "error": "无法加载自动化数据",
+    "summaryLabel": "自动化概览",
+    "searchPlaceholder": "搜索自动化…",
+    "searchClear": "清除搜索",
+    "close": "关闭",
+    "successRate": "成功率",
+    "executions": "执行次数",
+    "lastExecution": "上次运行",
+    "neverRun": "从未运行",
+    "viewDetails": "详情",
+    "scheduledFor": "计划于",
+    "automationSingular": "个自动化",
+    "automationPlural": "个自动化",
+    "kpi": {
+      "health": "自动化健康度",
+      "active": "运行中",
+      "activeSub": "正在执行",
+      "paused": "已暂停",
+      "pausedSub": "需要查看",
+      "nonePaused": "无暂停项",
+      "failed": "失败",
+      "failedSub": "需要处理",
+      "noneFailed": "全部正常"
+    },
+    "health": {
+      "excellent": "优秀",
+      "good": "良好",
+      "attention": "需要关注"
+    },
+    "filters": {
+      "label": "自动化筛选",
+      "all": "全部",
+      "active": "运行中",
+      "paused": "已暂停",
+      "failed": "失败",
+      "draft": "草稿",
+      "disabled": "已禁用"
+    },
+    "status": {
+      "active": "运行中",
+      "paused": "已暂停",
+      "failed": "失败",
+      "draft": "草稿"
+    },
+    "execution": {
+      "success": "成功",
+      "failed": "失败",
+      "skipped": "跳过"
+    },
+    "sections": {
+      "overview": "概览",
+      "automations": "自动化卡片",
+      "filtered": "筛选结果",
+      "executionHistory": "执行历史",
+      "upcoming": "即将执行",
+      "disabled": "已禁用自动化"
+    },
+    "overview": {
+      "subtitle": "过去 24 小时平台自动化活动",
+      "executions24h": "执行次数（24h）",
+      "successRate": "成功率"
+    },
+    "drawer": {
+      "trigger": "触发器",
+      "conditions": "条件",
+      "actions": "动作",
+      "executionHistory": "执行历史",
+      "relatedModules": "相关模块"
+    },
+    "actions": {
+      "pause": "暂停",
+      "enable": "启用"
+    },
+    "empty": {
+      "title": "暂无自动化",
+      "hint": "当触发器触发时，平台自动化将显示在此处 — 发布恢复、CRM 工作流、旅程里程碑等。",
+      "filtered": "无匹配的自动化",
+      "filteredHint": "请尝试调整筛选条件或搜索关键词。",
+      "clearFilters": "清除筛选"
+    }
+  },
+  "notifications": {
+    "title": "通知中心",
+    "subtitle": "发布、CRM、集成与平台运营事件的集中提醒。",
+    "unread": "未读",
+    "read": "已读",
+    "markAsRead": "标记为已读",
+    "markAllAsRead": "全部标记为已读",
+    "delete": "删除通知",
+    "details": "详情",
+    "closeDetails": "关闭通知详情",
+    "unreadCount": "{{count}} 条未读",
+    "summaryAria": "通知摘要",
+    "categoriesAria": "通知分类",
+    "filtersAria": "通知筛选",
+    "feedAria": "通知列表",
+    "searchPlaceholder": "搜索通知…",
+    "clearSearch": "清除搜索",
+    "allNotifications": "全部通知",
+    "filteredNotifications": "筛选后的通知",
+    "countLabel": "{{count}} 条通知",
+    "loadMore": "加载更多",
+    "errorTitle": "无法加载通知",
+    "unreadSub": "需要处理",
+    "allCaughtUp": "已全部处理",
+    "critical": "严重",
+    "criticalSub": "需立即处理",
+    "noCritical": "无严重告警",
+    "warnings": "警告",
+    "warningsSub": "请尽快查看",
+    "allClear": "一切正常",
+    "resolvedToday": "今日已处理",
+    "resolvedTodaySub": "已完成的事件",
+    "filters": {
+      "severity": "按严重程度筛选",
+      "status": "按状态筛选",
+      "time": "按时间筛选"
+    },
+    "readFilter": {
+      "all": "全部",
+      "unread": "未读"
+    },
+    "time": {
+      "all": "全部时间",
+      "today": "今天",
+      "week": "本周"
+    },
+    "categories": {
+      "all": "全部",
+      "publishing": "发布",
+      "crm": "CRM",
+      "integrations": "集成",
+      "automation": "自动化",
+      "journey": "客户成功",
+      "billing": "账单",
+      "security": "安全",
+      "platform": "平台"
+    },
+    "severities": {
+      "all": "全部级别",
+      "info": "信息",
+      "success": "成功",
+      "warning": "警告",
+      "error": "错误",
+      "critical": "严重"
+    },
+    "sections": {
+      "overview": "概览",
+      "suggestedAction": "建议操作",
+      "timeline": "时间线",
+      "metadata": "元数据",
+      "relatedModule": "相关模块"
+    },
+    "actions": {
+      "open": "打开",
+      "viewModule": "查看模块"
+    },
+    "empty": {
+      "title": "已全部处理",
+      "body": "当发布失败、集成需要关注或发生 CRM 事件时，通知将显示在此处并附带建议操作。",
+      "filteredTitle": "没有匹配的通知",
+      "filteredBody": "请尝试调整筛选条件或搜索关键词。",
+      "clearFilters": "清除筛选"
+    }
   }
 }

@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import urllib.error
@@ -17,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-BASE = "http://127.0.0.1:8000/api/v1"
+BASE = os.environ.get("VERIFY_API_BASE", "http://127.0.0.1:8000/api/v1")
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FRONTEND_ROOT = REPO_ROOT / "frontend"
 DEMO_EMAIL = "demo@factory.local"

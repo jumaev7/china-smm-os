@@ -22,6 +22,7 @@ from app.services.scheduled_publish_service import ScheduledPublishService
 from app.services.health_snapshot_service import HealthSnapshotService
 from app.services.schema_guard import SchemaGuard
 from app.services.startup_health_service import StartupHealthService
+from app.services.event_handlers.registration import register_event_bus_subscribers
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -53,6 +54,7 @@ async def _log_startup_row_counts() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     mark_app_started()
+    register_event_bus_subscribers()
     _log_database_target()
     # Create tables on startup (use Alembic in production)
     if settings.APP_ENV == "development":

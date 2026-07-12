@@ -128,6 +128,8 @@ import {
 
   Plug,
 
+  Bell,
+
   type LucideIcon,
 
 } from "lucide-react";
@@ -153,6 +155,8 @@ import { useAuth } from "@/lib/auth-store";
 import { filterNavItems, resolveNavAudience, resolveSectionLabelKey } from "@/lib/nav-access";
 import { computeSessionAwareAuthReady } from "@/lib/session-sync";
 import { useDashboardOverlayCleanup } from "@/lib/useDashboardOverlayCleanup";
+import { useNotificationUnreadCount } from "@/lib/notification-center-hooks";
+import { formatUnreadBadge } from "@/lib/notification-center-ui";
 
 
 
@@ -482,6 +486,8 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
   {
     sectionKey: "nav.sectionTenantSettings",
     items: [
+      { href: "/automation", icon: Zap, labelKey: "nav.automation" },
+      { href: "/notifications", icon: Bell, labelKey: "nav.notifications" },
       { href: "/integrations", icon: Plug, labelKey: "nav.integrations" },
       { href: "/tenant-users", icon: Users, labelKey: "nav.tenantUsers" },
       { href: "/billing", icon: CreditCard, labelKey: "nav.billing" },
@@ -646,6 +652,10 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
 
 
   const isTenantNav = navAudience === "tenant";
+  const { data: unreadData } = useNotificationUnreadCount(
+    authReady && isTenantAuthenticated && isTenantNav,
+  );
+  const unreadBadge = formatUnreadBadge(unreadData?.unread_count ?? 0);
 
   return (
 
@@ -783,6 +793,26 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           <LanguageSwitcher />
 
           <DemoModeToggle />
+
+          {isTenantNav && isTenantAuthenticated ? (
+            <Link
+              href="/notifications"
+              className={cn(
+                "relative inline-flex items-center justify-center rounded-xl p-2 transition-colors",
+                pathname.startsWith("/notifications")
+                  ? "bg-brand-50 text-brand-700 dark-tenant:bg-violet-500/15 dark-tenant:text-violet-300"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark-tenant:text-slate-400 dark-tenant:hover:bg-white/[0.06] dark-tenant:hover:text-slate-200",
+              )}
+              aria-label={t("nav.notifications")}
+            >
+              <Bell size={18} aria-hidden />
+              {unreadBadge ? (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center ring-2 ring-white dark-tenant:ring-surface-dark-page">
+                  {unreadBadge}
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
 
           <UserMenu />
 

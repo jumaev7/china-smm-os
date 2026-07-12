@@ -158,6 +158,12 @@ async def create_tables():
         await conn.run_sync(_ensure_content_factory_ai_columns)
 
 
+async def ensure_platform_event_bus_schema() -> None:
+    """Apply idempotent DDL for platform event bus tables only."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_platform_event_bus_tables)
+
+
 async def ensure_dev_schema_patches() -> None:
     """Apply idempotent column patches on dev startup (safe if Alembic already ran)."""
     async with engine.begin() as conn:
@@ -185,6 +191,129 @@ async def ensure_dev_schema_patches() -> None:
         await conn.run_sync(_ensure_executive_crm_pipeline_columns)
         await conn.run_sync(_ensure_tenant_onboarding_v2_columns)
         await conn.run_sync(_ensure_customer_success_journey_columns)
+        await conn.run_sync(_ensure_platform_event_bus_tables)
+
+
+def _ensure_platform_event_bus_tables(connection) -> None:
+    """Platform event bus — activity feed, notifications, automation triggers."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+
+    if "tenant_activity_events" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_activity_events ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "event_id UUID NOT NULL, "
+            "event_type VARCHAR(80) NOT NULL, "
+            "category VARCHAR(40) NOT NULL, "
+            "title VARCHAR(255) NOT NULL, "
+            "description TEXT, "
+            "actor_type VARCHAR(20), "
+            "actor_id UUID, "
+            "resource_type VARCHAR(50), "
+            "resource_id VARCHAR(100), "
+            "payload JSONB, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'recorded', "
+            "occurred_at TIMESTAMPTZ NOT NULL, "
+            "created_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_activity_events_tenant_id "
+            "ON tenant_activity_events (tenant_id)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_activity_events_event_type "
+            "ON tenant_activity_events (event_type)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_activity_events_occurred_at "
+            "ON tenant_activity_events (occurred_at)"
+        ))
+
+    if "tenant_event_notifications" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_event_notifications ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "event_id UUID NOT NULL, "
+            "event_type VARCHAR(80) NOT NULL, "
+            "title VARCHAR(255) NOT NULL, "
+            "body TEXT, "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'info', "
+            "resource_type VARCHAR(50), "
+            "resource_id VARCHAR(100), "
+            "payload JSONB, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'unread', "
+            "created_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_tenant_id "
+            "ON tenant_event_notifications (tenant_id)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_status "
+            "ON tenant_event_notifications (status)"
+        ))
+
+    if "tenant_event_notifications" in tables:
+        for sql in (
+            "ALTER TABLE tenant_event_notifications "
+            "ADD COLUMN IF NOT EXISTS category VARCHAR(40) NOT NULL DEFAULT 'platform'",
+            "ALTER TABLE tenant_event_notifications "
+            "ADD COLUMN IF NOT EXISTS is_read BOOLEAN NOT NULL DEFAULT false",
+            "ALTER TABLE tenant_event_notifications "
+            "ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ",
+            "ALTER TABLE tenant_event_notifications "
+            "ADD COLUMN IF NOT EXISTS action_url VARCHAR(500)",
+            "ALTER TABLE tenant_event_notifications "
+            "ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+            "ALTER TABLE tenant_event_notifications "
+            "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+        ):
+            connection.execute(text(sql))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_tenant_created "
+            "ON tenant_event_notifications (tenant_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_tenant_is_read "
+            "ON tenant_event_notifications (tenant_id, is_read)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_tenant_category "
+            "ON tenant_event_notifications (tenant_id, category)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_tenant_severity "
+            "ON tenant_event_notifications (tenant_id, severity)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_tenant_deleted_at "
+            "ON tenant_event_notifications (tenant_id, deleted_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_event_notifications_event_id "
+            "ON tenant_event_notifications (event_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_automation_triggers" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_automation_triggers ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "event_id UUID NOT NULL, "
+            "event_type VARCHAR(80) NOT NULL, "
+            "trigger_key VARCHAR(120) NOT NULL, "
+            "workflow_hint VARCHAR(60), "
+            "payload JSONB, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "created_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_triggers_tenant_id "
+            "ON tenant_automation_triggers (tenant_id)"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_triggers_status "
+            "ON tenant_automation_triggers (status)"
+        ))
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:

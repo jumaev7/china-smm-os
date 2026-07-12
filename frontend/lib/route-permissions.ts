@@ -46,6 +46,8 @@ export const TENANT_NAV_PATHS = [
   "/billing",
   "/tenant-users",
   "/integrations",
+  "/notifications",
+  "/automation",
 ] as const;
 
 /** Platform/admin sidebar visibility. Routes remain separately guarded below. */
@@ -154,6 +156,8 @@ export const TENANT_BUSINESS_PATHS = [
   "/billing",
   "/tenant-users",
   "/integrations",
+  "/notifications",
+  "/automation",
   "/executive-copilot",
   "/briefs",
   "/sales",
