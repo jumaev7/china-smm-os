@@ -1450,6 +1450,7 @@
   "automationCenter": {
     "title": "自动化中心",
     "subtitle": "了解并管理平台自动化 — 触发器、动作与执行健康度。",
+    "demoBanner": "预览模式 — 当前展示的是示例自动化。正式租户自动化将在 API 上线后显示于此。",
     "loading": "正在加载自动化…",
     "error": "无法加载自动化数据",
     "summaryLabel": "自动化概览",

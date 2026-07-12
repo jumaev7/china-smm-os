@@ -1806,6 +1806,7 @@
   "automationCenter": {
     "title": "Automation Center",
     "subtitle": "Understand and manage platform automations — triggers, actions, and execution health.",
+    "demoBanner": "Preview mode — sample automations shown for illustration. Live tenant automations will appear here when the automation API is available.",
     "loading": "Loading automations…",
     "error": "Could not load automation data",
     "summaryLabel": "Automation summary",
