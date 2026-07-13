@@ -661,20 +661,22 @@ class OnboardingReadinessService:
         platform_done = all(s.status == "completed" for s in required_platform)
         business_done = all(s.status == "completed" for s in required_business)
 
-        if platform_done and business_done:
-            progress.status = "completed"
-            if not progress.completed_at:
-                progress.completed_at = now
-        elif platform_done:
-            progress.status = "in_progress"
-        elif any(s.status == "completed" for s in readiness.platform_steps):
-            progress.status = "in_progress"
-            if not progress.started_at:
-                progress.started_at = now
-        elif progress.status == "not_started" and steps_completed:
-            progress.status = "in_progress"
-            if not progress.started_at:
-                progress.started_at = now
+        preserve_completed = progress.status == "completed" or progress.manually_completed
+        if not preserve_completed:
+            if platform_done and business_done:
+                progress.status = "completed"
+                if not progress.completed_at:
+                    progress.completed_at = now
+            elif platform_done:
+                progress.status = "in_progress"
+            elif any(s.status == "completed" for s in readiness.platform_steps):
+                progress.status = "in_progress"
+                if not progress.started_at:
+                    progress.started_at = now
+            elif progress.status == "not_started" and steps_completed:
+                progress.status = "in_progress"
+                if not progress.started_at:
+                    progress.started_at = now
 
         progress.last_activity_at = now
         progress.onboarding_version = 2

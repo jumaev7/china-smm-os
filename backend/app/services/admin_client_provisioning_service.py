@@ -148,6 +148,13 @@ class AdminClientProvisioningService:
 
         seed_counts = await ensure_demo_tenant_data(db, tenant_id)
 
+        from app.services.onboarding_auto_config_service import OnboardingAutoConfigService
+
+        auto_config_counts = await OnboardingAutoConfigService.ensure_tenant_onboarding_defaults(
+            db, tenant_id,
+        )
+        await db.commit()
+
         await AdminRbacService.record_audit(
             db,
             admin_user_id=admin.id,
@@ -159,11 +166,12 @@ class AdminClientProvisioningService:
         )
 
         logger.info(
-            "%s created tenant=%s owner=%s seed=%s",
+            "%s created tenant=%s owner=%s seed=%s auto_config=%s",
             MARKER,
             tenant_id,
             email_norm,
             seed_counts,
+            auto_config_counts,
         )
 
         return {
@@ -175,12 +183,12 @@ class AdminClientProvisioningService:
             "temporary_password": temp_password,
             "login_url": _login_url(),
             "seed_counts": seed_counts,
+            "auto_config": auto_config_counts,
             "message": "Client account created. Share login details securely — password is shown once.",
             "next_steps": [
                 "Share login credentials with the client owner (password shown once above)",
+                "Client owner logs in and completes the guided onboarding wizard at /onboarding",
                 "Create a trial or active subscription on the Billing page",
                 f"Link Telegram intake group on client settings (client_id: {client.id})",
-                "Register webhook if testing live Telegram intake (see README)",
-                "Client owner logs in and completes /onboarding/channels",
             ],
         }
