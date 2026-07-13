@@ -1,16 +1,21 @@
-"""Automation integration — records triggers for workflow engines."""
+"""Automation integration — records triggers and executes tenant flows."""
 from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.types import PlatformEvent, SubscriberResult
 from app.models.platform_event import TenantAutomationTrigger
+from app.services.automation_execution_service import AutomationExecutionService
+from app.services.automation_service import AutomationService
 from app.services.event_handlers.base import IntegrationHandler
 
 _WORKFLOW_HINTS: dict[str, str] = {
     "tenant.crm.lead_created": "follow_up_workflow",
     "tenant.crm.deal_stage_changed": "proposal_workflow",
     "tenant.automation.triggered": "follow_up_workflow",
+    "tenant.content.publish_failed": "publish_recovery",
+    "tenant.integration.disconnected": "integration_reconnect",
+    "tenant.buyer.created": "buyer_crm_import",
 }
 
 
@@ -35,4 +40,8 @@ class AutomationEventHandler(IntegrationHandler):
         )
         db.add(row)
         await db.flush()
-        return self._handled(detail=str(row.id))
+
+        await AutomationService.ensure_system_flows(db, tenant_id)
+        executions = await AutomationExecutionService.process_event(db, event)
+        detail = f"trigger={row.id} executions={len(executions)}"
+        return self._handled(detail=detail)

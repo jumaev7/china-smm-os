@@ -114,6 +114,41 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             customer_success=True,
         ),
     ),
+    _def(
+        "tenant.content.publish_failed",
+        category="publishing",
+        description="Content publish attempt failed",
+        integrations=EventIntegrations(
+            audit=True,
+            activity=True,
+            notification=True,
+            automation=True,
+        ),
+    ),
+    _def(
+        "tenant.integration.disconnected",
+        category="integrations",
+        description="Platform integration disconnected",
+        integrations=EventIntegrations(
+            audit=True,
+            activity=True,
+            notification=True,
+            customer_success=True,
+            automation=True,
+        ),
+    ),
+    _def(
+        "tenant.buyer.created",
+        category="crm",
+        description="Buyer record created",
+        integrations=EventIntegrations(
+            audit=True,
+            activity=True,
+            notification=True,
+            customer_success=True,
+            automation=True,
+        ),
+    ),
 )
 
 

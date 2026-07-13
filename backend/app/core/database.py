@@ -319,6 +319,69 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             "ON tenant_automation_triggers (status)"
         ))
 
+    if "tenant_automation_flows" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_automation_flows ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "key VARCHAR(120) NOT NULL, "
+            "name VARCHAR(255) NOT NULL, "
+            "description TEXT, "
+            "category VARCHAR(40) NOT NULL, "
+            "trigger_event VARCHAR(80) NOT NULL, "
+            "action_type VARCHAR(60) NOT NULL, "
+            "action_config JSONB NOT NULL DEFAULT '{}'::jsonb, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'enabled', "
+            "is_system BOOLEAN NOT NULL DEFAULT false, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW(), "
+            "last_executed_at TIMESTAMPTZ, "
+            "last_execution_status VARCHAR(20), "
+            "CONSTRAINT uq_tenant_automation_flows_tenant_key UNIQUE (tenant_id, key)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_flows_tenant_status "
+            "ON tenant_automation_flows (tenant_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_flows_tenant_trigger "
+            "ON tenant_automation_flows (tenant_id, trigger_event)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_flows_tenant_updated "
+            "ON tenant_automation_flows (tenant_id, updated_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_automation_executions" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_automation_executions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "automation_flow_id UUID NOT NULL REFERENCES tenant_automation_flows(id) ON DELETE CASCADE, "
+            "event_id UUID NOT NULL, "
+            "trigger_event VARCHAR(80) NOT NULL, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "started_at TIMESTAMPTZ NOT NULL, "
+            "finished_at TIMESTAMPTZ, "
+            "duration_ms INTEGER, "
+            "input_payload JSONB, "
+            "result_payload JSONB, "
+            "error_code VARCHAR(60), "
+            "error_message TEXT, "
+            "attempt_number INTEGER NOT NULL DEFAULT 1, "
+            "created_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_executions_tenant_created "
+            "ON tenant_automation_executions (tenant_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_executions_tenant_status_created "
+            "ON tenant_automation_executions (tenant_id, status, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_executions_flow_created "
+            "ON tenant_automation_executions (automation_flow_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_executions_event_id "
+            "ON tenant_automation_executions (event_id)",
+        ):
+            connection.execute(text(sql))
+
 
 def _ensure_customer_success_journey_columns(connection) -> None:
     """Customer Success Journey — post-platform-ready adoption engine."""
