@@ -46,11 +46,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS ix_crm_deals_commission_status")
-    op.drop_column("crm_deals", "partner_commission_amount")
-    op.drop_column("crm_deals", "partner_commission_percent")
-    op.drop_column("crm_deals", "commission_status")
-    op.drop_column("crm_deals", "commission_amount")
-    op.drop_column("crm_deals", "commission_percent")
-    op.drop_column("crm_deals", "currency")
-    op.drop_column("crm_deals", "deal_amount")
+    # No-op: deal revenue columns and commission_status index are owned by earlier
+    # revisions (20260612_add_revenue_attribution, 20260613_add_partners).
+    # This revision only idempotently ensures they exist for schema drift recovery.
+    pass

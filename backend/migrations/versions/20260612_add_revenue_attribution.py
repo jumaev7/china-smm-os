@@ -4,7 +4,7 @@ import uuid
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
-from migrations.helpers import add_column_if_missing, create_index_if_missing, create_table_if_missing, drop_column_if_exists
+from migrations.helpers import add_column_if_missing, create_index_if_missing, create_table_if_missing, drop_column_if_exists, drop_index_if_exists
 
 revision = "20260612_add_revenue_attribution"
 down_revision = "20260611_add_crm_deals"
@@ -70,7 +70,7 @@ def downgrade() -> None:
     op.drop_index("ix_revenue_events_type", table_name="revenue_events")
     op.drop_index("ix_revenue_events_deal_id", table_name="revenue_events")
     op.drop_table("revenue_events")
-    op.drop_index("ix_crm_deals_commission_status", table_name="crm_deals")
+    drop_index_if_exists("ix_crm_deals_commission_status", "crm_deals")
     drop_column_if_exists("crm_deals", "commission_status")
     drop_column_if_exists("crm_deals", "commission_amount")
     drop_column_if_exists("crm_deals", "commission_percent")

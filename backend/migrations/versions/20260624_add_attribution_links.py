@@ -2,7 +2,13 @@
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
-from migrations.helpers import add_column_if_missing, create_index_if_missing, create_table_if_missing, drop_column_if_exists
+from migrations.helpers import (
+    add_column_if_missing,
+    create_index_if_missing,
+    create_table_if_missing,
+    drop_column_if_exists,
+    drop_index_if_exists,
+)
 
 revision = "20260624_add_attribution_links"
 down_revision = "20260623_add_communication_hub"
@@ -58,7 +64,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_crm_leads_attribution_link_id", table_name="crm_leads")
+    drop_index_if_exists("ix_crm_leads_attribution_link_id", "crm_leads")
     drop_column_if_exists("crm_leads", "attribution_link_id")
     op.drop_index("ix_click_events_attribution_link_id", table_name="click_events")
     op.drop_table("click_events")

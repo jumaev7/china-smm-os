@@ -18,5 +18,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS ix_crm_leads_attribution_link_id")
-    op.execute("ALTER TABLE crm_leads DROP COLUMN IF EXISTS attribution_link_id")
+    # No-op: attribution_link_id and its index are owned by 20260624_add_attribution_links.
+    # This revision only idempotently ensures they exist for schema drift recovery.
+    pass

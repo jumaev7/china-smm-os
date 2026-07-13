@@ -60,6 +60,11 @@ def create_index_if_missing(
         op.create_index(index_name, table_name, columns, unique=unique)
 
 
+def drop_index_if_exists(index_name: str, table_name: str) -> None:
+    if index_exists(table_name, index_name):
+        op.drop_index(index_name, table_name=table_name)
+
+
 def foreign_key_exists(constraint_name: str) -> bool:
     bind = op.get_bind()
     result = bind.execute(
