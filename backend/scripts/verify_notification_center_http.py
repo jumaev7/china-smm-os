@@ -106,11 +106,22 @@ def _validate_list_payload(payload: dict) -> str | None:
     return None
 
 
+async def _assert_tenant_persisted(tenant_id: UUID) -> None:
+    from app.core.database import AsyncSessionLocal
+    from app.models.tenant import Tenant
+
+    async with AsyncSessionLocal() as db:
+        tenant = await db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise RuntimeError(f"tenant {tenant_id} is not persisted before tenant-scoped event emit")
+
+
 async def _emit_notification(tenant_id: UUID, *, title: str, description: str, event_type: str) -> None:
     from app.core.database import AsyncSessionLocal, ensure_platform_event_bus_schema
     from app.services.event_handlers.registration import register_event_bus_subscribers, reset_event_bus_registration
     from app.services.platform_event_service import PlatformEventService
 
+    await _assert_tenant_persisted(tenant_id)
     await ensure_platform_event_bus_schema()
     reset_event_bus_registration()
     register_event_bus_subscribers()
@@ -270,6 +281,12 @@ async def _run() -> int:
     )
 
     emit_title = f"[HTTP-VERIFY-{stamp}] EventBus emit"
+    try:
+        await _assert_tenant_persisted(tenant_a_id)
+        record("tenant_exists_before_emit", True, str(tenant_a_id))
+    except RuntimeError as exc:
+        record("tenant_exists_before_emit", False, str(exc))
+        return 1
     await _emit_notification(
         tenant_a_id,
         title=emit_title,

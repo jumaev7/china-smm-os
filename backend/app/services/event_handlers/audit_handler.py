@@ -4,6 +4,7 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events.types import PlatformEvent, SubscriberResult
+from app.models.tenant import Tenant
 from app.services.event_handlers.base import IntegrationHandler
 from app.services.platform_audit_service import PlatformAuditService
 
@@ -15,6 +16,11 @@ class AuditEventHandler(IntegrationHandler):
     async def handle(self, db: AsyncSession, event: PlatformEvent) -> SubscriberResult:
         if not self._is_enabled(event):
             return self._skip("integration disabled for event type")
+
+        if event.tenant_id is not None:
+            tenant = await db.get(Tenant, event.tenant_id)
+            if tenant is None:
+                return self._skip(f"tenant {event.tenant_id} not found")
 
         row = await PlatformAuditService.record(
             db,

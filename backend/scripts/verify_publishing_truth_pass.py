@@ -93,6 +93,14 @@ def seed_publish_verify_ready() -> dict | None:
     return asyncio.run(_seed_publish_verify_ready())
 
 
+def bootstrap_demo_user() -> tuple[bool, str]:
+    code, payload = req("POST", "/auth/create-demo-user")
+    if code in (200, 201):
+        return True, "create-demo-user"
+    detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
+    return False, f"HTTP {code}: {detail}"
+
+
 def main() -> int:
     report: dict = {
         "steps": [],
@@ -103,8 +111,14 @@ def main() -> int:
     }
     failures: list[str] = []
 
+    demo_ok, demo_detail = bootstrap_demo_user()
+    report["demo_bootstrap"] = {"ok": demo_ok, "detail": demo_detail}
+    if not demo_ok:
+        failures.append(f"demo user bootstrap failed: {demo_detail}")
+        print("FAIL demo user bootstrap", demo_detail)
+
     seed_info = seed_publish_verify_ready()
-    report["seed"] = seed_info or {"error": "demo tenant not found"}
+    report["seed"] = seed_info or {"error": "demo tenant not found after bootstrap"}
     if not seed_info:
         failures.append("failed to seed publish-verify-ready content for demo tenant")
         print("FAIL seed publish-verify-ready")

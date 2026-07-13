@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.platform_ops import PlatformAuditLog
+from app.models.tenant import Tenant
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,11 @@ class PlatformAuditService:
         details: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> PlatformAuditLog:
+        if tenant_id is not None:
+            tenant = await db.get(Tenant, tenant_id)
+            if tenant is None:
+                raise ValueError(f"tenant {tenant_id} not found for platform audit log")
+
         row = PlatformAuditLog(
             actor_type=actor_type,
             actor_id=actor_id,
