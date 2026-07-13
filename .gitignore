@@ -17,9 +17,13 @@ env/
 node_modules/
 .next/
 frontend/.next/
+frontend/tsconfig.tsbuildinfo
 out/
 .env.local
 !.env.example
+
+# Local verification script output
+backend/scripts/.verify_*_last.json
 
 # IDE
 .vscode/
