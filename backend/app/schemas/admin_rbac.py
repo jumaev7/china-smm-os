@@ -126,6 +126,7 @@ class AdminCreateClientAccountResponse(BaseModel):
     temporary_password: str
     login_url: str
     seed_counts: dict[str, int]
+    auto_config: dict[str, int | bool | str]
     message: str
     next_steps: list[str] = Field(default_factory=list)
 
