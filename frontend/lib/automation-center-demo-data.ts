@@ -14,8 +14,8 @@ import {
 } from "lucide-react";
 import type { Automation } from "@/lib/automation-center-ui";
 
-/** Explicit flag — Automation Center currently has no backend API. */
-export const AUTOMATION_CENTER_USES_DEMO_DATA = true;
+/** Demo fallback — disabled by default; live API is the primary data source. */
+export const AUTOMATION_CENTER_USES_DEMO_DATA = false;
 
 function hoursAgo(hours: number): string {
   return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();

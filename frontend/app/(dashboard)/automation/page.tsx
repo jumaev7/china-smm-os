@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Info, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { AutomationCard } from "@/components/automation/AutomationCard";
 import { AutomationCenterHeader } from "@/components/automation/AutomationCenterHeader";
 import { AutomationCenterSkeleton } from "@/components/automation/AutomationCenterSkeleton";
@@ -40,7 +40,9 @@ export default function AutomationPage() {
     resetFilters,
     retry,
     toggleAutomation,
-    isDemoData,
+    runTest,
+    mutatingId,
+    runState,
     tenantId,
   } = useAutomationCenter();
 
@@ -50,19 +52,6 @@ export default function AutomationPage() {
 
   const handleToggle = (id: string) => {
     toggleAutomation(id);
-    setSelected((prev) => {
-      if (!prev || prev.id !== id) return prev;
-      const nextEnabled = !prev.enabled;
-      return {
-        ...prev,
-        enabled: nextEnabled,
-        status: nextEnabled
-          ? prev.status === "paused" || prev.status === "draft"
-            ? "active"
-            : prev.status
-          : "paused",
-      };
-    });
   };
 
   useEffect(() => {
@@ -110,20 +99,6 @@ export default function AutomationPage() {
           {t("common.refresh")}
         </button>
       </div>
-
-      {isDemoData && !isLoading && !isError ? (
-        <div
-          role="status"
-          className={cn(
-            "mt-4 flex items-start gap-2 rounded-xl border px-4 py-3 text-sm",
-            "border-amber-200/80 bg-amber-50/60 text-amber-900",
-            "dark-tenant:border-amber-500/25 dark-tenant:bg-amber-500/10 dark-tenant:text-amber-200",
-          )}
-        >
-          <Info size={16} className="shrink-0 mt-0.5" aria-hidden />
-          <p>{t("automationCenter.demoBanner")}</p>
-        </div>
-      ) : null}
 
       {isLoading ? <AutomationCenterSkeleton /> : null}
 
@@ -243,6 +218,9 @@ export default function AutomationPage() {
         automation={selected}
         onClose={() => setSelected(null)}
         onToggle={handleToggle}
+        onRunTest={runTest}
+        isToggling={Boolean(selected && mutatingId === selected.id)}
+        runState={runState}
       />
     </PageShell>
   );

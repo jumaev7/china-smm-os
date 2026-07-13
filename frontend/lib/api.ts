@@ -13303,3 +13303,131 @@ export const notificationApi = {
 
 export const NOTIFICATION_UNREAD_COUNT_QUERY_KEY = ["notification-unread-count"] as const;
 export const NOTIFICATION_LIST_QUERY_KEY = ["notifications"] as const;
+
+export type AutomationFlowStatus = "enabled" | "paused" | "disabled";
+export type AutomationExecutionStatus = "pending" | "running" | "success" | "failed" | "skipped";
+export type AutomationActionType =
+  | "create_notification"
+  | "create_crm_lead"
+  | "update_customer_success_progress"
+  | "record_activity";
+
+export interface AutomationFlowSummary {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  category: string;
+  trigger_event: string;
+  action_type: AutomationActionType;
+  status: AutomationFlowStatus;
+  is_system: boolean;
+  enabled: boolean;
+  last_executed_at?: string | null;
+  last_execution_status?: AutomationExecutionStatus | null;
+  execution_count: number;
+  success_rate: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AutomationFlowDetail extends AutomationFlowSummary {
+  action_config: Record<string, unknown>;
+  recent_executions: AutomationExecutionSummary[];
+}
+
+export interface AutomationExecutionSummary {
+  id: string;
+  automation_flow_id: string;
+  automation_name?: string | null;
+  event_id: string;
+  trigger_event: string;
+  status: AutomationExecutionStatus;
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  attempt_number: number;
+  is_manual_test: boolean;
+  created_at: string;
+}
+
+export interface AutomationFlowListResponse {
+  items: AutomationFlowSummary[];
+  total: number;
+}
+
+export interface AutomationExecutionListResponse {
+  items: AutomationExecutionSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface AutomationKpiResponse {
+  health_score: number;
+  active_count: number;
+  paused_count: number;
+  disabled_count: number;
+  failed_flow_count: number;
+  total_executions_24h: number;
+  success_rate_overall: number;
+  total_flows: number;
+}
+
+export interface AutomationManualRunResponse {
+  execution_id: string;
+  flow_id: string;
+  status: AutomationExecutionStatus;
+  is_manual_test: boolean;
+  duration_ms?: number | null;
+  error_message?: string | null;
+}
+
+export interface AutomationFilters {
+  status?: AutomationFlowStatus;
+  category?: string;
+  search?: string;
+}
+
+export const automationApi = {
+  getFlows: (params?: AutomationFilters) =>
+    api.get<AutomationFlowListResponse>("/automation", {
+      params: {
+        status: params?.status,
+        category: params?.category,
+        search: params?.search?.trim() || undefined,
+      },
+    }),
+  getFlow: (id: string) => api.get<AutomationFlowDetail>(`/automation/${id}`),
+  getKpis: () => api.get<AutomationKpiResponse>("/automation/kpis"),
+  getExecutions: (params?: {
+    page?: number;
+    page_size?: number;
+    flow_id?: string;
+    status?: AutomationExecutionStatus;
+  }) =>
+    api.get<AutomationExecutionListResponse>("/automation/executions", {
+      params: {
+        page: params?.page,
+        page_size: params?.page_size,
+        flow_id: params?.flow_id,
+        status: params?.status,
+      },
+    }),
+  enableFlow: (id: string) =>
+    api.post<{ id: string; status: AutomationFlowStatus; enabled: boolean; updated_at: string }>(
+      `/automation/${id}/enable`,
+    ),
+  pauseFlow: (id: string) =>
+    api.post<{ id: string; status: AutomationFlowStatus; enabled: boolean; updated_at: string }>(
+      `/automation/${id}/pause`,
+    ),
+  runFlow: (id: string) => api.post<AutomationManualRunResponse>(`/automation/${id}/run`),
+};
+
+export const AUTOMATION_LIST_QUERY_KEY = ["automation-flows"] as const;
+export const AUTOMATION_KPI_QUERY_KEY = ["automation-kpis"] as const;
+export const AUTOMATION_EXECUTIONS_QUERY_KEY = ["automation-executions"] as const;

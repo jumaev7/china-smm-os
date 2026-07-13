@@ -1,5 +1,22 @@
 import type { LucideIcon } from "lucide-react";
-import { Zap } from "lucide-react";
+import {
+  Instagram,
+  ShoppingBag,
+  Trophy,
+  UserPlus,
+  XCircle,
+  Zap,
+  Bell,
+  Activity,
+  HeartPulse,
+} from "lucide-react";
+import type {
+  AutomationActionType,
+  AutomationExecutionSummary as ApiExecution,
+  AutomationFlowDetail,
+  AutomationFlowSummary,
+  AutomationKpiResponse,
+} from "@/lib/api";
 
 export type AutomationStatus = "active" | "paused" | "failed" | "draft";
 
@@ -226,3 +243,146 @@ export function filterAutomations(
 }
 
 export const EMPTY_STATE_ICON = Zap;
+
+const TRIGGER_LABELS: Record<string, string> = {
+  "tenant.content.publish_failed": "Publishing failed",
+  "tenant.integration.disconnected": "Integration disconnected",
+  "tenant.buyer.created": "Buyer created",
+  "tenant.crm.lead_created": "CRM lead created",
+  "tenant.crm.deal_stage_changed": "Deal stage changed",
+  "tenant.customer_success.milestone": "Journey milestone",
+  "tenant.onboarding.platform_ready": "Platform ready",
+};
+
+const ACTION_LABELS: Record<AutomationActionType, string> = {
+  create_notification: "Create notification",
+  create_crm_lead: "Create CRM lead",
+  update_customer_success_progress: "Update customer success",
+  record_activity: "Record activity",
+};
+
+const CATEGORY_ICONS: Record<string, { icon: LucideIcon; iconClassName: string }> = {
+  publishing: {
+    icon: XCircle,
+    iconClassName: "text-red-600 bg-red-50 dark-tenant:bg-red-500/10 dark-tenant:text-red-400",
+  },
+  integrations: {
+    icon: Instagram,
+    iconClassName: "text-pink-600 bg-pink-50 dark-tenant:bg-pink-500/10 dark-tenant:text-pink-400",
+  },
+  crm: {
+    icon: UserPlus,
+    iconClassName: "text-blue-600 bg-blue-50 dark-tenant:bg-blue-500/10 dark-tenant:text-blue-400",
+  },
+  customer_success: {
+    icon: Trophy,
+    iconClassName: "text-amber-600 bg-amber-50 dark-tenant:bg-amber-500/10 dark-tenant:text-amber-400",
+  },
+  automation: {
+    icon: Zap,
+    iconClassName: "text-violet-600 bg-violet-50 dark-tenant:bg-violet-500/10 dark-tenant:text-violet-400",
+  },
+};
+
+const ACTION_ICONS: Record<AutomationActionType, LucideIcon> = {
+  create_notification: Bell,
+  create_crm_lead: ShoppingBag,
+  update_customer_success_progress: HeartPulse,
+  record_activity: Activity,
+};
+
+function mapApiStatus(flow: AutomationFlowSummary): AutomationStatus {
+  if (flow.enabled && flow.last_execution_status === "failed") return "failed";
+  if (flow.status === "enabled") return "active";
+  if (flow.status === "paused") return "paused";
+  return "draft";
+}
+
+function relatedModulesFor(flow: AutomationFlowSummary): RelatedModule[] {
+  const modules: RelatedModule[] = [{ label: "Automation", href: "/automation" }];
+  if (flow.category === "publishing") modules.push({ label: "Publishing", href: "/publishing" });
+  if (flow.category === "integrations") modules.push({ label: "Integrations", href: "/integrations" });
+  if (flow.category === "crm") modules.push({ label: "CRM", href: "/crm" });
+  if (flow.action_type === "create_notification") {
+    modules.push({ label: "Notifications", href: "/notifications" });
+  }
+  if (flow.category === "customer_success") {
+    modules.push({ label: "Customer Success", href: "/customer-success" });
+  }
+  return modules;
+}
+
+function buildSteps(flow: Pick<AutomationFlowSummary, "trigger_event" | "action_type">): AutomationStep[] {
+  const triggerLabel = TRIGGER_LABELS[flow.trigger_event] ?? flow.trigger_event;
+  const actionLabel = ACTION_LABELS[flow.action_type] ?? flow.action_type;
+  return [
+    { id: "trigger", label: triggerLabel },
+    { id: "action", label: actionLabel },
+  ];
+}
+
+function iconFor(flow: AutomationFlowSummary): { icon: LucideIcon; iconClassName: string } {
+  const byCategory = CATEGORY_ICONS[flow.category];
+  if (byCategory) return byCategory;
+  return CATEGORY_ICONS.automation;
+}
+
+export function mapApiExecutionToApp(
+  row: ApiExecution,
+  automationName?: string,
+): AutomationExecution {
+  const result: ExecutionResult =
+    row.status === "success" ? "success" : row.status === "skipped" ? "skipped" : "failed";
+  return {
+    id: row.id,
+    automationId: row.automation_flow_id,
+    automationName: row.automation_name ?? automationName ?? "Automation",
+    timestamp: row.finished_at ?? row.started_at,
+    result,
+    detail: row.error_message ?? (row.is_manual_test ? "Manual test run" : undefined),
+    durationMs: row.duration_ms ?? undefined,
+  };
+}
+
+export function mapApiFlowToApp(
+  flow: AutomationFlowSummary,
+  executions: AutomationExecution[] = [],
+): Automation {
+  const visual = iconFor(flow);
+  return {
+    id: flow.id,
+    name: flow.name,
+    description: flow.description ?? "",
+    status: mapApiStatus(flow),
+    enabled: flow.enabled,
+    steps: buildSteps(flow),
+    conditions: [TRIGGER_LABELS[flow.trigger_event] ?? flow.trigger_event],
+    relatedModules: relatedModulesFor(flow),
+    lastExecution: flow.last_executed_at ?? null,
+    successRate: flow.success_rate,
+    executionHistory: executions,
+    nextScheduled: null,
+    icon: visual.icon,
+    iconClassName: visual.iconClassName,
+    createdAt: flow.created_at,
+    updatedAt: flow.updated_at,
+  };
+}
+
+export function mapKpisToSummary(kpis: AutomationKpiResponse): AutomationSummary {
+  return {
+    healthScore: kpis.health_score,
+    activeCount: kpis.active_count,
+    pausedCount: kpis.paused_count,
+    failedCount: kpis.failed_flow_count,
+    draftCount: kpis.disabled_count,
+    disabledCount: kpis.disabled_count,
+    totalExecutions24h: kpis.total_executions_24h,
+    successRateOverall: kpis.success_rate_overall,
+  };
+}
+
+export function mapApiFlowDetailToApp(detail: AutomationFlowDetail): Automation {
+  const executions = detail.recent_executions.map((e) => mapApiExecutionToApp(e, detail.name));
+  return mapApiFlowToApp(detail, executions);
+}

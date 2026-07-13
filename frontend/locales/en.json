@@ -1879,7 +1879,13 @@
     },
     "actions": {
       "pause": "Pause",
-      "enable": "Enable"
+      "enable": "Enable",
+      "runTest": "Run test"
+    },
+    "runTest": {
+      "pending": "Running test execution…",
+      "success": "Test execution completed successfully",
+      "failed": "Test execution failed"
     },
     "empty": {
       "title": "No automations yet",

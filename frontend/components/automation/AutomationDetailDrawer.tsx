@@ -51,10 +51,16 @@ export function AutomationDetailDrawer({
   automation,
   onClose,
   onToggle,
+  onRunTest,
+  isToggling = false,
+  runState,
 }: {
   automation: Automation | null;
   onClose: () => void;
   onToggle: (id: string) => void;
+  onRunTest?: (id: string) => void;
+  isToggling?: boolean;
+  runState?: { flowId: string; status: "pending" | "success" | "failed"; message?: string } | null;
 }) {
   const { t } = useTranslation();
 
@@ -258,12 +264,31 @@ export function AutomationDetailDrawer({
           </DrawerSection>
         </div>
 
-        <footer className="shrink-0 p-4 border-t border-gray-100 dark-tenant:border-white/[0.06] flex flex-wrap gap-2">
+        <footer className="shrink-0 p-4 border-t border-gray-100 dark-tenant:border-white/[0.06] flex flex-col gap-2">
+          {runState && automation && runState.flowId === automation.id ? (
+            <p
+              className={cn(
+                "text-xs rounded-lg px-3 py-2",
+                runState.status === "pending" && "bg-slate-100 text-slate-600 dark-tenant:bg-white/5 dark-tenant:text-slate-400",
+                runState.status === "success" && "bg-emerald-50 text-emerald-800 dark-tenant:bg-emerald-500/10 dark-tenant:text-emerald-300",
+                runState.status === "failed" && "bg-red-50 text-red-800 dark-tenant:bg-red-500/10 dark-tenant:text-red-300",
+              )}
+              role="status"
+            >
+              {runState.status === "pending"
+                ? t("automationCenter.runTest.pending")
+                : runState.status === "success"
+                  ? t("automationCenter.runTest.success")
+                  : runState.message ?? t("automationCenter.runTest.failed")}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => onToggle(automation.id)}
+            disabled={isToggling}
             className={cn(
-              "inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold",
+              "inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-60",
               automation.enabled
                 ? "border border-gray-200 text-gray-700 hover:bg-gray-50 dark-tenant:border-white/10 dark-tenant:text-slate-300 dark-tenant:hover:bg-white/[0.04]"
                 : "bg-brand-600 text-white hover:bg-brand-700 dark-tenant:bg-violet-600 dark-tenant:hover:bg-violet-500",
@@ -274,6 +299,17 @@ export function AutomationDetailDrawer({
               ? t("automationCenter.actions.pause")
               : t("automationCenter.actions.enable")}
           </button>
+          {onRunTest ? (
+            <button
+              type="button"
+              onClick={() => onRunTest(automation.id)}
+              disabled={runState?.status === "pending"}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-brand-200 px-4 py-2.5 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:opacity-60 dark-tenant:border-violet-500/30 dark-tenant:text-violet-300 dark-tenant:hover:bg-violet-500/10"
+            >
+              <Play size={14} aria-hidden />
+              {t("automationCenter.actions.runTest")}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -281,6 +317,7 @@ export function AutomationDetailDrawer({
           >
             {t("automationCenter.close")}
           </button>
+          </div>
         </footer>
       </aside>
     </>
