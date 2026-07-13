@@ -165,7 +165,11 @@ async def ensure_platform_event_bus_schema() -> None:
 
 
 async def ensure_dev_schema_patches() -> None:
-    """Apply idempotent column patches on dev startup (safe if Alembic already ran)."""
+    """Dev-only idempotent DDL for legacy drift; production must use Alembic only.
+
+    Most objects here are also covered by migrations after ``alembic upgrade head``.
+    Kept for local databases that predate a stamped ``alembic_version`` row.
+    """
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_crm_leads_columns)
         await conn.run_sync(_ensure_outreach_proposal_columns)

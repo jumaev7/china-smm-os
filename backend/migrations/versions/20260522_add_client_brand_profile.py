@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 from migrations.helpers import add_column_if_missing, drop_column_if_exists
 
 revision: str = "20260522_brand"
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = "20260521_initial_schema"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
