@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260902_automation_center"
-HEAD = "20260903_automation_reliability"
+RELIABILITY = "20260903_automation_reliability"
+HEAD = "20260904_automation_scheduler"
 
 
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
@@ -53,7 +54,13 @@ async def _run() -> int:
     up = _alembic("upgrade", "head")
     record("upgrade_head", up.returncode == 0, (up.stderr or up.stdout)[-300:])
     cur_after = _alembic("current")
-    record("current_is_reliability_head", HEAD in (cur_after.stdout or ""), (cur_after.stdout or "")[:200])
+    record("current_is_head", HEAD in (cur_after.stdout or ""), (cur_after.stdout or "")[:200])
+
+    # Prove reliability revision remains an ancestor mid-chain.
+    down_rel = _alembic("downgrade", RELIABILITY)
+    record("downgrade_to_reliability", down_rel.returncode == 0, (down_rel.stderr or down_rel.stdout)[-300:])
+    cur_rel = _alembic("current")
+    record("current_is_reliability", RELIABILITY in (cur_rel.stdout or ""), (cur_rel.stdout or "")[:200])
 
     down = _alembic("downgrade", PREV)
     record("downgrade_previous", down.returncode == 0, (down.stderr or down.stdout)[-300:])
