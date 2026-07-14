@@ -122,6 +122,67 @@ class AutomationKpiResponse(BaseModel):
     retry_success_count_today: int = 0
     partial_publish_failures_today: int = 0
     average_duration_ms: float | None = None
+    scheduled_jobs: int = 0
+    due_jobs: int = 0
+    running_jobs: int = 0
+    failed_jobs: int = 0
+    dead_letter_jobs: int = 0
+    recovered_leases_today: int = 0
+    automatic_retries_today: int = 0
+    automatic_retry_success_today: int = 0
+    average_schedule_delay_ms: float | None = None
+
+
+AutomationJobKind = Literal["automation_retry"]
+AutomationJobStatus = Literal[
+    "scheduled",
+    "leased",
+    "running",
+    "succeeded",
+    "failed",
+    "dead_letter",
+    "cancelled",
+]
+
+
+class AutomationJobSummary(BaseModel):
+    id: UUID
+    automation_flow_id: UUID
+    automation_name: str | None = None
+    execution_id: UUID | None = None
+    root_execution_id: UUID | None = None
+    job_kind: AutomationJobKind = "automation_retry"
+    status: AutomationJobStatus
+    scheduled_for: datetime
+    available_at: datetime
+    attempt_number: int = 1
+    max_attempts: int = 1
+    priority: int = 100
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_code: str | None = None
+    error_category: AutomationErrorCategory | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    can_cancel: bool = False
+    can_requeue: bool = False
+
+
+class AutomationJobDetail(AutomationJobSummary):
+    payload_summary: dict[str, Any] | None = None
+    result_summary: dict[str, Any] | None = None
+    lease_owner: str | None = None
+    lease_expires_at: datetime | None = None
+    lease_recovery_count: int = 0
+
+
+class AutomationJobListResponse(BaseModel):
+    items: list[AutomationJobSummary]
+    total: int
+    page: int
+    page_size: int
+    pages: int
 
 
 class AutomationStatusChangeResponse(BaseModel):

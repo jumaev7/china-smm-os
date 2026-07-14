@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, FilterX, History, PauseCircle, Zap } from "lucide-react";
+import { CalendarClock, FilterX, History, PauseCircle, TimerReset, Zap } from "lucide-react";
 import { useTranslation } from "@/lib/I18nProvider";
 import { cn } from "@/lib/utils";
 import {
@@ -10,8 +10,19 @@ import {
   formatRelativeTime,
   type Automation,
   type AutomationExecution,
+  type AutomationJobRow,
 } from "@/lib/automation-center-ui";
 import { AutomationCard } from "./AutomationCard";
+
+const JOB_STATUS_STYLES: Record<AutomationJobRow["status"], string> = {
+  scheduled: "bg-sky-100 text-sky-800 dark-tenant:bg-sky-500/15 dark-tenant:text-sky-300",
+  leased: "bg-indigo-100 text-indigo-800 dark-tenant:bg-indigo-500/15 dark-tenant:text-indigo-300",
+  running: "bg-violet-100 text-violet-800 dark-tenant:bg-violet-500/15 dark-tenant:text-violet-300",
+  succeeded: "bg-emerald-100 text-emerald-700 dark-tenant:bg-emerald-500/15 dark-tenant:text-emerald-300",
+  failed: "bg-red-100 text-red-700 dark-tenant:bg-red-500/15 dark-tenant:text-red-300",
+  dead_letter: "bg-rose-100 text-rose-800 dark-tenant:bg-rose-500/15 dark-tenant:text-rose-300",
+  cancelled: "bg-slate-100 text-slate-600 dark-tenant:bg-white/10 dark-tenant:text-slate-400",
+};
 
 export function AutomationEmptyState({
   hasFilters,
@@ -284,6 +295,112 @@ export function AutomationUpcomingPanel({
   );
 }
 
+export function AutomationJobsPanel({
+  jobs,
+  mutatingId,
+  onCancel,
+  onRequeue,
+}: {
+  jobs: AutomationJobRow[];
+  mutatingId: string | null;
+  onCancel: (jobId: string) => void;
+  onRequeue: (jobId: string) => void;
+}) {
+  const { t } = useTranslation();
+  if (jobs.length === 0) return null;
+
+  return (
+    <section aria-label={t("automationCenter.sections.jobs")} className="space-y-4">
+      <div className="flex items-center gap-2">
+        <TimerReset size={18} className="text-gray-400 dark-tenant:text-slate-500" aria-hidden />
+        <h2 className="section-title">{t("automationCenter.sections.jobs")}</h2>
+        <span className="text-xs text-gray-500 dark-tenant:text-slate-500">{jobs.length}</span>
+      </div>
+
+      <div className="space-y-3">
+        {jobs.map((job) => (
+          <div
+            key={job.id}
+            className={cn(
+              "rounded-xl border p-4",
+              "border-gray-200 bg-white dark-tenant:border-white/[0.08] dark-tenant:bg-surface-dark-elevated",
+            )}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold text-gray-900 dark-tenant:text-slate-100 truncate">
+                    {job.flowName}
+                  </p>
+                  <span
+                    className={cn(
+                      "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                      JOB_STATUS_STYLES[job.status],
+                    )}
+                  >
+                    {t(`automationCenter.jobStatus.${job.status}`)}
+                  </span>
+                  {job.status === "dead_letter" ? (
+                    <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-800 dark-tenant:bg-rose-500/15 dark-tenant:text-rose-300">
+                      {t("automationCenter.jobStatus.dead_letter")}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="text-xs text-gray-500 dark-tenant:text-slate-500">
+                  {t("automationCenter.jobs.nextRetry")}{" "}
+                  <time dateTime={job.scheduledFor}>{formatRelativeTime(job.scheduledFor)}</time>
+                  {" · "}
+                  {t("automationCenter.jobs.attempt", {
+                    current: job.attemptNumber,
+                    max: job.maxAttempts,
+                  })}
+                </p>
+                {job.errorMessage ? (
+                  <p className="text-xs text-red-600 dark-tenant:text-rose-300">{job.errorMessage}</p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {job.canCancel ? (
+                  <button
+                    type="button"
+                    disabled={mutatingId === job.id}
+                    onClick={() => onCancel(job.id)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-60",
+                      "border-gray-200 text-gray-700 hover:border-amber-300 hover:text-amber-800",
+                      "dark-tenant:border-white/10 dark-tenant:text-slate-300",
+                    )}
+                  >
+                    {mutatingId === job.id
+                      ? t("automationCenter.jobs.cancelling")
+                      : t("automationCenter.jobs.cancel")}
+                  </button>
+                ) : null}
+                {job.canRequeue ? (
+                  <button
+                    type="button"
+                    disabled={mutatingId === job.id}
+                    onClick={() => onRequeue(job.id)}
+                    className={cn(
+                      "rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-60",
+                      "border-gray-200 text-gray-700 hover:border-brand-300 hover:text-brand-700",
+                      "dark-tenant:border-white/10 dark-tenant:text-slate-300",
+                    )}
+                  >
+                    {mutatingId === job.id
+                      ? t("automationCenter.jobs.requeuing")
+                      : t("automationCenter.jobs.requeue")}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function AutomationDisabledPanel({
   automations,
   onSelect,
@@ -329,12 +446,18 @@ export function AutomationOverviewStrip({
   retryCountToday = 0,
   partialPublishFailuresToday = 0,
   averageDurationMs = null,
+  scheduledJobs = 0,
+  deadLetterJobs = 0,
+  automaticRetriesToday = 0,
 }: {
   successRate: number;
   executions24h: number;
   retryCountToday?: number;
   partialPublishFailuresToday?: number;
   averageDurationMs?: number | null;
+  scheduledJobs?: number;
+  deadLetterJobs?: number;
+  automaticRetriesToday?: number;
 }) {
   const { t } = useTranslation();
 
@@ -369,7 +492,7 @@ export function AutomationOverviewStrip({
             {t("automationCenter.overview.successRate")}
           </p>
           <p className="text-lg font-bold text-emerald-600 dark-tenant:text-emerald-400">
-            {successRate}%
+            {Math.round(successRate)}%
           </p>
         </div>
         <div>
@@ -386,6 +509,30 @@ export function AutomationOverviewStrip({
           </p>
           <p className="text-lg font-bold text-amber-600 dark-tenant:text-amber-400">
             {partialPublishFailuresToday}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark-tenant:text-slate-500">
+            {t("automationCenter.overview.scheduledJobs")}
+          </p>
+          <p className="text-lg font-bold text-sky-700 dark-tenant:text-sky-300">
+            {scheduledJobs}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark-tenant:text-slate-500">
+            {t("automationCenter.overview.deadLetterJobs")}
+          </p>
+          <p className="text-lg font-bold text-rose-700 dark-tenant:text-rose-300">
+            {deadLetterJobs}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark-tenant:text-slate-500">
+            {t("automationCenter.overview.autoRetriesToday")}
+          </p>
+          <p className="text-lg font-bold text-gray-900 dark-tenant:text-slate-100">
+            {automaticRetriesToday}
           </p>
         </div>
         {averageDurationMs != null ? (

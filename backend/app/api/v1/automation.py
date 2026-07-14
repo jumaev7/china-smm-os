@@ -1,5 +1,4 @@
 """Tenant Automation Center API."""
-from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -14,11 +13,14 @@ from app.schemas.automation import (
     AutomationFlowDetail,
     AutomationFlowListResponse,
     AutomationFlowUpdate,
+    AutomationJobDetail,
+    AutomationJobListResponse,
     AutomationKpiResponse,
     AutomationManualRunResponse,
     AutomationRetryResponse,
     AutomationStatusChangeResponse,
 )
+from app.services.automation_job_service import AutomationJobService
 from app.services.automation_service import AutomationService
 from app.services.tenant_auth_service import CurrentTenantUser
 
@@ -33,6 +35,70 @@ async def automation_kpis(
     result = await run_guarded(
         AutomationService.get_kpis(db, user.tenant_id),
         label="automation.kpis",
+    )
+    await db.commit()
+    return result
+
+
+@router.get("/jobs", response_model=AutomationJobListResponse)
+async def list_automation_jobs(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    flow_id: UUID | None = None,
+    status: str | None = None,
+    root_execution_id: UUID | None = None,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await run_guarded(
+        AutomationJobService.list_jobs(
+            db,
+            user.tenant_id,
+            page=page,
+            page_size=page_size,
+            flow_id=flow_id,
+            status=status,
+            root_execution_id=root_execution_id,
+        ),
+        label="automation.jobs",
+    )
+
+
+@router.get("/jobs/{job_id}", response_model=AutomationJobDetail)
+async def get_automation_job(
+    job_id: UUID,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await run_guarded(
+        AutomationJobService.get_job(db, user.tenant_id, job_id),
+        label="automation.job.get",
+    )
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=AutomationJobDetail)
+async def cancel_automation_job(
+    job_id: UUID,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await run_guarded(
+        AutomationJobService.cancel_job(db, user.tenant_id, job_id),
+        label="automation.job.cancel",
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/jobs/{job_id}/requeue", response_model=AutomationJobDetail)
+async def requeue_automation_job(
+    job_id: UUID,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await run_guarded(
+        AutomationJobService.requeue_job(db, user.tenant_id, job_id),
+        label="automation.job.requeue",
     )
     await db.commit()
     return result

@@ -1857,21 +1857,42 @@
       "failed": "Failed",
       "skipped": "Skipped"
     },
-    "sections": {
-      "overview": "Overview",
-      "automations": "Automation cards",
-      "filtered": "Filtered automations",
-      "executionHistory": "Execution history",
-      "upcoming": "Upcoming automations",
-      "disabled": "Disabled automations"
-    },
     "overview": {
       "subtitle": "Platform automation activity in the last 24 hours",
       "executions24h": "Executions (24h)",
       "successRate": "Success rate",
       "retriesToday": "Retries today",
       "partialFailures": "Partial publish failures",
-      "avgDuration": "Avg duration"
+      "avgDuration": "Avg duration",
+      "scheduledJobs": "Scheduled retries",
+      "deadLetterJobs": "Dead-letter",
+      "autoRetriesToday": "Auto retries today"
+    },
+    "sections": {
+      "overview": "Overview",
+      "automations": "Automation cards",
+      "filtered": "Filtered automations",
+      "executionHistory": "Execution history",
+      "upcoming": "Upcoming automations",
+      "disabled": "Disabled automations",
+      "jobs": "Scheduled retries"
+    },
+    "jobStatus": {
+      "scheduled": "Scheduled",
+      "leased": "Leased",
+      "running": "Running",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "dead_letter": "Dead letter",
+      "cancelled": "Cancelled"
+    },
+    "jobs": {
+      "nextRetry": "Next retry",
+      "attempt": "Attempt {{current}}/{{max}}",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling…",
+      "requeue": "Requeue",
+      "requeuing": "Requeuing…"
     },
     "drawer": {
       "trigger": "Trigger",

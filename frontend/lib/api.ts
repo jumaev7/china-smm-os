@@ -13416,6 +13416,63 @@ export interface AutomationKpiResponse {
   retry_success_count_today?: number;
   partial_publish_failures_today?: number;
   average_duration_ms?: number | null;
+  scheduled_jobs?: number;
+  due_jobs?: number;
+  running_jobs?: number;
+  failed_jobs?: number;
+  dead_letter_jobs?: number;
+  recovered_leases_today?: number;
+  automatic_retries_today?: number;
+  automatic_retry_success_today?: number;
+  average_schedule_delay_ms?: number | null;
+}
+
+export type AutomationJobStatus =
+  | "scheduled"
+  | "leased"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "dead_letter"
+  | "cancelled";
+
+export interface AutomationJobSummary {
+  id: string;
+  automation_flow_id: string;
+  automation_name?: string | null;
+  execution_id?: string | null;
+  root_execution_id?: string | null;
+  job_kind: "automation_retry";
+  status: AutomationJobStatus;
+  scheduled_for: string;
+  available_at: string;
+  attempt_number: number;
+  max_attempts: number;
+  priority: number;
+  started_at?: string | null;
+  finished_at?: string | null;
+  error_code?: string | null;
+  error_category?: AutomationErrorCategory | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
+  can_cancel: boolean;
+  can_requeue: boolean;
+}
+
+export interface AutomationJobDetail extends AutomationJobSummary {
+  payload_summary?: Record<string, unknown> | null;
+  result_summary?: Record<string, unknown> | null;
+  lease_expires_at?: string | null;
+  lease_recovery_count?: number;
+}
+
+export interface AutomationJobListResponse {
+  items: AutomationJobSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
 }
 
 export interface AutomationManualRunResponse {
@@ -13484,8 +13541,30 @@ export const automationApi = {
     api.get<AutomationExecutionDetail>(`/automation/executions/${id}`),
   retryExecution: (id: string) =>
     api.post<AutomationRetryResponse>(`/automation/executions/${id}/retry`),
+  getJobs: (params?: {
+    page?: number;
+    page_size?: number;
+    flow_id?: string;
+    status?: AutomationJobStatus;
+    root_execution_id?: string;
+  }) =>
+    api.get<AutomationJobListResponse>("/automation/jobs", {
+      params: {
+        page: params?.page,
+        page_size: params?.page_size,
+        flow_id: params?.flow_id,
+        status: params?.status,
+        root_execution_id: params?.root_execution_id,
+      },
+    }),
+  getJob: (id: string) => api.get<AutomationJobDetail>(`/automation/jobs/${id}`),
+  cancelJob: (id: string) =>
+    api.post<AutomationJobDetail>(`/automation/jobs/${id}/cancel`),
+  requeueJob: (id: string) =>
+    api.post<AutomationJobDetail>(`/automation/jobs/${id}/requeue`),
 };
 
 export const AUTOMATION_LIST_QUERY_KEY = ["automation-flows"] as const;
 export const AUTOMATION_KPI_QUERY_KEY = ["automation-kpis"] as const;
 export const AUTOMATION_EXECUTIONS_QUERY_KEY = ["automation-executions"] as const;
+export const AUTOMATION_JOBS_QUERY_KEY = ["automation-jobs"] as const;

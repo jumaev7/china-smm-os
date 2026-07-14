@@ -10,6 +10,7 @@ import {
   AutomationDisabledPanel,
   AutomationEmptyState,
   AutomationExecutionHistoryPanel,
+  AutomationJobsPanel,
   AutomationOverviewStrip,
   AutomationUpcomingPanel,
 } from "@/components/automation/AutomationPanels";
@@ -30,6 +31,7 @@ export default function AutomationPage() {
     recentExecutions,
     upcomingAutomations,
     disabledAutomations,
+    jobs,
     automations,
     filters,
     summary,
@@ -42,7 +44,10 @@ export default function AutomationPage() {
     toggleAutomation,
     runTest,
     retryExecution,
+    cancelJob,
+    requeueJob,
     mutatingId,
+    jobMutatingId,
     runState,
     retryState,
     tenantId,
@@ -120,6 +125,16 @@ export default function AutomationPage() {
             retryCountToday={summary.retryCountToday ?? 0}
             partialPublishFailuresToday={summary.partialPublishFailuresToday ?? 0}
             averageDurationMs={summary.averageDurationMs ?? null}
+            scheduledJobs={summary.scheduledJobs ?? 0}
+            deadLetterJobs={summary.deadLetterJobs ?? 0}
+            automaticRetriesToday={summary.automaticRetriesToday ?? 0}
+          />
+
+          <AutomationJobsPanel
+            jobs={jobs}
+            mutatingId={jobMutatingId}
+            onCancel={cancelJob}
+            onRequeue={requeueJob}
           />
 
           {showMainList ? (

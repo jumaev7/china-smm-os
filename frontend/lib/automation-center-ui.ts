@@ -15,6 +15,7 @@ import type {
   AutomationExecutionSummary as ApiExecution,
   AutomationFlowDetail,
   AutomationFlowSummary,
+  AutomationJobSummary as ApiJob,
   AutomationKpiResponse,
 } from "@/lib/api";
 
@@ -92,6 +93,41 @@ export interface AutomationSummary {
   averageDurationMs?: number | null;
   executionsToday?: number;
   successRateToday?: number;
+  scheduledJobs?: number;
+  dueJobs?: number;
+  runningJobs?: number;
+  failedJobs?: number;
+  deadLetterJobs?: number;
+  recoveredLeasesToday?: number;
+  automaticRetriesToday?: number;
+  automaticRetrySuccessToday?: number;
+  averageScheduleDelayMs?: number | null;
+}
+
+export type AutomationJobStatusUi =
+  | "scheduled"
+  | "leased"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "dead_letter"
+  | "cancelled";
+
+export interface AutomationJobRow {
+  id: string;
+  flowId: string;
+  flowName: string;
+  executionId?: string | null;
+  rootExecutionId?: string | null;
+  status: AutomationJobStatusUi;
+  scheduledFor: string;
+  availableAt: string;
+  attemptNumber: number;
+  maxAttempts: number;
+  errorMessage?: string | null;
+  canCancel: boolean;
+  canRequeue: boolean;
+  createdAt: string;
 }
 
 export const STATUS_LABELS: Record<AutomationStatus, string> = {
@@ -382,6 +418,7 @@ export function mapApiExecutionToApp(
 export function mapApiFlowToApp(
   flow: AutomationFlowSummary,
   executions: AutomationExecution[] = [],
+  nextScheduled: string | null = null,
 ): Automation {
   const visual = iconFor(flow);
   return {
@@ -396,11 +433,30 @@ export function mapApiFlowToApp(
     lastExecution: flow.last_executed_at ?? null,
     successRate: flow.success_rate,
     executionHistory: executions,
-    nextScheduled: null,
+    nextScheduled,
     icon: visual.icon,
     iconClassName: visual.iconClassName,
     createdAt: flow.created_at,
     updatedAt: flow.updated_at,
+  };
+}
+
+export function mapApiJobToApp(row: ApiJob): AutomationJobRow {
+  return {
+    id: row.id,
+    flowId: row.automation_flow_id,
+    flowName: row.automation_name ?? "Automation",
+    executionId: row.execution_id,
+    rootExecutionId: row.root_execution_id,
+    status: row.status,
+    scheduledFor: row.scheduled_for,
+    availableAt: row.available_at,
+    attemptNumber: row.attempt_number,
+    maxAttempts: row.max_attempts,
+    errorMessage: row.error_message,
+    canCancel: row.can_cancel,
+    canRequeue: row.can_requeue,
+    createdAt: row.created_at,
   };
 }
 
@@ -418,8 +474,17 @@ export function mapKpisToSummary(kpis: AutomationKpiResponse): AutomationSummary
     retrySuccessCountToday: kpis.retry_success_count_today ?? 0,
     partialPublishFailuresToday: kpis.partial_publish_failures_today ?? 0,
     averageDurationMs: kpis.average_duration_ms ?? null,
-    executionsToday: kpis.executions_today ?? kpis.total_executions_24h,
+    executionsToday: kpis.executions_today ?? 0,
     successRateToday: kpis.success_rate ?? kpis.success_rate_overall,
+    scheduledJobs: kpis.scheduled_jobs ?? 0,
+    dueJobs: kpis.due_jobs ?? 0,
+    runningJobs: kpis.running_jobs ?? 0,
+    failedJobs: kpis.failed_jobs ?? 0,
+    deadLetterJobs: kpis.dead_letter_jobs ?? 0,
+    recoveredLeasesToday: kpis.recovered_leases_today ?? 0,
+    automaticRetriesToday: kpis.automatic_retries_today ?? 0,
+    automaticRetrySuccessToday: kpis.automatic_retry_success_today ?? 0,
+    averageScheduleDelayMs: kpis.average_schedule_delay_ms ?? null,
   };
 }
 
