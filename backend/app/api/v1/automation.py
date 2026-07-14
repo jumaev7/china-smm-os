@@ -9,12 +9,14 @@ from app.core.database import get_db
 from app.core.endpoint_guard import run_guarded
 from app.core.tenant_access import get_current_tenant_user
 from app.schemas.automation import (
+    AutomationExecutionDetail,
     AutomationExecutionListResponse,
     AutomationFlowDetail,
     AutomationFlowListResponse,
     AutomationFlowUpdate,
     AutomationKpiResponse,
     AutomationManualRunResponse,
+    AutomationRetryResponse,
     AutomationStatusChangeResponse,
 )
 from app.services.automation_service import AutomationService
@@ -56,6 +58,32 @@ async def list_automation_executions(
         ),
         label="automation.executions",
     )
+
+
+@router.get("/executions/{execution_id}", response_model=AutomationExecutionDetail)
+async def get_automation_execution(
+    execution_id: UUID,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await run_guarded(
+        AutomationService.get_execution(db, user.tenant_id, execution_id),
+        label="automation.execution.get",
+    )
+
+
+@router.post("/executions/{execution_id}/retry", response_model=AutomationRetryResponse)
+async def retry_automation_execution(
+    execution_id: UUID,
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await run_guarded(
+        AutomationService.retry_execution(db, user.tenant_id, execution_id),
+        label="automation.execution.retry",
+    )
+    await db.commit()
+    return result
 
 
 @router.get("", response_model=AutomationFlowListResponse)

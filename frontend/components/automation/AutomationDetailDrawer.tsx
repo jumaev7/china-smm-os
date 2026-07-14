@@ -52,15 +52,23 @@ export function AutomationDetailDrawer({
   onClose,
   onToggle,
   onRunTest,
+  onRetryExecution,
   isToggling = false,
   runState,
+  retryState,
 }: {
   automation: Automation | null;
   onClose: () => void;
   onToggle: (id: string) => void;
   onRunTest?: (id: string) => void;
+  onRetryExecution?: (executionId: string) => void;
   isToggling?: boolean;
   runState?: { flowId: string; status: "pending" | "success" | "failed"; message?: string } | null;
+  retryState?: {
+    executionId: string;
+    status: "pending" | "success" | "failed";
+    message?: string;
+  } | null;
 }) {
   const { t } = useTranslation();
 
@@ -207,7 +215,10 @@ export function AutomationDetailDrawer({
           {automation.executionHistory.length > 0 ? (
             <DrawerSection title={t("automationCenter.drawer.executionHistory")} icon={History}>
               <ol className="relative border-l border-gray-200 ml-2 space-y-4 dark-tenant:border-white/10">
-                {automation.executionHistory.map((event, idx) => (
+                {automation.executionHistory.map((event) => {
+                  const isRetrying =
+                    retryState?.executionId === event.id && retryState.status === "pending";
+                  return (
                   <li key={event.id} className="ml-4 relative">
                     <span
                       className={cn(
@@ -228,6 +239,14 @@ export function AutomationDetailDrawer({
                       >
                         {t(`automationCenter.execution.${event.result}`)}
                       </span>
+                      {event.executionKind ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark-tenant:bg-white/10 dark-tenant:text-slate-400">
+                          {t(`automationCenter.kind.${event.executionKind}`)}
+                          {event.executionKind === "retry" && event.retryNumber
+                            ? ` #${event.retryNumber}`
+                            : ""}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-3 mt-0.5">
                       <time
@@ -242,8 +261,27 @@ export function AutomationDetailDrawer({
                         </span>
                       ) : null}
                     </div>
+                    {event.result === "failed" && onRetryExecution ? (
+                      event.retryEligible ? (
+                        <button
+                          type="button"
+                          onClick={() => onRetryExecution(event.id)}
+                          disabled={isRetrying || retryState?.status === "pending"}
+                          className="mt-1.5 text-xs font-semibold text-brand-700 hover:text-brand-800 disabled:opacity-60 dark-tenant:text-violet-300"
+                        >
+                          {isRetrying
+                            ? t("automationCenter.retry.pending")
+                            : t("automationCenter.retry.action")}
+                        </button>
+                      ) : event.retryBlockedReason ? (
+                        <p className="mt-1.5 text-[11px] text-gray-400 dark-tenant:text-slate-500">
+                          {t("automationCenter.retry.blocked")}: {event.retryBlockedReason}
+                        </p>
+                      ) : null
+                    ) : null}
                   </li>
-                ))}
+                  );
+                })}
               </ol>
             </DrawerSection>
           ) : null}

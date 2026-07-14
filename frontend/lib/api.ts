@@ -13305,7 +13305,21 @@ export const NOTIFICATION_UNREAD_COUNT_QUERY_KEY = ["notification-unread-count"]
 export const NOTIFICATION_LIST_QUERY_KEY = ["notifications"] as const;
 
 export type AutomationFlowStatus = "enabled" | "paused" | "disabled";
-export type AutomationExecutionStatus = "pending" | "running" | "success" | "failed" | "skipped";
+export type AutomationExecutionStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+export type AutomationExecutionKind = "event" | "manual" | "retry";
+export type AutomationErrorCategory =
+  | "validation"
+  | "configuration"
+  | "dependency"
+  | "transient"
+  | "conflict"
+  | "internal";
 export type AutomationActionType =
   | "create_notification"
   | "create_crm_lead"
@@ -13323,6 +13337,9 @@ export interface AutomationFlowSummary {
   status: AutomationFlowStatus;
   is_system: boolean;
   enabled: boolean;
+  max_retry_attempts?: number;
+  retry_delay_seconds?: number;
+  retry_backoff?: "fixed" | "linear" | "exponential";
   last_executed_at?: string | null;
   last_execution_status?: AutomationExecutionStatus | null;
   execution_count: number;
@@ -13343,6 +13360,15 @@ export interface AutomationExecutionSummary {
   event_id: string;
   trigger_event: string;
   status: AutomationExecutionStatus;
+  execution_kind?: AutomationExecutionKind;
+  root_execution_id?: string | null;
+  retry_of_execution_id?: string | null;
+  retry_number?: number;
+  max_retry_attempts?: number | null;
+  retry_eligible?: boolean;
+  retry_blocked_reason?: string | null;
+  is_retryable?: boolean | null;
+  error_category?: AutomationErrorCategory | null;
   started_at: string;
   finished_at?: string | null;
   duration_ms?: number | null;
@@ -13351,6 +13377,12 @@ export interface AutomationExecutionSummary {
   attempt_number: number;
   is_manual_test: boolean;
   created_at: string;
+}
+
+export interface AutomationExecutionDetail extends AutomationExecutionSummary {
+  input_summary?: Record<string, unknown> | null;
+  result_summary?: Record<string, unknown> | null;
+  action_type?: AutomationActionType | null;
 }
 
 export interface AutomationFlowListResponse {
@@ -13375,6 +13407,15 @@ export interface AutomationKpiResponse {
   total_executions_24h: number;
   success_rate_overall: number;
   total_flows: number;
+  enabled_flows?: number;
+  executions_today?: number;
+  success_count_today?: number;
+  failure_count_today?: number;
+  success_rate?: number;
+  retry_count_today?: number;
+  retry_success_count_today?: number;
+  partial_publish_failures_today?: number;
+  average_duration_ms?: number | null;
 }
 
 export interface AutomationManualRunResponse {
@@ -13384,6 +13425,19 @@ export interface AutomationManualRunResponse {
   is_manual_test: boolean;
   duration_ms?: number | null;
   error_message?: string | null;
+}
+
+export interface AutomationRetryResponse {
+  execution_id: string;
+  flow_id: string;
+  status: AutomationExecutionStatus;
+  execution_kind: AutomationExecutionKind;
+  root_execution_id: string;
+  retry_of_execution_id: string;
+  retry_number: number;
+  duration_ms?: number | null;
+  error_message?: string | null;
+  error_category?: AutomationErrorCategory | null;
 }
 
 export interface AutomationFilters {
@@ -13426,6 +13480,10 @@ export const automationApi = {
       `/automation/${id}/pause`,
     ),
   runFlow: (id: string) => api.post<AutomationManualRunResponse>(`/automation/${id}/run`),
+  getExecution: (id: string) =>
+    api.get<AutomationExecutionDetail>(`/automation/executions/${id}`),
+  retryExecution: (id: string) =>
+    api.post<AutomationRetryResponse>(`/automation/executions/${id}/retry`),
 };
 
 export const AUTOMATION_LIST_QUERY_KEY = ["automation-flows"] as const;

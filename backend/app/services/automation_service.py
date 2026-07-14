@@ -15,6 +15,7 @@ from app.models.automation import (
     TenantAutomationFlow,
 )
 from app.schemas.automation import (
+    AutomationExecutionDetail,
     AutomationExecutionListResponse,
     AutomationExecutionSummary,
     AutomationFlowDetail,
@@ -23,8 +24,10 @@ from app.schemas.automation import (
     AutomationFlowUpdate,
     AutomationKpiResponse,
     AutomationManualRunResponse,
+    AutomationRetryResponse,
     AutomationStatusChangeResponse,
 )
+from app.services.automation_errors import safe_error_message, sanitize_payload_summary
 from app.services.automation_execution_service import AutomationExecutionService
 
 MAX_PAGE_SIZE = 100
@@ -41,6 +44,28 @@ SYSTEM_FLOW_DEFINITIONS: tuple[dict, ...] = (
         "action_config": {
             "title": "Publishing failed: {resource_name}",
             "body": "A publish attempt failed. Review publishing settings and retry.",
+            "category": "publishing",
+            "severity": "warning",
+            "action_url": "/publishing",
+            "resource_type": "publishing",
+        },
+    },
+    {
+        "key": "system_publish_partial_failed_notify",
+        "name": "Partial publishing failure alert",
+        "description": (
+            "When a publish attempt partially fails (some platforms succeed, others fail), "
+            "create an in-app notification."
+        ),
+        "category": "publishing",
+        "trigger_event": "tenant.content.publish_partial_failed",
+        "action_type": "create_notification",
+        "action_config": {
+            "title": "Partial publish failure: {resource_name}",
+            "body": (
+                "Some platforms published successfully, but {failure_count} failed. "
+                "Review publishing settings — this is not a total failure."
+            ),
             "category": "publishing",
             "severity": "warning",
             "action_url": "/publishing",
@@ -129,6 +154,9 @@ async def _row_to_summary(
         status=row.status,  # type: ignore[arg-type]
         is_system=row.is_system,
         enabled=_flow_enabled(row.status),
+        max_retry_attempts=int(getattr(row, "max_retry_attempts", 1) or 1),
+        retry_delay_seconds=int(getattr(row, "retry_delay_seconds", 60) or 60),
+        retry_backoff=getattr(row, "retry_backoff", None) or "fixed",  # type: ignore[arg-type]
         last_executed_at=row.last_executed_at,
         last_execution_status=row.last_execution_status,  # type: ignore[arg-type]
         execution_count=count,
@@ -138,12 +166,35 @@ async def _row_to_summary(
     )
 
 
-def _execution_to_summary(
+async def _execution_to_summary_async(
+    db: AsyncSession,
     row: TenantAutomationExecution,
     *,
     automation_name: str | None = None,
+    flow: TenantAutomationFlow | None = None,
+    max_retry_attempts: int | None = None,
+    evaluate_eligibility: bool = True,
 ) -> AutomationExecutionSummary:
     payload = row.input_payload or {}
+    retry_eligible = False
+    retry_blocked_reason: str | None = None
+    resolved_max = max_retry_attempts
+    if resolved_max is None and flow is not None:
+        resolved_max = int(getattr(flow, "max_retry_attempts", 1) or 1)
+
+    if evaluate_eligibility and row.status == "failed" and flow is not None:
+        eligibility = await AutomationExecutionService.evaluate_retry_eligibility(
+            db,
+            tenant_id=row.tenant_id,
+            execution=row,
+            flow=flow,
+        )
+        retry_eligible = bool(eligibility["eligible"])
+        retry_blocked_reason = eligibility["reason"]
+        resolved_max = int(eligibility["max_retry_attempts"])
+    elif evaluate_eligibility and row.status == "failed" and flow is None:
+        retry_blocked_reason = "Automation flow not found"
+
     return AutomationExecutionSummary(
         id=row.id,
         automation_flow_id=row.automation_flow_id,
@@ -151,11 +202,20 @@ def _execution_to_summary(
         event_id=row.event_id,
         trigger_event=row.trigger_event,
         status=row.status,  # type: ignore[arg-type]
+        execution_kind=getattr(row, "execution_kind", None) or "event",  # type: ignore[arg-type]
+        root_execution_id=getattr(row, "root_execution_id", None),
+        retry_of_execution_id=getattr(row, "retry_of_execution_id", None),
+        retry_number=int(getattr(row, "retry_number", 0) or 0),
+        max_retry_attempts=resolved_max,
+        retry_eligible=retry_eligible,
+        retry_blocked_reason=retry_blocked_reason,
+        is_retryable=getattr(row, "is_retryable", None),
+        error_category=getattr(row, "error_category", None),  # type: ignore[arg-type]
         started_at=row.started_at,
         finished_at=row.finished_at,
         duration_ms=row.duration_ms,
         error_code=row.error_code,
-        error_message=row.error_message,
+        error_message=safe_error_message(row.error_message),
         attempt_number=row.attempt_number,
         is_manual_test=bool(payload.get("manual_test")),
         created_at=row.created_at,
@@ -188,6 +248,9 @@ class AutomationService:
                 action_config=spec["action_config"],
                 status="enabled",
                 is_system=True,
+                max_retry_attempts=1,
+                retry_delay_seconds=60,
+                retry_backoff="fixed",
             )
             db.add(row)
             created += 1
@@ -248,7 +311,15 @@ class AutomationService:
                 .limit(10),
             )
         ).scalars().all()
-        recent = [_execution_to_summary(r, automation_name=row.name) for r in recent_rows]
+        recent = [
+            await _execution_to_summary_async(
+                db,
+                r,
+                automation_name=row.name,
+                flow=row,
+            )
+            for r in recent_rows
+        ]
         return AutomationFlowDetail(
             **summary.model_dump(),
             action_config=row.action_config or {},
@@ -372,7 +443,10 @@ class AutomationService:
 
         rows = (
             await db.execute(
-                select(TenantAutomationExecution, TenantAutomationFlow.name)
+                select(
+                    TenantAutomationExecution,
+                    TenantAutomationFlow,
+                )
                 .join(
                     TenantAutomationFlow,
                     TenantAutomationFlow.id == TenantAutomationExecution.automation_flow_id,
@@ -384,10 +458,18 @@ class AutomationService:
             )
         ).all()
 
-        items = [
-            _execution_to_summary(exec_row, automation_name=flow_name)
-            for exec_row, flow_name in rows
-        ]
+        items: list[AutomationExecutionSummary] = []
+        for exec_row, flow_row in rows:
+            items.append(
+                await _execution_to_summary_async(
+                    db,
+                    exec_row,
+                    automation_name=flow_row.name,
+                    flow=flow_row,
+                    max_retry_attempts=int(getattr(flow_row, "max_retry_attempts", 1) or 1),
+                    evaluate_eligibility=exec_row.status == "failed",
+                ),
+            )
         pages = max(1, math.ceil(int(total) / page_size)) if total else 0
         if total == 0:
             pages = 0
@@ -397,6 +479,88 @@ class AutomationService:
             page=page,
             page_size=page_size,
             pages=pages,
+        )
+
+    @staticmethod
+    async def get_execution(
+        db: AsyncSession,
+        tenant_id: UUID,
+        execution_id: UUID,
+    ) -> AutomationExecutionDetail:
+        execution = await AutomationService._load_execution(db, tenant_id, execution_id)
+        flow = (
+            await db.execute(
+                select(TenantAutomationFlow).where(
+                    TenantAutomationFlow.id == execution.automation_flow_id,
+                    TenantAutomationFlow.tenant_id == tenant_id,
+                ),
+            )
+        ).scalar_one_or_none()
+        summary = await _execution_to_summary_async(
+            db,
+            execution,
+            automation_name=flow.name if flow else None,
+            flow=flow,
+        )
+        return AutomationExecutionDetail(
+            **summary.model_dump(),
+            input_summary=sanitize_payload_summary(execution.input_payload),
+            result_summary=sanitize_payload_summary(execution.result_payload),
+            action_type=flow.action_type if flow else None,  # type: ignore[arg-type]
+        )
+
+    @staticmethod
+    async def retry_execution(
+        db: AsyncSession,
+        tenant_id: UUID,
+        execution_id: UUID,
+    ) -> AutomationRetryResponse:
+        execution = await AutomationService._load_execution(db, tenant_id, execution_id)
+        flow = (
+            await db.execute(
+                select(TenantAutomationFlow).where(
+                    TenantAutomationFlow.id == execution.automation_flow_id,
+                    TenantAutomationFlow.tenant_id == tenant_id,
+                ),
+            )
+        ).scalar_one_or_none()
+        if flow is None:
+            raise HTTPException(status_code=404, detail="Automation flow not found")
+
+        eligibility = await AutomationExecutionService.evaluate_retry_eligibility(
+            db,
+            tenant_id=tenant_id,
+            execution=execution,
+            flow=flow,
+        )
+        if not eligibility["eligible"]:
+            raise HTTPException(
+                status_code=409,
+                detail=eligibility["reason"] or "Retry not allowed",
+            )
+
+        try:
+            retry_row = await AutomationExecutionService.retry_execution(
+                db,
+                tenant_id,
+                execution,
+                flow,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        await db.flush()
+        return AutomationRetryResponse(
+            execution_id=retry_row.id,
+            flow_id=flow.id,
+            status=retry_row.status,  # type: ignore[arg-type]
+            execution_kind=getattr(retry_row, "execution_kind", None) or "retry",  # type: ignore[arg-type]
+            root_execution_id=retry_row.root_execution_id or retry_row.id,
+            retry_of_execution_id=retry_row.retry_of_execution_id or execution.id,
+            retry_number=int(getattr(retry_row, "retry_number", 0) or 0),
+            duration_ms=retry_row.duration_ms,
+            error_message=safe_error_message(retry_row.error_message),
+            error_category=getattr(retry_row, "error_category", None),  # type: ignore[arg-type]
         )
 
     @staticmethod
@@ -415,7 +579,10 @@ class AutomationService:
             1 for f in flows if f.status == "enabled" and f.last_execution_status == "failed"
         )
 
-        since = datetime.now(timezone.utc) - timedelta(hours=24)
+        now = datetime.now(timezone.utc)
+        since = now - timedelta(hours=24)
+        today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
         recent_total = (
             await db.execute(
                 select(func.count())
@@ -438,7 +605,7 @@ class AutomationService:
             )
         ).scalar_one()
 
-        success_rate = (
+        success_rate_overall = (
             round(int(recent_success) / int(recent_total) * 100, 1)
             if int(recent_total) > 0
             else 100.0
@@ -447,9 +614,97 @@ class AutomationService:
             100,
             max(
                 0,
-                int((active / max(len(flows), 1)) * 40 + success_rate * 0.5 + (10 if failed_flows == 0 else max(0, 10 - failed_flows * 5))),
+                int(
+                    (active / max(len(flows), 1)) * 40
+                    + success_rate_overall * 0.5
+                    + (10 if failed_flows == 0 else max(0, 10 - failed_flows * 5))
+                ),
             ),
         )
+
+        executions_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                ),
+            )
+        ).scalar_one()
+        success_count_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                    TenantAutomationExecution.status == "success",
+                ),
+            )
+        ).scalar_one()
+        failure_count_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                    TenantAutomationExecution.status == "failed",
+                ),
+            )
+        ).scalar_one()
+        settled = int(success_count_today) + int(failure_count_today)
+        success_rate = (
+            round(int(success_count_today) / settled * 100, 1) if settled > 0 else 100.0
+        )
+        retry_count_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                    TenantAutomationExecution.execution_kind == "retry",
+                ),
+            )
+        ).scalar_one()
+        retry_success_count_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                    TenantAutomationExecution.execution_kind == "retry",
+                    TenantAutomationExecution.status == "success",
+                ),
+            )
+        ).scalar_one()
+        partial_publish_failures_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                    TenantAutomationExecution.trigger_event
+                    == "tenant.content.publish_partial_failed",
+                ),
+            )
+        ).scalar_one()
+        average_duration_ms = (
+            await db.execute(
+                select(func.avg(TenantAutomationExecution.duration_ms))
+                .select_from(TenantAutomationExecution)
+                .where(
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                    TenantAutomationExecution.created_at >= today_start,
+                    TenantAutomationExecution.status.in_(("success", "failed")),
+                    TenantAutomationExecution.duration_ms.is_not(None),
+                ),
+            )
+        ).scalar_one()
 
         return AutomationKpiResponse(
             health_score=health,
@@ -458,8 +713,19 @@ class AutomationService:
             disabled_count=disabled,
             failed_flow_count=failed_flows,
             total_executions_24h=int(recent_total),
-            success_rate_overall=success_rate,
+            success_rate_overall=success_rate_overall,
             total_flows=len(flows),
+            enabled_flows=active,
+            executions_today=int(executions_today),
+            success_count_today=int(success_count_today),
+            failure_count_today=int(failure_count_today),
+            success_rate=success_rate,
+            retry_count_today=int(retry_count_today),
+            retry_success_count_today=int(retry_success_count_today),
+            partial_publish_failures_today=int(partial_publish_failures_today),
+            average_duration_ms=(
+                round(float(average_duration_ms), 1) if average_duration_ms is not None else None
+            ),
         )
 
     @staticmethod
@@ -478,4 +744,22 @@ class AutomationService:
         ).scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=404, detail="Automation flow not found")
+        return row
+
+    @staticmethod
+    async def _load_execution(
+        db: AsyncSession,
+        tenant_id: UUID,
+        execution_id: UUID,
+    ) -> TenantAutomationExecution:
+        row = (
+            await db.execute(
+                select(TenantAutomationExecution).where(
+                    TenantAutomationExecution.id == execution_id,
+                    TenantAutomationExecution.tenant_id == tenant_id,
+                ),
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Automation execution not found")
         return row

@@ -37,6 +37,11 @@ export function useAutomationCenter() {
     status: "pending" | "success" | "failed";
     message?: string;
   } | null>(null);
+  const [retryState, setRetryState] = useState<{
+    executionId: string;
+    status: "pending" | "success" | "failed";
+    message?: string;
+  } | null>(null);
 
   const flowsQuery = useQuery({
     queryKey: [...AUTOMATION_LIST_QUERY_KEY, tenantId, filters],
@@ -120,6 +125,36 @@ export function useAutomationCenter() {
     },
   });
 
+  const retryMutation = useMutation({
+    mutationFn: (executionId: string) =>
+      automationApi.retryExecution(executionId).then((r) => r.data),
+    onMutate: (executionId) => {
+      setRetryState({ executionId, status: "pending" });
+    },
+    onSuccess: (data) => {
+      setRetryState({
+        executionId: data.retry_of_execution_id,
+        status: data.status === "success" ? "success" : "failed",
+        message:
+          data.status === "success"
+            ? undefined
+            : data.error_message ?? "Retry failed",
+      });
+    },
+    onError: (error: Error, executionId) => {
+      const ax = error as Error & { response?: { data?: { detail?: string } } };
+      const detail = ax.response?.data?.detail;
+      setRetryState({
+        executionId,
+        status: "failed",
+        message: typeof detail === "string" ? detail : error.message,
+      });
+    },
+    onSettled: async () => {
+      await invalidateAll();
+    },
+  });
+
   const updateFilters = useCallback((patch: Partial<AutomationFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
   }, []);
@@ -149,6 +184,14 @@ export function useAutomationCenter() {
       runMutation.mutate(id);
     },
     [runMutation],
+  );
+
+  const retryExecution = useCallback(
+    (executionId: string) => {
+      if (retryMutation.isPending) return;
+      retryMutation.mutate(executionId);
+    },
+    [retryMutation],
   );
 
   const filtered = useMemo(
@@ -184,10 +227,12 @@ export function useAutomationCenter() {
     isDemoData: false,
     mutatingId,
     runState,
+    retryState,
     updateFilters,
     resetFilters,
     retry,
     toggleAutomation,
     runTest,
+    retryExecution,
   };
 }

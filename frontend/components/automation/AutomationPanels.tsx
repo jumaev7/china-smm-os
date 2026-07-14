@@ -87,10 +87,18 @@ export function AutomationExecutionHistoryPanel({
   executions,
   onSelectAutomation,
   automations,
+  onRetryExecution,
+  retryState,
 }: {
   executions: AutomationExecution[];
   onSelectAutomation: (automation: Automation) => void;
   automations: Automation[];
+  onRetryExecution?: (executionId: string) => void;
+  retryState?: {
+    executionId: string;
+    status: "pending" | "success" | "failed";
+    message?: string;
+  } | null;
 }) {
   const { t } = useTranslation();
 
@@ -114,6 +122,12 @@ export function AutomationExecutionHistoryPanel({
         <ol className="relative border-l border-gray-200 ml-3 space-y-5 dark-tenant:border-white/10">
           {executions.map((event) => {
             const automation = findAutomation(event.automationId);
+            const isRetrying =
+              retryState?.executionId === event.id && retryState.status === "pending";
+            const retryFeedback =
+              retryState?.executionId === event.id && retryState.status !== "pending"
+                ? retryState
+                : null;
             return (
               <li key={event.id} className="ml-5 relative">
                 <span
@@ -146,12 +160,60 @@ export function AutomationExecutionHistoryPanel({
                       >
                         {t(`automationCenter.execution.${event.result}`)}
                       </span>
+                      {event.executionKind ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark-tenant:bg-white/10 dark-tenant:text-slate-400">
+                          {t(`automationCenter.kind.${event.executionKind}`)}
+                          {event.executionKind === "retry" && event.retryNumber
+                            ? ` #${event.retryNumber}`
+                            : ""}
+                        </span>
+                      ) : null}
+                      {event.triggerEvent === "tenant.content.publish_partial_failed" ? (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark-tenant:bg-amber-500/15 dark-tenant:text-amber-300">
+                          {t("automationCenter.partialFailure")}
+                        </span>
+                      ) : null}
                       {event.durationMs ? (
                         <span className="text-[10px] text-gray-400 dark-tenant:text-slate-600">
                           {formatDuration(event.durationMs)}
                         </span>
                       ) : null}
                     </div>
+                    {event.result === "failed" && onRetryExecution ? (
+                      <div className="mt-2 flex flex-col gap-1">
+                        {event.retryEligible ? (
+                          <button
+                            type="button"
+                            onClick={() => onRetryExecution(event.id)}
+                            disabled={isRetrying || retryState?.status === "pending"}
+                            className="self-start text-xs font-semibold text-brand-700 hover:text-brand-800 disabled:opacity-60 dark-tenant:text-violet-300"
+                          >
+                            {isRetrying
+                              ? t("automationCenter.retry.pending")
+                              : t("automationCenter.retry.action")}
+                          </button>
+                        ) : event.retryBlockedReason ? (
+                          <p className="text-[11px] text-gray-400 dark-tenant:text-slate-500">
+                            {t("automationCenter.retry.blocked")}: {event.retryBlockedReason}
+                          </p>
+                        ) : null}
+                        {retryFeedback ? (
+                          <p
+                            className={cn(
+                              "text-[11px]",
+                              retryFeedback.status === "success"
+                                ? "text-emerald-600 dark-tenant:text-emerald-400"
+                                : "text-red-600 dark-tenant:text-red-400",
+                            )}
+                            role="status"
+                          >
+                            {retryFeedback.status === "success"
+                              ? t("automationCenter.retry.success")
+                              : retryFeedback.message ?? t("automationCenter.retry.failed")}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                   <time
                     dateTime={event.timestamp}
@@ -264,9 +326,15 @@ export function AutomationDisabledPanel({
 export function AutomationOverviewStrip({
   successRate,
   executions24h,
+  retryCountToday = 0,
+  partialPublishFailuresToday = 0,
+  averageDurationMs = null,
 }: {
   successRate: number;
   executions24h: number;
+  retryCountToday?: number;
+  partialPublishFailuresToday?: number;
+  averageDurationMs?: number | null;
 }) {
   const { t } = useTranslation();
 
@@ -304,6 +372,32 @@ export function AutomationOverviewStrip({
             {successRate}%
           </p>
         </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark-tenant:text-slate-500">
+            {t("automationCenter.overview.retriesToday")}
+          </p>
+          <p className="text-lg font-bold text-gray-900 dark-tenant:text-slate-100">
+            {retryCountToday}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark-tenant:text-slate-500">
+            {t("automationCenter.overview.partialFailures")}
+          </p>
+          <p className="text-lg font-bold text-amber-600 dark-tenant:text-amber-400">
+            {partialPublishFailuresToday}
+          </p>
+        </div>
+        {averageDurationMs != null ? (
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark-tenant:text-slate-500">
+              {t("automationCenter.overview.avgDuration")}
+            </p>
+            <p className="text-lg font-bold text-gray-900 dark-tenant:text-slate-100">
+              {formatDuration(Math.round(averageDurationMs))}
+            </p>
+          </div>
+        ) : null}
       </div>
     </section>
   );

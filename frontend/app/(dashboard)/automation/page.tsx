@@ -41,8 +41,10 @@ export default function AutomationPage() {
     retry,
     toggleAutomation,
     runTest,
+    retryExecution,
     mutatingId,
     runState,
+    retryState,
     tenantId,
   } = useAutomationCenter();
 
@@ -115,6 +117,9 @@ export default function AutomationPage() {
           <AutomationOverviewStrip
             successRate={summary.successRateOverall}
             executions24h={summary.totalExecutions24h}
+            retryCountToday={summary.retryCountToday ?? 0}
+            partialPublishFailuresToday={summary.partialPublishFailuresToday ?? 0}
+            averageDurationMs={summary.averageDurationMs ?? null}
           />
 
           {showMainList ? (
@@ -157,6 +162,8 @@ export default function AutomationPage() {
                 executions={recentExecutions}
                 automations={automations}
                 onSelectAutomation={handleSelect}
+                onRetryExecution={retryExecution}
+                retryState={retryState}
               />
 
               <AutomationUpcomingPanel
@@ -219,8 +226,10 @@ export default function AutomationPage() {
         onClose={() => setSelected(null)}
         onToggle={handleToggle}
         onRunTest={runTest}
+        onRetryExecution={retryExecution}
         isToggling={Boolean(selected && mutatingId === selected.id)}
         runState={runState}
+        retryState={retryState}
       />
     </PageShell>
   );

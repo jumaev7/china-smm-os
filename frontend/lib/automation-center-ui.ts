@@ -37,6 +37,15 @@ export interface AutomationExecution {
   result: ExecutionResult;
   detail?: string;
   durationMs?: number;
+  executionKind?: "event" | "manual" | "retry";
+  retryNumber?: number;
+  retryEligible?: boolean;
+  retryBlockedReason?: string;
+  isRetryable?: boolean | null;
+  errorCategory?: string | null;
+  rootExecutionId?: string | null;
+  retryOfExecutionId?: string | null;
+  triggerEvent?: string;
 }
 
 export interface RelatedModule {
@@ -77,6 +86,12 @@ export interface AutomationSummary {
   disabledCount: number;
   totalExecutions24h: number;
   successRateOverall: number;
+  retryCountToday?: number;
+  retrySuccessCountToday?: number;
+  partialPublishFailuresToday?: number;
+  averageDurationMs?: number | null;
+  executionsToday?: number;
+  successRateToday?: number;
 }
 
 export const STATUS_LABELS: Record<AutomationStatus, string> = {
@@ -246,6 +261,7 @@ export const EMPTY_STATE_ICON = Zap;
 
 const TRIGGER_LABELS: Record<string, string> = {
   "tenant.content.publish_failed": "Publishing failed",
+  "tenant.content.publish_partial_failed": "Partial publishing failure",
   "tenant.integration.disconnected": "Integration disconnected",
   "tenant.buyer.created": "Buyer created",
   "tenant.crm.lead_created": "CRM lead created",
@@ -333,14 +349,33 @@ export function mapApiExecutionToApp(
 ): AutomationExecution {
   const result: ExecutionResult =
     row.status === "success" ? "success" : row.status === "skipped" ? "skipped" : "failed";
+  const kindLabel =
+    row.execution_kind === "retry"
+      ? `Retry #${row.retry_number ?? 1}`
+      : row.execution_kind === "manual" || row.is_manual_test
+        ? "Manual test run"
+        : undefined;
+  const categoryLabel = row.error_category
+    ? `Error: ${row.error_category}`
+    : undefined;
+  const detailParts = [row.error_message, kindLabel, categoryLabel].filter(Boolean);
   return {
     id: row.id,
     automationId: row.automation_flow_id,
     automationName: row.automation_name ?? automationName ?? "Automation",
     timestamp: row.finished_at ?? row.started_at,
     result,
-    detail: row.error_message ?? (row.is_manual_test ? "Manual test run" : undefined),
+    detail: detailParts.length > 0 ? detailParts.join(" · ") : undefined,
     durationMs: row.duration_ms ?? undefined,
+    executionKind: row.execution_kind ?? (row.is_manual_test ? "manual" : "event"),
+    retryNumber: row.retry_number ?? 0,
+    retryEligible: Boolean(row.retry_eligible),
+    retryBlockedReason: row.retry_blocked_reason ?? undefined,
+    isRetryable: row.is_retryable,
+    errorCategory: row.error_category ?? null,
+    rootExecutionId: row.root_execution_id ?? null,
+    retryOfExecutionId: row.retry_of_execution_id ?? null,
+    triggerEvent: row.trigger_event,
   };
 }
 
@@ -379,6 +414,12 @@ export function mapKpisToSummary(kpis: AutomationKpiResponse): AutomationSummary
     disabledCount: kpis.disabled_count,
     totalExecutions24h: kpis.total_executions_24h,
     successRateOverall: kpis.success_rate_overall,
+    retryCountToday: kpis.retry_count_today ?? 0,
+    retrySuccessCountToday: kpis.retry_success_count_today ?? 0,
+    partialPublishFailuresToday: kpis.partial_publish_failures_today ?? 0,
+    averageDurationMs: kpis.average_duration_ms ?? null,
+    executionsToday: kpis.executions_today ?? kpis.total_executions_24h,
+    successRateToday: kpis.success_rate ?? kpis.success_rate_overall,
   };
 }
 

@@ -1868,7 +1868,10 @@
     "overview": {
       "subtitle": "Platform automation activity in the last 24 hours",
       "executions24h": "Executions (24h)",
-      "successRate": "Success rate"
+      "successRate": "Success rate",
+      "retriesToday": "Retries today",
+      "partialFailures": "Partial publish failures",
+      "avgDuration": "Avg duration"
     },
     "drawer": {
       "trigger": "Trigger",
@@ -1881,6 +1884,19 @@
       "pause": "Pause",
       "enable": "Enable",
       "runTest": "Run test"
+    },
+    "kind": {
+      "event": "Event",
+      "manual": "Manual",
+      "retry": "Retry"
+    },
+    "partialFailure": "Partial failure",
+    "retry": {
+      "action": "Retry execution",
+      "pending": "Retrying…",
+      "success": "Retry completed",
+      "failed": "Retry failed",
+      "blocked": "Retry unavailable"
     },
     "runTest": {
       "pending": "Running test execution…",
