@@ -12,14 +12,15 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from verify_http_bootstrap import ensure_admin_token  # noqa: E402
 
 BASE = os.environ.get("VERIFY_API_BASE", "http://127.0.0.1:8000/api/v1")
 FRONTEND_BASE = os.environ.get("VERIFY_FRONTEND_BASE", "http://127.0.0.1:3000")
-ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD = "ChangeMe_12345!"
 LIST_FIELDS = {"items", "total", "page", "page_size", "pages"}
 ITEM_FIELDS = {
     "id",
@@ -215,7 +216,8 @@ def main() -> int:
 
 
 async def _run() -> int:
-    stamp = int(time.time())
+    run_id = f"{int(time.time())}-{uuid4().hex[:8]}"
+    stamp = run_id
     failures: list[str] = []
     cleanup_ids: list[UUID] = []
 
@@ -225,27 +227,27 @@ async def _run() -> int:
         if not ok:
             failures.append(f"{check_id}: {detail}")
 
-    code, admin_login, _ = req("POST", "/admin-auth/login", {"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
-    if code != 200 or not isinstance(admin_login, dict) or not admin_login.get("access_token"):
-        print(f"FAIL bootstrap_admin_login -> HTTP {code}: {admin_login}")
+    admin_token, bootstrap_detail = await ensure_admin_token(req)
+    record("bootstrap_admin", bool(admin_token), bootstrap_detail)
+    if not admin_token:
+        print("\nNotification HTTP verification failed — admin bootstrap unavailable")
         return 1
-    admin_token = admin_login["access_token"]
 
-    email_a = f"notify-http-a-{stamp}@example.com"
-    email_b = f"notify-http-b-{stamp}@example.com"
+    email_a = f"notify-http-a-{run_id}@example.com"
+    email_b = f"notify-http-b-{run_id}@example.com"
     code, created_a, _ = req(
         "POST",
         "/admin-auth/platform/tenants/create-client",
-        {"company_name": f"Notify HTTP A {stamp}", "owner_email": email_a, "plan": "trial"},
+        {"company_name": f"Notify HTTP A {run_id}", "owner_email": email_a, "plan": "trial"},
         token=admin_token,
     )
     code_b, created_b, _ = req(
         "POST",
         "/admin-auth/platform/tenants/create-client",
-        {"company_name": f"Notify HTTP B {stamp}", "owner_email": email_b, "plan": "trial"},
+        {"company_name": f"Notify HTTP B {run_id}", "owner_email": email_b, "plan": "trial"},
         token=admin_token,
     )
-    if code != 201 or code_b != 201:
+    if code != 201 or code_b != 201 or not isinstance(created_a, dict) or not isinstance(created_b, dict):
         record("bootstrap_tenants", False, f"create-client A={code} B={code_b}")
         return 1
     tenant_a_id = UUID(created_a["tenant_id"])

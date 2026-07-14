@@ -7,18 +7,18 @@ import os
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
+import uuid
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from verify_http_bootstrap import ensure_admin_token  # noqa: E402
 
 BASE = os.environ.get("VERIFY_API_BASE", "http://127.0.0.1:8000/api/v1")
 FRONTEND_BASE = os.environ.get("VERIFY_FRONTEND_BASE", "http://127.0.0.1:3000")
-ADMIN_EMAIL = "admin@example.com"
-ADMIN_PASSWORD = "ChangeMe_12345!"
 
 
 def req(
@@ -78,7 +78,7 @@ def main() -> int:
 
 
 async def _run() -> int:
-    stamp = int(time.time())
+    run_id = f"{int(time.time())}-{uuid.uuid4().hex[:8]}"
     failures: list[str] = []
 
     def record(check_id: str, ok: bool, detail: str = "") -> None:
@@ -87,43 +87,43 @@ async def _run() -> int:
         if not ok:
             failures.append(f"{check_id}: {detail}")
 
-    code, admin_login, _ = req("POST", "/admin-auth/login", {"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
-    if code != 200 or not isinstance(admin_login, dict) or not admin_login.get("access_token"):
-        print(f"FAIL bootstrap_admin_login -> HTTP {code}: {admin_login}")
+    admin_token, bootstrap_detail = await ensure_admin_token(req)
+    record("bootstrap_admin", bool(admin_token), bootstrap_detail)
+    if not admin_token:
+        print("\nAutomation HTTP verification failed — admin bootstrap unavailable")
         return 1
-    admin_token = admin_login["access_token"]
 
-    email_a = f"auto-http-a-{stamp}@example.com"
-    email_b = f"auto-http-b-{stamp}@example.com"
+    email_a = f"auto-http-a-{run_id}@example.com"
+    email_b = f"auto-http-b-{run_id}@example.com"
     code, created_a, _ = req(
         "POST",
         "/admin-auth/platform/tenants/create-client",
-        {"company_name": f"Automation HTTP A {stamp}", "owner_email": email_a, "plan": "trial"},
+        {"company_name": f"Automation HTTP A {run_id}", "owner_email": email_a, "plan": "trial"},
         token=admin_token,
     )
     code_b, created_b, _ = req(
         "POST",
         "/admin-auth/platform/tenants/create-client",
-        {"company_name": f"Automation HTTP B {stamp}", "owner_email": email_b, "plan": "trial"},
+        {"company_name": f"Automation HTTP B {run_id}", "owner_email": email_b, "plan": "trial"},
         token=admin_token,
     )
-    if code != 201 or code_b != 201:
+    if code != 201 or code_b != 201 or not isinstance(created_a, dict) or not isinstance(created_b, dict):
         record("bootstrap_tenants", False, f"A={code} B={code_b}")
         return 1
+    record("bootstrap_tenants", True, f"run_id={run_id}")
 
-    code, login_a, _ = req(
-        "POST",
-        "/auth/login",
-        {"email": email_a, "password": created_a["temporary_password"]},
-    )
-    code_b_login, login_b, _ = req(
-        "POST",
-        "/auth/login",
-        {"email": email_b, "password": created_b["temporary_password"]},
-    )
+    temp_a = created_a.get("temporary_password")
+    temp_b = created_b.get("temporary_password")
+    if not temp_a or not temp_b:
+        record("bootstrap_temp_passwords", False, "missing temporary_password")
+        return 1
+
+    code, login_a, _ = req("POST", "/auth/login", {"email": email_a, "password": temp_a})
+    code_b_login, login_b, _ = req("POST", "/auth/login", {"email": email_b, "password": temp_b})
     token_a = login_a.get("access_token") if isinstance(login_a, dict) else None
     token_b = login_b.get("access_token") if isinstance(login_b, dict) else None
     record("tenant_login", code == 200 and bool(token_a), f"HTTP {code}")
+    record("tenant_b_login", code_b_login == 200 and bool(token_b), f"HTTP {code_b_login}")
     if not token_a or not token_b:
         return 1
 
@@ -150,7 +150,7 @@ async def _run() -> int:
         record("get_detail", code == 200 and isinstance(detail, dict), f"HTTP {code}")
 
         code, paused, _ = req("POST", f"/automation/{flow_id}/pause", token=token_a)
-        record("pause", code == 200 and paused.get("status") == "paused", f"HTTP {code}")
+        record("pause", code == 200 and isinstance(paused, dict) and paused.get("status") == "paused", f"HTTP {code}")
 
         code, listed_after_pause, _ = req("GET", "/automation", token=token_a)
         paused_item = next(
@@ -164,17 +164,52 @@ async def _run() -> int:
         )
 
         code, enabled, _ = req("POST", f"/automation/{flow_id}/enable", token=token_a)
-        record("enable", code == 200 and enabled.get("status") == "enabled", f"HTTP {code}")
+        record(
+            "enable",
+            code == 200 and isinstance(enabled, dict) and enabled.get("status") == "enabled",
+            f"HTTP {code}",
+        )
+
+        code, execs_before, _ = req("GET", "/automation/executions?page=1&page_size=50", token=token_a)
+        before_total = execs_before.get("total", 0) if isinstance(execs_before, dict) else 0
 
         code, run_result, _ = req("POST", f"/automation/{flow_id}/run", token=token_a)
         record(
             "manual_run",
-            code == 200 and run_result.get("is_manual_test") is True,
+            code == 200 and isinstance(run_result, dict) and run_result.get("is_manual_test") is True,
             f"HTTP {code} status={run_result.get('status') if isinstance(run_result, dict) else 'n/a'}",
+        )
+        run_execution_id = run_result.get("execution_id") if isinstance(run_result, dict) else None
+
+        code, execs_after, _ = req("GET", "/automation/executions?page=1&page_size=50", token=token_a)
+        after_total = execs_after.get("total", 0) if isinstance(execs_after, dict) else 0
+        items_after = execs_after.get("items") if isinstance(execs_after, dict) else []
+        record(
+            "manual_run_execution_in_tenant",
+            after_total > before_total
+            and isinstance(items_after, list)
+            and any(str(i.get("id")) == str(run_execution_id) for i in items_after),
+            f"before={before_total} after={after_total}",
         )
 
         code, wrong, _ = req("GET", f"/automation/{flow_id}", token=token_b)
-        record("tenant_isolation", code == 404, f"HTTP {code}")
+        record("tenant_isolation_get", code == 404, f"HTTP {code}")
+
+        code, wrong_pause, _ = req("POST", f"/automation/{flow_id}/pause", token=token_b)
+        record("tenant_isolation_pause", code == 404, f"HTTP {code}")
+
+        code, wrong_enable, _ = req("POST", f"/automation/{flow_id}/enable", token=token_b)
+        record("tenant_isolation_enable", code == 404, f"HTTP {code}")
+
+        code, wrong_execs, _ = req("GET", "/automation/executions?page=1&page_size=50", token=token_b)
+        b_items = wrong_execs.get("items") if isinstance(wrong_execs, dict) else []
+        record(
+            "tenant_isolation_executions",
+            code == 200
+            and isinstance(b_items, list)
+            and all(str(i.get("id")) != str(run_execution_id) for i in b_items),
+            f"HTTP {code}",
+        )
 
     code, execs, _ = req("GET", "/automation/executions?page=1&page_size=10", token=token_a)
     record(
@@ -183,7 +218,7 @@ async def _run() -> int:
         f"HTTP {code} total={execs.get('total') if isinstance(execs, dict) else 'n/a'}",
     )
 
-    code, fe_status, fe_ms = frontend_status("/automation")
+    fe_status, fe_ms = frontend_status("/automation")
     record("frontend_automation_page", fe_status in (200, 307, 308), f"HTTP {fe_status} ({fe_ms}ms)")
 
     print(f"\n{len(failures)} failures" if failures else "\nAll HTTP checks passed")

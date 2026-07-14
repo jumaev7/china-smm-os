@@ -23,9 +23,12 @@ from app.services.tenant_auth_service import DEMO_TENANT_NAME, DEMO_USER_EMAIL
 logger = logging.getLogger(__name__)
 MARKER = "[DEMO_TENANT_SEED]"
 PUBLISH_VERIFY_READY_MARKER = "[PUBLISH_VERIFY_READY]"
+PUBLISH_VERIFY_BLOCKED_MARKER = "[PUBLISH_VERIFY_BLOCKED]"
 PUBLISH_VERIFY_READY_CONTENT_ID = uuid.UUID("b0c0d001-0001-4000-8000-000000000101")
 PUBLISH_VERIFY_READY_MEDIA_ID = uuid.UUID("b0c0d001-0001-4000-8000-000000000102")
+PUBLISH_VERIFY_BLOCKED_CONTENT_ID = uuid.UUID("b0c0d001-0001-4000-8000-000000000103")
 _PUBLISH_VERIFY_READY_AT = datetime(2026, 6, 1, 9, 0, 0, tzinfo=timezone.utc)
+_PUBLISH_VERIFY_MOCK_PLATFORMS = ("instagram", "telegram")
 
 
 async def ensure_demo_tenant_data(db: AsyncSession, tenant_id: uuid.UUID) -> dict[str, int]:
@@ -283,8 +286,74 @@ async def ensure_publish_verify_ready_content(db: AsyncSession, client_id: uuid.
     return True
 
 
+async def ensure_publish_verify_mock_accounts(db: AsyncSession, tenant_id: uuid.UUID) -> int:
+    """Idempotent mock IG/Telegram accounts required by publishing truth verification."""
+    from app.models.publishing_account import PublishingAccount
+    from app.schemas.publishing import MOCK_ACCOUNT_LABELS
+
+    created = 0
+    for platform in _PUBLISH_VERIFY_MOCK_PLATFORMS:
+        existing = (
+            await db.execute(
+                select(PublishingAccount).where(
+                    PublishingAccount.tenant_id == tenant_id,
+                    PublishingAccount.platform == platform,
+                    PublishingAccount.status == "mock",
+                ).limit(1),
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            continue
+        db.add(
+            PublishingAccount(
+                tenant_id=tenant_id,
+                platform=platform,
+                account_name=MOCK_ACCOUNT_LABELS.get(platform, f"{platform.title()} Mock"),
+                account_id=f"mock-{platform}-publish-verify",
+                status="mock",
+            ),
+        )
+        created += 1
+    if created:
+        await db.flush()
+    return created
+
+
+async def ensure_publish_verify_blocked_content(db: AsyncSession, client_id: uuid.UUID) -> bool:
+    """Deterministic draft/no-media item for blocked-path publish verification."""
+    existing = await db.get(ContentItem, PUBLISH_VERIFY_BLOCKED_CONTENT_ID)
+    if existing is not None:
+        existing.status = "draft"
+        existing.media_file_id = None
+        existing.caption_short_en = None
+        existing.caption_short_ru = None
+        existing.caption_short_uz = None
+        existing.caption_long_en = None
+        existing.caption_long_ru = None
+        existing.caption_long_uz = None
+        existing.internal_notes = f"{PUBLISH_VERIFY_BLOCKED_MARKER} Draft without media/caption."
+        await db.flush()
+        return True
+
+    db.add(
+        ContentItem(
+            id=PUBLISH_VERIFY_BLOCKED_CONTENT_ID,
+            client_id=client_id,
+            platforms=["instagram", "telegram"],
+            status="draft",
+            source="manual",
+            media_file_id=None,
+            internal_notes=f"{PUBLISH_VERIFY_BLOCKED_MARKER} Draft without media/caption.",
+            created_at=_PUBLISH_VERIFY_READY_AT,
+            updated_at=_PUBLISH_VERIFY_READY_AT,
+        ),
+    )
+    await db.flush()
+    return True
+
+
 async def ensure_publish_verify_ready_for_demo_user(db: AsyncSession) -> dict | None:
-    """Resolve demo tenant client and ensure publish-verify-ready content exists."""
+    """Resolve demo tenant client and ensure publish-verify fixtures exist."""
     row = (
         await db.execute(
             select(TenantUser.tenant_id)
@@ -299,12 +368,16 @@ async def ensure_publish_verify_ready_for_demo_user(db: AsyncSession) -> dict | 
         return None
     client = await _ensure_demo_client(db, tenant)
     await ensure_publish_verify_ready_content(db, client.id)
+    await ensure_publish_verify_blocked_content(db, client.id)
+    mock_created = await ensure_publish_verify_mock_accounts(db, tenant.id)
     await db.commit()
     return {
         "tenant_id": str(tenant.id),
         "client_id": str(client.id),
         "content_id": str(PUBLISH_VERIFY_READY_CONTENT_ID),
         "media_id": str(PUBLISH_VERIFY_READY_MEDIA_ID),
+        "blocked_content_id": str(PUBLISH_VERIFY_BLOCKED_CONTENT_ID),
+        "mock_accounts_created": mock_created,
     }
 
 

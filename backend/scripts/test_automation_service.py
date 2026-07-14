@@ -16,6 +16,7 @@ def main() -> int:
 
 
 async def _run() -> int:
+    from fastapi import HTTPException
     from sqlalchemy import select
 
     from app.core.database import AsyncSessionLocal, ensure_platform_event_bus_schema
