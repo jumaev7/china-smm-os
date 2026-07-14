@@ -62,6 +62,11 @@ class Settings(BaseSettings):
 
     # Scheduled auto-publish worker
     SCHEDULED_PUBLISH_ENABLED: bool = True
+    # Durable automation scheduler worker (separate process)
+    AUTOMATION_SCHEDULER_ENABLED: bool = True
+    AUTOMATION_SCHEDULER_POLL_SECONDS: float = 2.0
+    AUTOMATION_SCHEDULER_BATCH_SIZE: int = 10
+    AUTOMATION_SCHEDULER_LEASE_SECONDS: int = 300
     # Timezone label for Telegram client-review preview schedule line
     # Admin bootstrap (development only — no default credentials in code)
     ADMIN_BOOTSTRAP_EMAIL: str = ""

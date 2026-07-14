@@ -29,6 +29,7 @@ services:
       DB_PROBE_CONCURRENCY: "2"
       HEALTH_SNAPSHOT_ENABLED: "false"
       SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
       CORS_ORIGINS: http://localhost:3000
       # MEDIA_BASE_URL must be reachable from the user's browser (not from inside Docker).
       # Port 8000 is published to the host, so localhost:8000 works.
@@ -46,6 +47,28 @@ services:
       # Named volume — uploaded media survives container restarts and rebuilds
       - media_storage:/app/media_storage
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  automation-worker:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/china_smm_os
+      APP_ENV: development
+      AUTOMATION_SCHEDULER_ENABLED: "true"
+      AUTOMATION_SCHEDULER_POLL_SECONDS: "2"
+      AUTOMATION_SCHEDULER_BATCH_SIZE: "10"
+      AUTOMATION_SCHEDULER_LEASE_SECONDS: "300"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      SCHEDULED_PUBLISH_ENABLED: "false"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+    command: python scripts/run_automation_worker.py
 
   frontend:
     build:
