@@ -333,6 +333,9 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             "action_config JSONB NOT NULL DEFAULT '{}'::jsonb, "
             "status VARCHAR(20) NOT NULL DEFAULT 'enabled', "
             "is_system BOOLEAN NOT NULL DEFAULT false, "
+            "max_retry_attempts INTEGER NOT NULL DEFAULT 1, "
+            "retry_delay_seconds INTEGER NOT NULL DEFAULT 60, "
+            "retry_backoff VARCHAR(20) NOT NULL DEFAULT 'fixed', "
             "created_at TIMESTAMPTZ DEFAULT NOW(), "
             "updated_at TIMESTAMPTZ DEFAULT NOW(), "
             "last_executed_at TIMESTAMPTZ, "
@@ -359,6 +362,11 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             "event_id UUID NOT NULL, "
             "trigger_event VARCHAR(80) NOT NULL, "
             "status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "execution_kind VARCHAR(20) NOT NULL DEFAULT 'event', "
+            "deduplication_key VARCHAR(160) NOT NULL, "
+            "root_execution_id UUID REFERENCES tenant_automation_executions(id) ON DELETE SET NULL, "
+            "retry_of_execution_id UUID REFERENCES tenant_automation_executions(id) ON DELETE SET NULL, "
+            "retry_number INTEGER NOT NULL DEFAULT 0, "
             "started_at TIMESTAMPTZ NOT NULL, "
             "finished_at TIMESTAMPTZ, "
             "duration_ms INTEGER, "
@@ -366,6 +374,8 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             "result_payload JSONB, "
             "error_code VARCHAR(60), "
             "error_message TEXT, "
+            "error_category VARCHAR(40), "
+            "is_retryable BOOLEAN, "
             "attempt_number INTEGER NOT NULL DEFAULT 1, "
             "created_at TIMESTAMPTZ DEFAULT NOW()"
             ")"
@@ -379,8 +389,106 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             "ON tenant_automation_executions (automation_flow_id, created_at)",
             "CREATE INDEX IF NOT EXISTS ix_tenant_automation_executions_event_id "
             "ON tenant_automation_executions (event_id)",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_automation_executions_dedup "
+            "ON tenant_automation_executions (tenant_id, automation_flow_id, deduplication_key)",
         ):
             connection.execute(text(sql))
+
+    # Phase 2 reliability columns for installs that already had automation tables.
+    if "tenant_automation_flows" in tables:
+        for sql in (
+            "ALTER TABLE tenant_automation_flows "
+            "ADD COLUMN IF NOT EXISTS max_retry_attempts INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE tenant_automation_flows "
+            "ADD COLUMN IF NOT EXISTS retry_delay_seconds INTEGER NOT NULL DEFAULT 60",
+            "ALTER TABLE tenant_automation_flows "
+            "ADD COLUMN IF NOT EXISTS retry_backoff VARCHAR(20) NOT NULL DEFAULT 'fixed'",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_automation_executions" in tables:
+        for sql in (
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS execution_kind VARCHAR(20) NOT NULL DEFAULT 'event'",
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS deduplication_key VARCHAR(160)",
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS root_execution_id UUID",
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS retry_of_execution_id UUID",
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS retry_number INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS error_category VARCHAR(40)",
+            "ALTER TABLE tenant_automation_executions "
+            "ADD COLUMN IF NOT EXISTS is_retryable BOOLEAN",
+        ):
+            connection.execute(text(sql))
+
+        connection.execute(text(
+            """
+            UPDATE tenant_automation_executions SET
+              execution_kind = CASE
+                WHEN COALESCE((input_payload->>'manual_test')::boolean, false) THEN 'manual'
+                ELSE 'event'
+              END,
+              deduplication_key = CASE
+                WHEN COALESCE((input_payload->>'manual_test')::boolean, false)
+                  THEN 'manual:' || id::text
+                ELSE 'event:' || event_id::text
+              END,
+              root_execution_id = COALESCE(root_execution_id, id)
+            WHERE deduplication_key IS NULL
+            """
+        ))
+
+        # Resolve duplicate dedup keys before unique index (preserve earliest row).
+        dup_groups = connection.execute(text(
+            """
+            SELECT tenant_id, automation_flow_id, deduplication_key
+            FROM tenant_automation_executions
+            WHERE deduplication_key IS NOT NULL
+            GROUP BY tenant_id, automation_flow_id, deduplication_key
+            HAVING COUNT(*) > 1
+            """
+        )).mappings().all()
+        for group in dup_groups:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM tenant_automation_executions
+                    WHERE tenant_id = :tenant_id
+                      AND automation_flow_id = :flow_id
+                      AND deduplication_key = :dedup_key
+                    ORDER BY created_at ASC, id ASC
+                    """
+                ),
+                {
+                    "tenant_id": group["tenant_id"],
+                    "flow_id": group["automation_flow_id"],
+                    "dedup_key": group["deduplication_key"],
+                },
+            ).mappings().all()
+            for row in rows[1:]:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE tenant_automation_executions
+                        SET deduplication_key = 'legacy_duplicate:' || id::text,
+                            error_code = COALESCE(error_code, 'duplicate_superseded'),
+                            error_category = COALESCE(error_category, 'conflict'),
+                            is_retryable = COALESCE(is_retryable, false)
+                        WHERE id = :id
+                        """
+                    ),
+                    {"id": row["id"]},
+                )
+
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_automation_executions_dedup "
+            "ON tenant_automation_executions (tenant_id, automation_flow_id, deduplication_key)"
+        ))
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:
