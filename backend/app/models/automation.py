@@ -42,6 +42,30 @@ MAX_RETRY_ATTEMPTS_BOUND = 3
 DEFAULT_RETRY_DELAY_SECONDS = 60
 MAX_RETRY_DELAY_SECONDS = 3600
 
+# Durable scheduler (Phase 1)
+AUTOMATION_JOB_KINDS = frozenset({"automation_retry"})
+AUTOMATION_JOB_STATUSES = frozenset({
+    "scheduled",
+    "leased",
+    "running",
+    "succeeded",
+    "failed",
+    "dead_letter",
+    "cancelled",
+})
+AUTOMATION_JOB_TERMINAL_STATUSES = frozenset({
+    "succeeded",
+    "failed",
+    "dead_letter",
+    "cancelled",
+})
+DEFAULT_SCHEDULER_LEASE_SECONDS = 300
+MAX_SCHEDULER_LEASE_SECONDS = 900
+MAX_SCHEDULER_DELAY_SECONDS = 86400  # 24h hard cap for retry delays
+MAX_LEASE_RECOVERIES = 5
+DEFAULT_SCHEDULER_BATCH_SIZE = 10
+DEFAULT_SCHEDULER_POLL_SECONDS = 2
+
 
 class TenantAutomationFlow(Base):
     """Tenant-scoped automation flow definition (trigger + fixed action)."""
@@ -152,4 +176,79 @@ class TenantAutomationExecution(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True,
+    )
+
+
+class TenantAutomationJob(Base):
+    """Durable scheduled automation job (PostgreSQL-backed worker queue)."""
+
+    __tablename__ = "tenant_automation_jobs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "deduplication_key",
+            name="uq_tenant_automation_jobs_dedup",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    automation_flow_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_automation_flows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    execution_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_automation_executions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    root_execution_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("tenant_automation_executions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    job_kind: Mapped[str] = mapped_column(
+        String(40), nullable=False, default="automation_retry", server_default="automation_retry",
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="scheduled", server_default="scheduled", index=True,
+    )
+    scheduled_for: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    attempt_number: Mapped[int] = mapped_column(
+        Integer(), nullable=False, default=1, server_default="1",
+    )
+    max_attempts: Mapped[int] = mapped_column(
+        Integer(), nullable=False, default=1, server_default="1",
+    )
+    priority: Mapped[int] = mapped_column(
+        Integer(), nullable=False, default=100, server_default="100",
+    )
+    deduplication_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    lease_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_recovery_count: Mapped[int] = mapped_column(
+        Integer(), nullable=False, default=0, server_default="0",
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB(), nullable=False, default=dict)
+    result_payload: Mapped[dict | None] = mapped_column(JSONB(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
     )

@@ -490,6 +490,60 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             "ON tenant_automation_executions (tenant_id, automation_flow_id, deduplication_key)"
         ))
 
+    # Phase 3 durable scheduler jobs.
+    tables = set(inspect(connection).get_table_names())
+    if "tenant_automation_jobs" not in tables and "tenant_automation_flows" in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_automation_jobs ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "automation_flow_id UUID NOT NULL REFERENCES tenant_automation_flows(id) ON DELETE CASCADE, "
+            "execution_id UUID REFERENCES tenant_automation_executions(id) ON DELETE SET NULL, "
+            "root_execution_id UUID REFERENCES tenant_automation_executions(id) ON DELETE SET NULL, "
+            "job_kind VARCHAR(40) NOT NULL DEFAULT 'automation_retry', "
+            "status VARCHAR(20) NOT NULL DEFAULT 'scheduled', "
+            "scheduled_for TIMESTAMPTZ NOT NULL, "
+            "available_at TIMESTAMPTZ NOT NULL, "
+            "attempt_number INTEGER NOT NULL DEFAULT 1, "
+            "max_attempts INTEGER NOT NULL DEFAULT 1, "
+            "priority INTEGER NOT NULL DEFAULT 100, "
+            "deduplication_key VARCHAR(180) NOT NULL, "
+            "lease_owner VARCHAR(120), "
+            "lease_expires_at TIMESTAMPTZ, "
+            "lease_recovery_count INTEGER NOT NULL DEFAULT 0, "
+            "started_at TIMESTAMPTZ, "
+            "finished_at TIMESTAMPTZ, "
+            "last_heartbeat_at TIMESTAMPTZ, "
+            "error_code VARCHAR(60), "
+            "error_category VARCHAR(40), "
+            "error_message TEXT, "
+            "payload JSONB NOT NULL DEFAULT '{}'::jsonb, "
+            "result_payload JSONB, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_automation_jobs_dedup UNIQUE (tenant_id, deduplication_key), "
+            "CONSTRAINT ck_tenant_automation_jobs_status CHECK ("
+            "status IN ('scheduled','leased','running','succeeded','failed','dead_letter','cancelled')"
+            "), "
+            "CONSTRAINT ck_tenant_automation_jobs_kind CHECK (job_kind IN ('automation_retry'))"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_jobs_claim "
+            "ON tenant_automation_jobs (status, available_at, priority)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_jobs_tenant_status_created "
+            "ON tenant_automation_jobs (tenant_id, status, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_jobs_lease_expires "
+            "ON tenant_automation_jobs (lease_expires_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_jobs_flow_created "
+            "ON tenant_automation_jobs (automation_flow_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_jobs_root_created "
+            "ON tenant_automation_jobs (root_execution_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_automation_jobs_tenant_id "
+            "ON tenant_automation_jobs (tenant_id)",
+        ):
+            connection.execute(text(sql))
+
 
 def _ensure_customer_success_journey_columns(connection) -> None:
     """Customer Success Journey — post-platform-ready adoption engine."""

@@ -13,6 +13,7 @@ from app.models.automation import (
     AUTOMATION_FLOW_STATUSES,
     TenantAutomationExecution,
     TenantAutomationFlow,
+    TenantAutomationJob,
 )
 from app.schemas.automation import (
     AutomationExecutionDetail,
@@ -385,11 +386,16 @@ class AutomationService:
         tenant_id: UUID,
         flow_id: UUID,
     ) -> AutomationStatusChangeResponse:
+        from app.services.automation_job_service import AutomationJobService
+
         row = await AutomationService._load_flow(db, tenant_id, flow_id)
         if row.is_system:
             raise HTTPException(status_code=409, detail="System flows cannot be disabled")
         row.status = "disabled"
         row.updated_at = datetime.now(timezone.utc)
+        await AutomationJobService.cancel_scheduled_jobs_for_flow(
+            db, tenant_id=tenant_id, flow_id=flow_id,
+        )
         await db.flush()
         return AutomationStatusChangeResponse(
             id=row.id,
@@ -706,6 +712,112 @@ class AutomationService:
             )
         ).scalar_one()
 
+        scheduled_jobs = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.status == "scheduled",
+                ),
+            )
+        ).scalar_one()
+        due_jobs = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.status == "scheduled",
+                    TenantAutomationJob.available_at <= now,
+                ),
+            )
+        ).scalar_one()
+        running_jobs = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.status.in_(("leased", "running")),
+                ),
+            )
+        ).scalar_one()
+        failed_jobs = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.status == "failed",
+                ),
+            )
+        ).scalar_one()
+        dead_letter_jobs = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.status == "dead_letter",
+                ),
+            )
+        ).scalar_one()
+        recovered_leases_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.lease_recovery_count > 0,
+                    TenantAutomationJob.updated_at >= today_start,
+                ),
+            )
+        ).scalar_one()
+        automatic_retries_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.job_kind == "automation_retry",
+                    TenantAutomationJob.started_at >= today_start,
+                ),
+            )
+        ).scalar_one()
+        automatic_retry_success_today = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.job_kind == "automation_retry",
+                    TenantAutomationJob.status == "succeeded",
+                    TenantAutomationJob.finished_at >= today_start,
+                ),
+            )
+        ).scalar_one()
+        # schedule_delay = started_at - scheduled_for (ms), tenant-scoped today.
+        average_schedule_delay_ms = (
+            await db.execute(
+                select(
+                    func.avg(
+                        func.extract(
+                            "epoch",
+                            TenantAutomationJob.started_at - TenantAutomationJob.scheduled_for,
+                        )
+                        * 1000.0,
+                    ),
+                )
+                .select_from(TenantAutomationJob)
+                .where(
+                    TenantAutomationJob.tenant_id == tenant_id,
+                    TenantAutomationJob.started_at.is_not(None),
+                    TenantAutomationJob.started_at >= today_start,
+                ),
+            )
+        ).scalar_one()
+
         return AutomationKpiResponse(
             health_score=health,
             active_count=active,
@@ -725,6 +837,19 @@ class AutomationService:
             partial_publish_failures_today=int(partial_publish_failures_today),
             average_duration_ms=(
                 round(float(average_duration_ms), 1) if average_duration_ms is not None else None
+            ),
+            scheduled_jobs=int(scheduled_jobs),
+            due_jobs=int(due_jobs),
+            running_jobs=int(running_jobs),
+            failed_jobs=int(failed_jobs),
+            dead_letter_jobs=int(dead_letter_jobs),
+            recovered_leases_today=int(recovered_leases_today),
+            automatic_retries_today=int(automatic_retries_today),
+            automatic_retry_success_today=int(automatic_retry_success_today),
+            average_schedule_delay_ms=(
+                round(float(average_schedule_delay_ms), 1)
+                if average_schedule_delay_ms is not None
+                else None
             ),
         )
 

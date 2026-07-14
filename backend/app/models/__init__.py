@@ -92,7 +92,7 @@ from app.models.platform_event import (
     TenantAutomationTrigger,
     TenantEventNotification,
 )
-from app.models.automation import TenantAutomationFlow, TenantAutomationExecution
+from app.models.automation import TenantAutomationFlow, TenantAutomationExecution, TenantAutomationJob
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -200,4 +200,5 @@ __all__ = [
     "TenantAutomationTrigger",
     "TenantAutomationFlow",
     "TenantAutomationExecution",
+    "TenantAutomationJob",
 ]

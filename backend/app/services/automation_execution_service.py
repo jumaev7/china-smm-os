@@ -452,6 +452,10 @@ class AutomationExecutionService:
         flow.last_execution_status = row.status
         flow.updated_at = finished
         await db.flush()
+        if row.status == "failed" and row.is_retryable:
+            from app.services.automation_job_service import AutomationJobService
+
+            await AutomationJobService.enqueue_automatic_retry(db, execution=row, flow=flow)
         return row
 
     @staticmethod
@@ -517,6 +521,10 @@ class AutomationExecutionService:
             if existing is not None:
                 return existing
             raise
+        if row.status == "failed" and row.is_retryable:
+            from app.services.automation_job_service import AutomationJobService
+
+            await AutomationJobService.enqueue_automatic_retry(db, execution=row, flow=flow)
         return row
 
     @staticmethod
