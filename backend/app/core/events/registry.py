@@ -126,6 +126,17 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         ),
     ),
     _def(
+        "tenant.content.publish_partial_failed",
+        category="publishing",
+        description="Content publish attempt partially failed across platforms",
+        integrations=EventIntegrations(
+            audit=True,
+            activity=True,
+            notification=True,
+            automation=True,
+        ),
+    ),
+    _def(
         "tenant.integration.disconnected",
         category="integrations",
         description="Platform integration disconnected",

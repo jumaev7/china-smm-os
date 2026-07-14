@@ -14,6 +14,7 @@ _WORKFLOW_HINTS: dict[str, str] = {
     "tenant.crm.deal_stage_changed": "proposal_workflow",
     "tenant.automation.triggered": "follow_up_workflow",
     "tenant.content.publish_failed": "publish_recovery",
+    "tenant.content.publish_partial_failed": "publish_partial_recovery",
     "tenant.integration.disconnected": "integration_reconnect",
     "tenant.buyer.created": "buyer_crm_import",
 }

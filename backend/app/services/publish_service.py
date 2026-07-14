@@ -394,6 +394,73 @@ class PublishService:
         )
 
     @staticmethod
+    async def _emit_publish_partial_failed(
+        db: AsyncSession,
+        item: ContentItem,
+        *,
+        results: list[dict],
+        attempt_number: int,
+        source: str,
+    ) -> None:
+        """Emit tenant.content.publish_partial_failed after transition into partial_failed.
+
+        Transaction: flush-only via PlatformEventService.emit(commit=False);
+        caller owns the domain commit. Automation failures never alter publish state.
+        """
+        tenant_id = await tenant_id_for_content_optional(db, item)
+        if tenant_id is None:
+            logger.warning(
+                "[Publish] skip publish_partial_failed event — no tenant for content=%s",
+                item.id,
+            )
+            return
+
+        successful = [r for r in results if r.get("success")]
+        failed = [r for r in results if not r.get("success")]
+        retryable_failure_count = 0
+        scrubbed_failed: list[dict] = []
+        for r in failed:
+            _, _, retryable = classify_publish_failure(r.get("error"))
+            if retryable:
+                retryable_failure_count += 1
+            scrubbed_failed.append(
+                {
+                    "platform": r.get("platform"),
+                    "error": (r.get("error") or "")[:240],
+                    "publishing_account_id": r.get("account_id"),
+                },
+            )
+
+        resource_name = (
+            (item.caption_short_en or item.caption_short_ru or item.caption_short_uz or "").strip()
+            or f"Content {str(item.id)[:8]}"
+        )
+        payload = {
+            "content_id": str(item.id),
+            "successful_platforms": [r.get("platform") for r in successful if r.get("platform")],
+            "failed_platforms": scrubbed_failed,
+            "failure_count": len(failed),
+            "success_count": len(successful),
+            "retryable_failure_count": retryable_failure_count,
+            "attempt_number": attempt_number,
+            "source": source,
+            "resource_name": resource_name[:120],
+        }
+        await emit_domain_event(
+            db,
+            "tenant.content.publish_partial_failed",
+            tenant_id,
+            payload=payload,
+            resource_type="content",
+            resource_id=str(item.id),
+            title=f"Partial publish failure: {resource_name[:80]}",
+            description=(
+                f"Publish partially failed: {len(successful)} succeeded, "
+                f"{len(failed)} failed"
+            ),
+        )
+
+    @staticmethod
     async def _force_terminal_status(
         db: AsyncSession,
         content_id: UUID,
@@ -720,6 +787,21 @@ class PublishService:
                     failure_code=failure_code,
                     failure_category=failure_category,
                     retryable=retryable,
+                    attempt_number=max(1, int(prior_attempts)),
+                    source=publish_mode,
+                )
+            elif terminal_status == "partial_failed":
+                prior_attempts = (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(PublishAttempt)
+                        .where(PublishAttempt.content_id == content_id),
+                    )
+                ).scalar_one()
+                await PublishService._emit_publish_partial_failed(
+                    db,
+                    item,
+                    results=results,
                     attempt_number=max(1, int(prior_attempts)),
                     source=publish_mode,
                 )
