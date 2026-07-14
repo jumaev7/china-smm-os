@@ -72,7 +72,7 @@ SYSTEM_FLOW_DEFINITIONS: tuple[dict, ...] = (
         "action_type": "create_crm_lead",
         "action_config": {
             "name_template": "Buyer: {buyer_name}",
-            "notes_template": "Auto-created from buyer record",
+            "notes_template": "Auto-created from buyer {buyer_id} ({company_name})",
             "source": "other",
             "priority": "medium",
         },

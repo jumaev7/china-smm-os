@@ -28,10 +28,12 @@ async def automation_kpis(
     user: CurrentTenantUser = Depends(get_current_tenant_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await run_guarded(
+    result = await run_guarded(
         AutomationService.get_kpis(db, user.tenant_id),
         label="automation.kpis",
     )
+    await db.commit()
+    return result
 
 
 @router.get("/executions", response_model=AutomationExecutionListResponse)
@@ -64,7 +66,7 @@ async def list_automation_flows(
     user: CurrentTenantUser = Depends(get_current_tenant_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await run_guarded(
+    result = await run_guarded(
         AutomationService.list_flows(
             db,
             user.tenant_id,
@@ -74,6 +76,8 @@ async def list_automation_flows(
         ),
         label="automation.list",
     )
+    await db.commit()
+    return result
 
 
 @router.get("/{flow_id}", response_model=AutomationFlowDetail)
@@ -82,10 +86,12 @@ async def get_automation_flow(
     user: CurrentTenantUser = Depends(get_current_tenant_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await run_guarded(
+    result = await run_guarded(
         AutomationService.get_flow(db, user.tenant_id, flow_id),
         label="automation.get",
     )
+    await db.commit()
+    return result
 
 
 @router.patch("/{flow_id}", response_model=AutomationFlowDetail)

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.publishing_account import PublishingAccount, ACCOUNT_STATUSES, PLATFORMS
 from app.schemas.publishing import MOCK_ACCOUNT_LABELS, PublishingAccountCreate, PublishingAccountUpdate
+from app.services.automation_domain_events import INTEGRATION_ATTENTION_STATUSES
 from app.services.meta_connection_service import MetaConnectionService
 from app.services.meta_graph_client import token_is_expired
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
@@ -148,10 +149,26 @@ class PublishingAccountService:
         data: PublishingAccountUpdate,
     ) -> PublishingAccount:
         account = await PublishingAccountService.get(db, tenant_id, account_id)
-        for field, value in data.model_dump(exclude_unset=True).items():
+        previous_status = account.status
+        updates = data.model_dump(exclude_unset=True)
+        for field, value in updates.items():
             if field == "status" and value not in ACCOUNT_STATUSES:
                 raise HTTPException(status_code=400, detail=f"Invalid status: {value}")
             setattr(account, field, value)
+        new_status = account.status
+        if (
+            "status" in updates
+            and new_status != previous_status
+            and new_status in INTEGRATION_ATTENTION_STATUSES
+        ):
+            await MetaConnectionService._emit_disconnected(
+                db,
+                account,
+                previous_status=previous_status,
+                disconnect_reason="user_status_update",
+                requires_reauthorization=new_status != "disconnected" or previous_status != "disconnected",
+                disconnect_kind="user_initiated",
+            )
         await db.commit()
         await db.refresh(account)
         return account
@@ -159,6 +176,17 @@ class PublishingAccountService:
     @staticmethod
     async def delete(db: AsyncSession, tenant_id: UUID, account_id: UUID) -> None:
         account = await PublishingAccountService.get(db, tenant_id, account_id)
+        previous_status = account.status
+        if previous_status != "disconnected" and previous_status != "mock":
+            account.status = "disconnected"
+            await MetaConnectionService._emit_disconnected(
+                db,
+                account,
+                previous_status=previous_status,
+                disconnect_reason="account_deleted",
+                requires_reauthorization=False,
+                disconnect_kind="user_initiated",
+            )
         await db.delete(account)
         await db.commit()
 

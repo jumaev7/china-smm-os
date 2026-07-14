@@ -12,6 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.publishing_account import PublishingAccount
+from app.services.automation_domain_events import (
+    INTEGRATION_ATTENTION_STATUSES,
+    emit_domain_event,
+    utc_now_iso,
+)
 from app.services.meta_graph_client import (
     debug_token,
     exchange_for_long_lived_token,
@@ -252,7 +257,17 @@ class MetaConnectionService:
             if account and health and account.status not in ("mock", "disconnected"):
                 derived = health["status"]
                 if derived != account.status:
+                    previous = account.status
                     account.status = derived
+                    if derived in INTEGRATION_ATTENTION_STATUSES:
+                        await MetaConnectionService._emit_disconnected(
+                            db,
+                            account,
+                            previous_status=previous,
+                            disconnect_reason=derived,
+                            requires_reauthorization=True,
+                            disconnect_kind="involuntary",
+                        )
 
         if fb or ig:
             await db.commit()
@@ -449,12 +464,53 @@ class MetaConnectionService:
             return None
 
     @staticmethod
+    async def _emit_disconnected(
+        db: AsyncSession,
+        account: PublishingAccount,
+        *,
+        previous_status: str,
+        disconnect_reason: str,
+        requires_reauthorization: bool,
+        disconnect_kind: str,
+    ) -> None:
+        """Emit only on meaningful transition into disconnected/attention state."""
+        if previous_status == account.status:
+            return
+        if account.status not in INTEGRATION_ATTENTION_STATUSES:
+            return
+        platform = account.platform
+        integration_name = account.account_name or platform.title()
+        await emit_domain_event(
+            db,
+            "tenant.integration.disconnected",
+            account.tenant_id,
+            payload={
+                "integration_id": str(account.id),
+                "account_id": str(account.id),
+                "provider": platform,
+                "platform": platform,
+                "integration_name": integration_name,
+                "disconnect_reason": disconnect_reason,
+                "disconnect_kind": disconnect_kind,
+                "detected_at": utc_now_iso(),
+                "requires_reauthorization": requires_reauthorization,
+                "from_status": previous_status,
+                "to_status": account.status,
+            },
+            resource_type="integration",
+            resource_id=str(account.id),
+            title=f"{integration_name} disconnected",
+            description=f"Integration {platform} transitioned {previous_status} → {account.status}",
+        )
+
+    @staticmethod
     async def disconnect(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
         accounts = await MetaConnectionService.list_meta_accounts(db, tenant_id)
         cleared = 0
         for account in accounts:
             if account.status == "mock":
                 continue
+            previous = account.status
             account.access_token_encrypted = None
             account.refresh_token_encrypted = None
             account.expires_at = None
@@ -463,6 +519,15 @@ class MetaConnectionService:
             account.permissions_json = None
             account.account_metadata_json = None
             account.status = "disconnected"
+            if previous != "disconnected":
+                await MetaConnectionService._emit_disconnected(
+                    db,
+                    account,
+                    previous_status=previous,
+                    disconnect_reason="user_initiated",
+                    requires_reauthorization=True,
+                    disconnect_kind="user_initiated",
+                )
             cleared += 1
         await db.commit()
         return {"ok": True, "message": f"Disconnected {cleared} Meta publishing account(s)"}

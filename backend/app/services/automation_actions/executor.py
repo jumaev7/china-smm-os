@@ -138,7 +138,11 @@ async def execute_create_crm_lead(
         result = await CrmService.create_lead(db, lead_data)
     except Exception as exc:
         return ActionResult(success=False, error_code="crm_error", error_message=str(exc))
-    return ActionResult(success=True, payload={"lead_id": result.get("id")})
+    out: dict[str, Any] = {"lead_id": str(result.get("id")) if result.get("id") is not None else None}
+    buyer_id = payload.get("buyer_id")
+    if buyer_id:
+        out["source_buyer_id"] = str(buyer_id)
+    return ActionResult(success=True, payload=out)
 
 
 async def execute_record_activity(

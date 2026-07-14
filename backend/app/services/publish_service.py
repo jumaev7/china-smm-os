@@ -17,10 +17,14 @@ from app.models.content import ContentItem
 from app.models.publish_attempt import PublishAttempt
 from app.models.publishing_account import PublishingAccount
 from app.schemas.publishing import PublishContentRequest
+from app.services.automation_domain_events import (
+    classify_publish_failure,
+    emit_domain_event,
+)
 from app.services.content_service import ContentService
 from app.services.publish_context import PublishContext
 from app.services.publishing_account_service import PublishingAccountService
-from app.services.publishing_tenant_scope import tenant_id_for_content
+from app.services.publishing_tenant_scope import tenant_id_for_content, tenant_id_for_content_optional
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 from app.services.meta_connection_service import MetaConnectionService
 from app.services.meta_graph_client import token_is_expired
@@ -180,17 +184,35 @@ class PublishService:
 
         recovered = 0
         for item in items:
+            # Transition publishing → failed only (query already filters status).
             item.status = "failed"
             _append_publish_note(item, "[Publish] Publishing timeout — auto-recovered to failed")
+            platform = item.platforms[0] if item.platforms else "unknown"
             attempt = PublishAttempt(
                 content_id=item.id,
-                platform=(item.platforms[0] if item.platforms else "unknown"),
+                platform=platform,
                 account_id=None,
                 status="failed",
                 response=None,
                 error="Publishing timeout",
             )
             db.add(attempt)
+            await db.flush()
+            await PublishService._emit_publish_failed(
+                db,
+                item,
+                results=[{
+                    "platform": platform,
+                    "success": False,
+                    "error": "Publishing timeout",
+                    "account_id": None,
+                }],
+                failure_code="publish_timeout",
+                failure_category="timeout",
+                retryable=True,
+                attempt_number=1,
+                source="stale_recovery",
+            )
             recovered += 1
             logger.warning(
                 "[Publish] failed: content=%s error=Publishing timeout (stale recovery)",
@@ -311,6 +333,67 @@ class PublishService:
         return attempt
 
     @staticmethod
+    async def _emit_publish_failed(
+        db: AsyncSession,
+        item: ContentItem,
+        *,
+        results: list[dict],
+        failure_code: str,
+        failure_category: str,
+        retryable: bool,
+        attempt_number: int,
+        source: str,
+    ) -> None:
+        """Emit tenant.content.publish_failed after a real transition into failed.
+
+        Transaction: flush-only via PlatformEventService.emit(commit=False);
+        caller owns the domain commit. Automation failures never alter publish state.
+        """
+        tenant_id = await tenant_id_for_content_optional(db, item)
+        if tenant_id is None:
+            logger.warning("[Publish] skip publish_failed event — no tenant for content=%s", item.id)
+            return
+
+        failed = [r for r in results if not r.get("success")]
+        primary = failed[0] if failed else (results[0] if results else {})
+        platform = primary.get("platform") or (item.platforms[0] if item.platforms else "unknown")
+        account_id = primary.get("account_id")
+        resource_name = (
+            (item.caption_short_en or item.caption_short_ru or item.caption_short_uz or "").strip()
+            or f"Content {str(item.id)[:8]}"
+        )
+        payload = {
+            "content_id": str(item.id),
+            "publishing_account_id": str(account_id) if account_id else None,
+            "platform": platform,
+            "channel": platform,
+            "resource_name": resource_name[:120],
+            "failure_code": failure_code,
+            "failure_category": failure_category,
+            "retryable": retryable,
+            "attempt_number": attempt_number,
+            "source": source,
+            "failed_platforms": [
+                {
+                    "platform": r.get("platform"),
+                    "error": (r.get("error") or "")[:240],
+                    "publishing_account_id": r.get("account_id"),
+                }
+                for r in failed
+            ],
+        }
+        await emit_domain_event(
+            db,
+            "tenant.content.publish_failed",
+            tenant_id,
+            payload=payload,
+            resource_type="content",
+            resource_id=str(item.id),
+            title=f"Publishing failed: {resource_name[:80]}",
+            description=f"Publish attempt failed on {platform} ({failure_code})",
+        )
+
+    @staticmethod
     async def _force_terminal_status(
         db: AsyncSession,
         content_id: UUID,
@@ -328,6 +411,23 @@ class PublishService:
                 item.published_at = datetime.now(timezone.utc)
             if error:
                 _append_publish_note(item, f"[Publish] {error}")
+            if status == "failed":
+                failure_code, failure_category, retryable = classify_publish_failure(error)
+                await PublishService._emit_publish_failed(
+                    db,
+                    item,
+                    results=[{
+                        "platform": (item.platforms[0] if item.platforms else "unknown"),
+                        "success": False,
+                        "error": error or "Publishing interrupted",
+                        "account_id": None,
+                    }],
+                    failure_code=failure_code,
+                    failure_category=failure_category,
+                    retryable=retryable,
+                    attempt_number=1,
+                    source="force_terminal",
+                )
             await db.commit()
             logger.info("[Publish] finally: forced status=%s content=%s", status, content_id)
         except Exception:
@@ -601,6 +701,29 @@ class PublishService:
                 post_id = r.get("platform_post_id") or r.get("error") or "n/a"
                 parts.append(f"{r['platform']}: {st} {post_id}")
             _append_publish_note(item, f"[Publish] {' | '.join(parts)}")
+
+            if terminal_status == "failed":
+                failed = [r for r in results if not r.get("success")]
+                primary_error = (failed[0].get("error") if failed else None) or "Publish failed"
+                failure_code, failure_category, retryable = classify_publish_failure(primary_error)
+                prior_attempts = (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(PublishAttempt)
+                        .where(PublishAttempt.content_id == content_id),
+                    )
+                ).scalar_one()
+                await PublishService._emit_publish_failed(
+                    db,
+                    item,
+                    results=results,
+                    failure_code=failure_code,
+                    failure_category=failure_category,
+                    retryable=retryable,
+                    attempt_number=max(1, int(prior_attempts)),
+                    source=publish_mode,
+                )
+
             await db.commit()
             finalized = True
 

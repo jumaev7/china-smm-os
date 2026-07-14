@@ -33,6 +33,7 @@ from app.schemas.buyer_crm import (
     BuyerUpdate,
     DistributionItem,
 )
+from app.services.automation_domain_events import emit_domain_event
 
 
 class BuyerCrmService:
@@ -348,6 +349,25 @@ class BuyerCrmService:
         db.add(buyer)
         await db.flush()
         await cls._record_status_change(db, buyer, None, data.status, created_by, "Buyer created")
+        await emit_domain_event(
+            db,
+            "tenant.buyer.created",
+            tenant_id,
+            payload={
+                "buyer_id": str(buyer.id),
+                "buyer_name": (buyer.contact_person or buyer.company_name or "").strip() or "Buyer",
+                "company_name": buyer.company_name,
+                "company": buyer.company_name,
+                "country": buyer.country,
+                "industry": buyer.industry,
+                "source": "api",
+            },
+            actor_type="user" if created_by else "system",
+            resource_type="buyer",
+            resource_id=str(buyer.id),
+            title=f"Buyer created: {buyer.company_name}",
+            description="Durable buyer CRM record persisted",
+        )
         await db.commit()
         await db.refresh(buyer)
         return cls._buyer_to_response(buyer, 0)
