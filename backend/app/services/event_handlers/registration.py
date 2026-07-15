@@ -9,6 +9,7 @@ from app.services.event_handlers.audit_handler import AuditEventHandler
 from app.services.event_handlers.automation_handler import AutomationEventHandler
 from app.services.event_handlers.customer_success_handler import CustomerSuccessEventHandler
 from app.services.event_handlers.notification_handler import NotificationEventHandler
+from app.services.intelligence.handler import IntelligenceEventHandler
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ def register_event_bus_subscribers(bus: EventBus | None = None) -> EventBus:
         NotificationEventHandler(),
         CustomerSuccessEventHandler(),
         AutomationEventHandler(),
+        IntelligenceEventHandler(),
     ]
     for handler in handlers:
         target.subscribe(handler, event_types="*", priority=100)

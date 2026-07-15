@@ -13793,3 +13793,172 @@ export const workflowsApi = {
 
 export const WORKFLOWS_LIST_QUERY_KEY = ["workflows"] as const;
 export const WORKFLOWS_CATALOG_QUERY_KEY = ["workflows-catalog"] as const;
+
+// ─── Marketing Intelligence Platform ─────────────────────────────────────────
+
+export interface MarketingHealthCategory {
+  category: string;
+  score: number;
+  weight: number;
+  scoring_version: string;
+}
+
+export interface MarketingHealth {
+  overall_score: number;
+  scoring_version: string;
+  recommendation_engine_version: string;
+  open_recommendations: number;
+  recent_signals_7d: number;
+  categories: MarketingHealthCategory[];
+  computed_at: string;
+  status: string;
+}
+
+export interface MarketingSignal {
+  id: string;
+  signal_id: string;
+  tenant_id: string;
+  signal_type: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  occurred_at?: string | null;
+  metadata?: Record<string, unknown> | null;
+  source: string;
+  severity: string;
+  confidence: number;
+  platform_event_id?: string | null;
+  platform_event_type?: string | null;
+  created_at?: string | null;
+}
+
+export interface MarketingSignalList {
+  items: MarketingSignal[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface MarketingScore {
+  id: string;
+  category: string;
+  score: number;
+  weight: number;
+  scoring_version: string;
+  explanation?: {
+    observation?: string;
+    evidence?: string[];
+    reasoning?: string;
+    recommendation?: string | null;
+    engine_version?: string;
+  } | null;
+  evidence?: Record<string, unknown> | null;
+  computed_at?: string | null;
+}
+
+export interface MarketingScoreList {
+  scoring_version: string;
+  items: MarketingScore[];
+}
+
+export interface MarketingRecommendation {
+  id: string;
+  recommendation_key: string;
+  category: string;
+  title: string;
+  reason: string;
+  evidence?: Record<string, unknown> | null;
+  explanation?: {
+    observation?: string;
+    evidence?: string[];
+    reasoning?: string;
+    recommendation?: string | null;
+    engine_version?: string;
+  } | null;
+  confidence: number;
+  priority: string;
+  status: string;
+  rule_id: string;
+  rule_version: string;
+  action_url?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface MarketingRecommendationList {
+  items: MarketingRecommendation[];
+  total: number;
+  page: number;
+  page_size: number;
+  engine_version: string;
+}
+
+export interface MarketingInsight {
+  id: string;
+  kind: string;
+  title: string;
+  summary: string;
+  category?: string | null;
+  severity: string;
+  explanation?: Record<string, unknown> | null;
+  evidence?: Record<string, unknown> | null;
+  related_signal_ids?: string[] | null;
+  created_at?: string | null;
+}
+
+export interface MarketingInsightList {
+  items: MarketingInsight[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface MarketingHistory {
+  days: number;
+  scores: Array<{
+    category: string;
+    score: number;
+    scoring_version: string;
+    recorded_at?: string | null;
+    explanation?: Record<string, unknown> | null;
+  }>;
+  recommendations: Array<{
+    recommendation_key: string;
+    category: string;
+    title: string;
+    priority: string;
+    status: string;
+    rule_id: string;
+    recorded_at?: string | null;
+  }>;
+  trends: Array<{
+    metric_key: string;
+    bucket_start?: string | null;
+    bucket_end?: string | null;
+    value: number;
+    sample_count: number;
+  }>;
+}
+
+export const intelligenceApi = {
+  health: () => api.get<MarketingHealth>("/intelligence/health"),
+  signals: (params?: {
+    page?: number;
+    page_size?: number;
+    signal_type?: string;
+    source?: string;
+    severity?: string;
+  }) => api.get<MarketingSignalList>("/intelligence/signals", { params }),
+  scores: () => api.get<MarketingScoreList>("/intelligence/scores"),
+  recommendations: (params?: {
+    page?: number;
+    page_size?: number;
+    status?: string;
+    category?: string;
+  }) => api.get<MarketingRecommendationList>("/intelligence/recommendations", { params }),
+  insights: (params?: { page?: number; page_size?: number }) =>
+    api.get<MarketingInsightList>("/intelligence/insights", { params }),
+  history: (params?: { days?: number }) =>
+    api.get<MarketingHistory>("/intelligence/history", { params }),
+};
+
+export const INTELLIGENCE_QUERY_KEY = ["marketing-intelligence"] as const;

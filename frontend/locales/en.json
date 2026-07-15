@@ -146,6 +146,7 @@
     "executiveCopilot": "Executive Copilot",
     "growthCenter": "Growth Center",
     "customerSuccess": "Customer Success & ROI",
+    "marketingIntelligence": "Marketing Intelligence",
     "exportGrowth": "Export Growth Engine",
     "businessMatching": "Business Matching",
     "dealRoom": "Deal Room",
@@ -2015,5 +2016,26 @@
       "filteredBody": "Try adjusting your filters or search query to find what you are looking for.",
       "clearFilters": "Clear filters"
     }
+  },
+  "marketingIntelligence": {
+    "title": "Marketing Intelligence",
+    "subtitle": "Deterministic health scores, signals, and recommendations from platform activity.",
+    "errorTitle": "Unable to load marketing intelligence",
+    "health": "Health",
+    "overallScore": "Overall score",
+    "openRecommendations": "Open recommendations",
+    "recentSignals": "Signals (7d)",
+    "engine": "Scoring engine",
+    "recommendations": "Recommendations",
+    "signals": "Signals",
+    "insights": "Recent insights",
+    "trend": "Trend",
+    "noRecommendations": "No open recommendations",
+    "noRecommendationsBody": "When signal patterns cross rule thresholds, explainable recommendations appear here.",
+    "noSignals": "No signals yet",
+    "noSignalsBody": "Publishing, CRM, automation, and integration events will appear as normalized marketing signals.",
+    "noInsights": "No insights yet",
+    "noInsightsBody": "Insights are generated as signals are collected and scores update.",
+    "noTrend": "Trend history will appear after score recomputations."
   }
 }

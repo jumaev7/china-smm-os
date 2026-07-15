@@ -99,6 +99,15 @@ from app.models.workflow import (
     TenantWorkflowExecution,
     TenantWorkflowStepExecution,
 )
+from app.models.intelligence import (
+    TenantMarketingSignal,
+    TenantMarketingScore,
+    TenantMarketingScoreHistory,
+    TenantMarketingRecommendation,
+    TenantMarketingRecommendationHistory,
+    TenantMarketingInsight,
+    TenantMarketingTrend,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -211,4 +220,11 @@ __all__ = [
     "TenantWorkflowVersion",
     "TenantWorkflowExecution",
     "TenantWorkflowStepExecution",
+    "TenantMarketingSignal",
+    "TenantMarketingScore",
+    "TenantMarketingScoreHistory",
+    "TenantMarketingRecommendation",
+    "TenantMarketingRecommendationHistory",
+    "TenantMarketingInsight",
+    "TenantMarketingTrend",
 ]

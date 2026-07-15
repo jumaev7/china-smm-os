@@ -20,6 +20,7 @@ class EventIntegrations:
     notification: bool = False
     customer_success: bool = False
     automation: bool = False
+    intelligence: bool = False
 
 
 @dataclass(frozen=True)

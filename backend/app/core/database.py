@@ -545,6 +545,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
             connection.execute(text(sql))
 
     _ensure_workflow_tables(connection)
+    _ensure_intelligence_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -702,6 +703,211 @@ def _ensure_workflow_tables(connection) -> None:
             "ON tenant_workflow_step_executions (workflow_execution_id)",
         ):
             connection.execute(text(sql))
+
+
+def _ensure_intelligence_tables(connection) -> None:
+    """Marketing Intelligence Platform — signals, scores, recommendations, history."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables:
+        return
+
+    if "tenant_marketing_signals" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_signals ("
+            "id UUID PRIMARY KEY, "
+            "signal_id UUID NOT NULL, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "signal_type VARCHAR(80) NOT NULL, "
+            "entity_type VARCHAR(80), "
+            "entity_id VARCHAR(120), "
+            "occurred_at TIMESTAMPTZ NOT NULL, "
+            "metadata JSONB, "
+            "source VARCHAR(40) NOT NULL, "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'info', "
+            "confidence NUMERIC(4,3) NOT NULL DEFAULT 1.000, "
+            "platform_event_id UUID, "
+            "platform_event_type VARCHAR(120), "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_marketing_signals_tenant_signal UNIQUE (tenant_id, signal_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_signals_tenant_id "
+            "ON tenant_marketing_signals (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_signals_tenant_occurred "
+            "ON tenant_marketing_signals (tenant_id, occurred_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_signals_tenant_type_occurred "
+            "ON tenant_marketing_signals (tenant_id, signal_type, occurred_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_signals_tenant_source "
+            "ON tenant_marketing_signals (tenant_id, source)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_marketing_scores" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_scores ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "category VARCHAR(40) NOT NULL, "
+            "score INTEGER NOT NULL DEFAULT 50, "
+            "weight NUMERIC(5,4) NOT NULL DEFAULT 0.1000, "
+            "scoring_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "explanation JSONB, "
+            "evidence JSONB, "
+            "computed_at TIMESTAMPTZ DEFAULT NOW(), "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_marketing_scores_tenant_category UNIQUE (tenant_id, category)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_scores_tenant_id "
+            "ON tenant_marketing_scores (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_scores_tenant_updated "
+            "ON tenant_marketing_scores (tenant_id, updated_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_marketing_score_history" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_score_history ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "category VARCHAR(40) NOT NULL, "
+            "score INTEGER NOT NULL, "
+            "weight NUMERIC(5,4) NOT NULL, "
+            "scoring_version VARCHAR(20) NOT NULL, "
+            "explanation JSONB, "
+            "evidence JSONB, "
+            "recorded_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_score_history_tenant_id "
+            "ON tenant_marketing_score_history (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_score_history_tenant_category_at "
+            "ON tenant_marketing_score_history (tenant_id, category, recorded_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_marketing_recommendations" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_recommendations ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "recommendation_key VARCHAR(120) NOT NULL, "
+            "category VARCHAR(40) NOT NULL, "
+            "title VARCHAR(255) NOT NULL, "
+            "reason TEXT NOT NULL, "
+            "evidence JSONB, "
+            "explanation JSONB, "
+            "confidence NUMERIC(4,3) NOT NULL DEFAULT 0.800, "
+            "priority VARCHAR(20) NOT NULL DEFAULT 'medium', "
+            "status VARCHAR(20) NOT NULL DEFAULT 'open', "
+            "rule_id VARCHAR(80) NOT NULL, "
+            "rule_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "action_url VARCHAR(255), "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_marketing_recommendations_tenant_key "
+            "UNIQUE (tenant_id, recommendation_key)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_recommendations_tenant_id "
+            "ON tenant_marketing_recommendations (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_recommendations_tenant_priority "
+            "ON tenant_marketing_recommendations (tenant_id, priority, updated_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_recommendations_tenant_status "
+            "ON tenant_marketing_recommendations (tenant_id, status)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_marketing_recommendation_history" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_recommendation_history ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "recommendation_key VARCHAR(120) NOT NULL, "
+            "category VARCHAR(40) NOT NULL, "
+            "title VARCHAR(255) NOT NULL, "
+            "reason TEXT NOT NULL, "
+            "evidence JSONB, "
+            "explanation JSONB, "
+            "confidence NUMERIC(4,3) NOT NULL, "
+            "priority VARCHAR(20) NOT NULL, "
+            "status VARCHAR(20) NOT NULL, "
+            "rule_id VARCHAR(80) NOT NULL, "
+            "rule_version VARCHAR(20) NOT NULL, "
+            "recorded_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_recommendation_history_tenant_id "
+            "ON tenant_marketing_recommendation_history (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_rec_history_tenant_recorded "
+            "ON tenant_marketing_recommendation_history (tenant_id, recorded_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_marketing_insights" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_insights ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "kind VARCHAR(40) NOT NULL, "
+            "title VARCHAR(255) NOT NULL, "
+            "summary TEXT NOT NULL, "
+            "category VARCHAR(40), "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'info', "
+            "explanation JSONB, "
+            "evidence JSONB, "
+            "related_signal_ids JSONB, "
+            "created_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_insights_tenant_id "
+            "ON tenant_marketing_insights (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_insights_tenant_created "
+            "ON tenant_marketing_insights (tenant_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_insights_tenant_kind "
+            "ON tenant_marketing_insights (tenant_id, kind)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_marketing_trends" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_trends ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "metric_key VARCHAR(80) NOT NULL, "
+            "bucket_start TIMESTAMPTZ NOT NULL, "
+            "bucket_end TIMESTAMPTZ NOT NULL, "
+            "value NUMERIC(12,4) NOT NULL, "
+            "sample_count INTEGER NOT NULL DEFAULT 0, "
+            "metadata JSONB, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_marketing_trends_tenant_metric_bucket "
+            "UNIQUE (tenant_id, metric_key, bucket_start)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_trends_tenant_id "
+            "ON tenant_marketing_trends (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_trends_tenant_metric_bucket "
+            "ON tenant_marketing_trends (tenant_id, metric_key, bucket_start)",
+        ):
+            connection.execute(text(sql))
+
+
+async def ensure_intelligence_schema() -> None:
+    """Apply idempotent DDL for Marketing Intelligence tables."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_intelligence_tables)
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:

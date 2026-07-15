@@ -1,4 +1,4 @@
-"""Central registry of platform event types."""
+"""Platform event registry — canonical catalog with Marketing Intelligence flags."""
 from __future__ import annotations
 
 from app.core.events.types import EventDefinition, EventIntegrations
@@ -37,6 +37,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             audit=True,
             activity=True,
             customer_success=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -48,6 +49,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             activity=True,
             notification=True,
             customer_success=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -59,6 +61,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             activity=True,
             customer_success=True,
             automation=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -71,6 +74,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             notification=True,
             customer_success=True,
             automation=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -80,6 +84,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         integrations=EventIntegrations(
             activity=True,
             customer_success=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -90,19 +95,20 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             activity=True,
             notification=True,
             customer_success=True,
+            intelligence=True,
         ),
     ),
     _def(
         "tenant.automation.triggered",
         category="automation",
         description="Automation rule or workflow trigger fired",
-        integrations=EventIntegrations(activity=True, automation=True),
+        integrations=EventIntegrations(activity=True, automation=True, intelligence=True),
     ),
     _def(
         "tenant.notification.sent",
         category="notification",
         description="In-app notification created for tenant users",
-        integrations=EventIntegrations(activity=True),
+        integrations=EventIntegrations(activity=True, intelligence=True),
     ),
     _def(
         "tenant.customer_success.milestone",
@@ -112,6 +118,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             activity=True,
             notification=True,
             customer_success=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -123,6 +130,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             activity=True,
             notification=True,
             automation=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -134,6 +142,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             activity=True,
             notification=True,
             automation=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -146,6 +155,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             notification=True,
             customer_success=True,
             automation=True,
+            intelligence=True,
         ),
     ),
     _def(
@@ -158,6 +168,7 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             notification=True,
             customer_success=True,
             automation=True,
+            intelligence=True,
         ),
     ),
 )

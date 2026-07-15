@@ -9,7 +9,7 @@ class IntegrationHandler:
     """Base class for registry-aware subscribers."""
 
     name: str
-    integration_key: str  # audit | activity | notification | customer_success | automation
+    integration_key: str  # audit | activity | notification | customer_success | automation | intelligence
 
     def __init__(self, registry: EventRegistry | None = None) -> None:
         self._registry = registry or event_registry

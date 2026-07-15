@@ -190,6 +190,8 @@ const NAV_SECTIONS: NavSection[] = [
 
       { href: "/customer-success", icon: Sparkles, labelKey: "nav.customerSuccess" },
 
+      { href: "/marketing-intelligence", icon: Brain, labelKey: "nav.marketingIntelligence" },
+
       { href: "/export-growth", icon: Globe, labelKey: "nav.exportGrowth" },
 
       { href: "/business-matching", icon: Handshake, labelKey: "nav.businessMatching" },
@@ -481,6 +483,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
       { href: "/growth-center", icon: TrendingUp, labelKey: "nav.growthCenter" },
       { href: "/export-growth", icon: Globe, labelKey: "nav.exportGrowth" },
       { href: "/customer-success", icon: Sparkles, labelKey: "nav.customerSuccess" },
+      { href: "/marketing-intelligence", icon: Brain, labelKey: "nav.marketingIntelligence" },
     ],
   },
   {
