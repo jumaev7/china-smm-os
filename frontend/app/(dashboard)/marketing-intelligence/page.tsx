@@ -188,6 +188,34 @@ export default function MarketingIntelligencePage() {
   const insights = insightsQuery.data?.items ?? [];
   const trendPoints = (historyQuery.data?.trends ?? []).filter((t) => t.metric_key === "score.overall");
 
+  const publishingSignals = signals.filter((s) => s.signal_type.startsWith("publishing."));
+  const reviewCompleted = publishingSignals.filter((s) => s.signal_type === "publishing.review_completed");
+  const scoreLow = publishingSignals.filter((s) => s.signal_type === "publishing.score_low");
+  const criticalIssues = publishingSignals.filter(
+    (s) => s.signal_type === "publishing.critical_issue_detected",
+  );
+  const platformFitWarnings = publishingSignals.filter(
+    (s) => s.signal_type === "publishing.platform_fit_low",
+  );
+  const avgPublishingScore = (() => {
+    const scoresFromSignals = reviewCompleted
+      .map((s) => {
+        const payload = (s.metadata as { payload?: { overall_score?: number } } | null)?.payload;
+        return payload?.overall_score;
+      })
+      .filter((n): n is number => typeof n === "number");
+    if (scoresFromSignals.length === 0) return null;
+    return Math.round(
+      scoresFromSignals.reduce((a, b) => a + b, 0) / scoresFromSignals.length,
+    );
+  })();
+  const publishingRecCategories = recommendations
+    .filter((r) => r.category === "publishing")
+    .reduce<Record<string, number>>((acc, r) => {
+      acc[r.recommendation_key] = (acc[r.recommendation_key] || 0) + 1;
+      return acc;
+    }, {});
+
   const retry = () => {
     void healthQuery.refetch();
     void scoresQuery.refetch();
@@ -249,6 +277,53 @@ export default function MarketingIntelligencePage() {
                   <ScoreCard key={score.category} score={score} />
                 ))}
             </div>
+          </PageSection>
+
+          <PageSection title="Publishing Intelligence">
+            <p className="mb-3 text-sm text-slate-500 dark-tenant:text-slate-400">
+              Deterministic pre-publish quality signals (rule-based, no AI rewrite).
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard
+                label="Avg publishing score"
+                value={avgPublishingScore != null ? String(avgPublishingScore) : "—"}
+                sub={`${reviewCompleted.length} recent reviews`}
+                icon={Activity}
+              />
+              <KpiCard
+                label="Low-score content"
+                value={String(scoreLow.length)}
+                icon={AlertTriangle}
+              />
+              <KpiCard
+                label="Critical review issues"
+                value={String(criticalIssues.length)}
+                icon={AlertTriangle}
+              />
+              <KpiCard
+                label="Platform-fit warnings"
+                value={String(platformFitWarnings.length)}
+                icon={Radio}
+              />
+            </div>
+            {Object.keys(publishingRecCategories).length > 0 ? (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark-tenant:border-slate-800 dark-tenant:bg-slate-950">
+                <p className="text-xs uppercase tracking-wide text-slate-500">
+                  Frequent publishing recommendation keys
+                </p>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {Object.entries(publishingRecCategories)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 6)
+                    .map(([key, count]) => (
+                      <li key={key} className="flex justify-between gap-3 text-slate-700 dark-tenant:text-slate-300">
+                        <span className="truncate">{key}</span>
+                        <span className="tabular-nums text-slate-500">{count}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            ) : null}
           </PageSection>
 
           <div className="grid gap-6 xl:grid-cols-2">

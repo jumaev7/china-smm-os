@@ -13962,3 +13962,102 @@ export const intelligenceApi = {
 };
 
 export const INTELLIGENCE_QUERY_KEY = ["marketing-intelligence"] as const;
+
+export interface PublishingReviewCheck {
+  check_key: string;
+  category: string;
+  status: string;
+  severity: string;
+  score?: number | null;
+  weight: number;
+  evidence?: Record<string, unknown>;
+  recommendation_key?: string | null;
+  recommendation_params?: Record<string, unknown> | null;
+}
+
+export interface PublishingCategoryScore {
+  category: string;
+  score: number;
+  weight: number;
+  applicable: boolean;
+  warning_count: number;
+  failure_count: number;
+  evidence?: Record<string, unknown>;
+}
+
+export interface PublishingPlatformReview {
+  platform: string;
+  platform_score: number;
+  caption_score?: number | null;
+  media_score?: number | null;
+  cta_score?: number | null;
+  hashtag_score?: number | null;
+  language_score?: number | null;
+  compliance_score?: number | null;
+  recommendations?: Array<Record<string, unknown>>;
+}
+
+export interface PublishingReviewRecommendation {
+  key: string;
+  category: string;
+  priority: string;
+  reason: string;
+  evidence_summary: string;
+  suggested_action: string;
+  params?: Record<string, unknown>;
+}
+
+export interface PublishingReview {
+  review_id: string;
+  content_id: string;
+  review_version: number;
+  review_engine_version: string;
+  content_fingerprint: string;
+  overall_score: number;
+  status: string;
+  is_current: boolean;
+  is_stale: boolean;
+  primary_language?: string | null;
+  target_platforms: string[];
+  summary: Record<string, unknown>;
+  category_scores: Record<string, PublishingCategoryScore>;
+  platform_reviews: PublishingPlatformReview[];
+  checks: PublishingReviewCheck[];
+  recommendations: PublishingReviewRecommendation[];
+  publish_readiness: string;
+  created_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface PublishingReviewList {
+  items: PublishingReview[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export const publishingIntelligenceApi = {
+  createReview: (contentId: string) =>
+    api.post<PublishingReview>(`/publishing-intelligence/content/${contentId}/review`),
+  listReviews: (contentId: string, params?: { page?: number; page_size?: number }) =>
+    api.get<PublishingReviewList>(`/publishing-intelligence/content/${contentId}/reviews`, {
+      params,
+    }),
+  latestReview: (contentId: string) =>
+    api.get<PublishingReview>(`/publishing-intelligence/content/${contentId}/reviews/latest`),
+  getReview: (reviewId: string) =>
+    api.get<PublishingReview>(`/publishing-intelligence/reviews/${reviewId}`),
+  policies: () => api.get<Record<string, unknown>>("/publishing-intelligence/policies"),
+  checkCatalog: () => api.get<Record<string, unknown>>("/publishing-intelligence/check-catalog"),
+  validate: (contentId: string) =>
+    api.post<{
+      content_id: string;
+      publish_readiness: string;
+      overall_score?: number | null;
+      is_advisory_score: boolean;
+      hard_blockers: Array<Record<string, unknown>>;
+      notes: string[];
+    }>(`/publishing-intelligence/content/${contentId}/validate`),
+};
+
+export const PUBLISHING_INTELLIGENCE_QUERY_KEY = ["publishing-intelligence"] as const;

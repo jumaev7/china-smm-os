@@ -16,6 +16,7 @@ import { useParams } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import { ScheduleModal } from "@/components/content/ScheduleModal";
 import { PublishingChecklist, useContentReadiness } from "@/components/content/PublishingChecklist";
+import { PublishingReviewPanel } from "@/components/content/PublishingReviewPanel";
 import { ClientReviewStatusBadge, ClientReviewStatusPanel } from "@/components/content/ClientReviewStatus";
 import { WorkflowPanel } from "@/components/content/WorkflowPanel";
 import { ContentPlatformLinks } from "@/components/platform/ContentPlatformLinks";
@@ -826,6 +827,8 @@ export default function ContentDetailPage() {
               intent="schedule"
             />
           )}
+
+          <PublishingReviewPanel contentId={id} />
 
           <ClientReviewStatusPanel
             item={item}
