@@ -97,6 +97,67 @@ class RecommendationEngine:
                 )
             )
 
+        score_low = counts.get("publishing.score_low", 0)
+        critical_issues = counts.get("publishing.critical_issue_detected", 0)
+        fit_low = counts.get("publishing.platform_fit_low", 0)
+        if critical_issues >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="publishing.fix_critical_review_issues",
+                    category="publishing",
+                    title="Fix critical publishing review issues",
+                    reason=(
+                        f"{critical_issues} critical publishing review issue signal(s) "
+                        f"in the last {SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{critical_issues} critical review issues"],
+                    evidence={"critical_issue_detected": critical_issues},
+                    priority="critical",
+                    confidence=Decimal("0.940"),
+                    rule_id="rule.publishing_critical_review_issues",
+                    action_url="/content",
+                    recommendation_text="Open content items with critical pre-publish review failures and resolve blockers.",
+                )
+            )
+        elif score_low >= 2:
+            results.append(
+                RecommendationEngine._rec(
+                    key="publishing.improve_publishing_score",
+                    category="publishing",
+                    title="Improve publishing quality scores",
+                    reason=(
+                        f"{score_low} low publishing-score signal(s) detected "
+                        f"over {SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{score_low} low publishing scores"],
+                    evidence={"score_low": score_low},
+                    priority="high",
+                    confidence=Decimal("0.900"),
+                    rule_id="rule.publishing_score_low",
+                    action_url="/content",
+                    recommendation_text="Re-run Publishing Intelligence reviews and address caption, CTA, media, or platform-fit warnings.",
+                )
+            )
+        if fit_low >= 2:
+            results.append(
+                RecommendationEngine._rec(
+                    key="publishing.improve_platform_fit",
+                    category="publishing",
+                    title="Improve platform fit before publishing",
+                    reason=(
+                        f"{fit_low} platform-fit warning signal(s) in the last "
+                        f"{SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{fit_low} platform-fit lows"],
+                    evidence={"platform_fit_low": fit_low},
+                    priority="medium",
+                    confidence=Decimal("0.870"),
+                    rule_id="rule.publishing_platform_fit_low",
+                    action_url="/content",
+                    recommendation_text="Adjust caption length, media, or hashtags for the target platforms.",
+                )
+            )
+
         disconnected = counts.get("integration.disconnected", 0)
         if disconnected >= INTEGRATION_DISCONNECT_THRESHOLD:
             results.append(

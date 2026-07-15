@@ -171,6 +171,40 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             intelligence=True,
         ),
     ),
+    _def(
+        "tenant.publishing.review_completed",
+        category="publishing",
+        description="Deterministic publishing review completed",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.score_low",
+        category="publishing",
+        description="Publishing quality score below threshold",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.critical_issue_detected",
+        category="publishing",
+        description="Critical publishing review issue detected",
+        integrations=EventIntegrations(
+            activity=True,
+            notification=True,
+            intelligence=True,
+        ),
+    ),
+    _def(
+        "tenant.publishing.platform_fit_low",
+        category="publishing",
+        description="Platform fit score below threshold",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.review_became_stale",
+        category="publishing",
+        description="Publishing review became stale after content edit",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
 )
 
 

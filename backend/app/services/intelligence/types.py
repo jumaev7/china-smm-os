@@ -8,8 +8,8 @@ from typing import Any
 from uuid import UUID
 
 # Scoring / recommendation engine versions (deterministic, bump on rule changes).
-SCORING_ENGINE_VERSION = "1.0.0"
-RECOMMENDATION_ENGINE_VERSION = "1.0.0"
+SCORING_ENGINE_VERSION = "1.1.0"
+RECOMMENDATION_ENGINE_VERSION = "1.1.0"
 EXPLANATION_ENGINE_VERSION = "1.0.0"
 
 # Lookback windows (days) for score computation.
@@ -36,6 +36,11 @@ SIGNAL_TYPES = frozenset({
     "publishing.completed",
     "publishing.failed",
     "publishing.partial_failed",
+    "publishing.review_completed",
+    "publishing.score_low",
+    "publishing.critical_issue_detected",
+    "publishing.platform_fit_low",
+    "publishing.review_became_stale",
     "crm.lead_created",
     "crm.deal_stage_changed",
     "crm.deal_won",
@@ -59,6 +64,11 @@ PLATFORM_EVENT_TO_SOURCE: dict[str, str] = {
     "tenant.content.published": "publishing",
     "tenant.content.publish_failed": "publishing",
     "tenant.content.publish_partial_failed": "publishing",
+    "tenant.publishing.review_completed": "publishing",
+    "tenant.publishing.score_low": "publishing",
+    "tenant.publishing.critical_issue_detected": "publishing",
+    "tenant.publishing.platform_fit_low": "publishing",
+    "tenant.publishing.review_became_stale": "publishing",
     "tenant.content.created": "content",
     "tenant.crm.lead_created": "crm",
     "tenant.crm.deal_stage_changed": "crm",

@@ -149,29 +149,59 @@ class ScoringEngine:
         completed = counts.get("publishing.completed", 0)
         failed = counts.get("publishing.failed", 0)
         partial = counts.get("publishing.partial_failed", 0)
+        reviews = counts.get("publishing.review_completed", 0)
+        score_low = counts.get("publishing.score_low", 0)
+        critical = counts.get("publishing.critical_issue_detected", 0)
+        fit_low = counts.get("publishing.platform_fit_low", 0)
         attempts = completed + failed + partial
-        if attempts == 0:
+        if attempts == 0 and reviews == 0:
             score = _NEUTRAL
             reasoning = "No publishing activity in the lookback window; baseline score applied."
+        elif attempts == 0:
+            review_penalty = min(35, score_low * 6 + critical * 10 + fit_low * 4)
+            score = _clamp(72 - review_penalty + min(8, reviews))
+            reasoning = (
+                f"{reviews} publishing review(s); penalties for {score_low} low scores, "
+                f"{critical} critical issues, {fit_low} platform-fit warnings."
+            )
         else:
             success_rate = completed / attempts
             fail_penalty = min(40, failed * 8 + partial * 4)
-            score = _clamp(int(round(40 + success_rate * 60 - fail_penalty + min(10, completed))))
+            review_penalty = min(20, score_low * 4 + critical * 6 + fit_low * 3)
+            score = _clamp(
+                int(round(40 + success_rate * 60 - fail_penalty - review_penalty + min(10, completed)))
+            )
             reasoning = (
                 f"Success rate {success_rate:.0%} across {attempts} attempts; "
-                f"penalty for {failed} failures and {partial} partial failures."
+                f"penalty for {failed} failures, {partial} partial failures, "
+                f"and {score_low + critical + fit_low} review quality signals."
             )
         return ScoringEngine._result(
             "publishing",
             score,
-            evidence={"completed": completed, "failed": failed, "partial_failed": partial},
+            evidence={
+                "completed": completed,
+                "failed": failed,
+                "partial_failed": partial,
+                "review_completed": reviews,
+                "score_low": score_low,
+                "critical_issue_detected": critical,
+                "platform_fit_low": fit_low,
+            },
             evidence_lines=[
                 f"{completed} completed publishes",
                 f"{failed} failed publishes",
                 f"{partial} partial failures",
+                f"{reviews} publishing reviews",
+                f"{score_low} low publishing scores",
+                f"{critical} critical review issues",
             ],
             reasoning=reasoning,
-            recommendation="Review publishing accounts and credentials." if failed >= 2 else None,
+            recommendation=(
+                "Review publishing accounts and pre-publish quality."
+                if failed >= 2 or critical >= 1
+                else None
+            ),
         )
 
     @staticmethod

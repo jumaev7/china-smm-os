@@ -546,6 +546,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
 
     _ensure_workflow_tables(connection)
     _ensure_intelligence_tables(connection)
+    _ensure_publishing_intelligence_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -908,6 +909,118 @@ async def ensure_intelligence_schema() -> None:
     """Apply idempotent DDL for Marketing Intelligence tables."""
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_intelligence_tables)
+
+
+def _ensure_publishing_intelligence_tables(connection) -> None:
+    """Publishing Intelligence — immutable review snapshots and check results."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables or "content_items" not in tables:
+        return
+
+    if "tenant_publishing_reviews" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_publishing_reviews ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "content_id UUID NOT NULL REFERENCES content_items(id) ON DELETE CASCADE, "
+            "review_version INTEGER NOT NULL, "
+            "review_engine_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "content_fingerprint VARCHAR(64) NOT NULL, "
+            "overall_score INTEGER NOT NULL DEFAULT 0, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'completed', "
+            "primary_language VARCHAR(10), "
+            "target_platforms JSONB, "
+            "summary JSONB, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "completed_at TIMESTAMPTZ, "
+            "superseded_at TIMESTAMPTZ, "
+            "CONSTRAINT uq_tenant_publishing_reviews_content_version "
+            "UNIQUE (content_id, review_version)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_reviews_tenant_id "
+            "ON tenant_publishing_reviews (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_reviews_content_id "
+            "ON tenant_publishing_reviews (content_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_reviews_tenant_content_created "
+            "ON tenant_publishing_reviews (tenant_id, content_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_reviews_tenant_status_created "
+            "ON tenant_publishing_reviews (tenant_id, status, created_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_publishing_review_checks" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_publishing_review_checks ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "publishing_review_id UUID NOT NULL "
+            "REFERENCES tenant_publishing_reviews(id) ON DELETE CASCADE, "
+            "check_key VARCHAR(80) NOT NULL, "
+            "category VARCHAR(40) NOT NULL, "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'info', "
+            "status VARCHAR(20) NOT NULL, "
+            "score INTEGER, "
+            "weight INTEGER NOT NULL DEFAULT 1, "
+            "evidence JSONB, "
+            "recommendation_key VARCHAR(80), "
+            "recommendation_params JSONB, "
+            "created_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_review_checks_tenant_id "
+            "ON tenant_publishing_review_checks (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_review_checks_publishing_review_id "
+            "ON tenant_publishing_review_checks (publishing_review_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_review_checks_review_category "
+            "ON tenant_publishing_review_checks (publishing_review_id, category)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_review_checks_tenant_review "
+            "ON tenant_publishing_review_checks (tenant_id, publishing_review_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_publishing_platform_reviews" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_publishing_platform_reviews ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "publishing_review_id UUID NOT NULL "
+            "REFERENCES tenant_publishing_reviews(id) ON DELETE CASCADE, "
+            "platform VARCHAR(40) NOT NULL, "
+            "platform_score INTEGER NOT NULL DEFAULT 0, "
+            "caption_score INTEGER, "
+            "media_score INTEGER, "
+            "cta_score INTEGER, "
+            "hashtag_score INTEGER, "
+            "language_score INTEGER, "
+            "compliance_score INTEGER, "
+            "recommendations JSONB, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_publishing_platform_reviews_review_platform "
+            "UNIQUE (publishing_review_id, platform)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_platform_reviews_tenant_id "
+            "ON tenant_publishing_platform_reviews (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_platform_reviews_publishing_review_id "
+            "ON tenant_publishing_platform_reviews (publishing_review_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_publishing_platform_reviews_tenant_review "
+            "ON tenant_publishing_platform_reviews (tenant_id, publishing_review_id)",
+        ):
+            connection.execute(text(sql))
+
+
+async def ensure_publishing_intelligence_schema() -> None:
+    """Apply idempotent DDL for Publishing Intelligence tables."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_publishing_intelligence_tables)
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:

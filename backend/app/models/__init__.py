@@ -108,6 +108,11 @@ from app.models.intelligence import (
     TenantMarketingInsight,
     TenantMarketingTrend,
 )
+from app.models.publishing_intelligence import (
+    TenantPublishingReview,
+    TenantPublishingReviewCheck,
+    TenantPublishingPlatformReview,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -227,4 +232,7 @@ __all__ = [
     "TenantMarketingRecommendationHistory",
     "TenantMarketingInsight",
     "TenantMarketingTrend",
+    "TenantPublishingReview",
+    "TenantPublishingReviewCheck",
+    "TenantPublishingPlatformReview",
 ]
