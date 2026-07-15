@@ -11,7 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260902_automation_center"
 RELIABILITY = "20260903_automation_reliability"
-HEAD = "20260904_automation_scheduler"
+SCHEDULER = "20260904_automation_scheduler"
+HEAD = "20260905_workflow_definitions"
 
 
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:

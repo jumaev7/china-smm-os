@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260903_automation_reliability"
-HEAD = "20260904_automation_scheduler"
+SCHEDULER = "20260904_automation_scheduler"
+HEAD = "20260905_workflow_definitions"
 
 
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
@@ -49,7 +50,7 @@ async def _run() -> int:
     up = _alembic("upgrade", "head")
     record("upgrade_head", up.returncode == 0, (up.stderr or up.stdout)[-400:])
     cur = _alembic("current")
-    record("current_is_scheduler_head", HEAD in (cur.stdout or ""), (cur.stdout or "")[:200])
+    record("current_is_head", HEAD in (cur.stdout or ""), (cur.stdout or "")[:200])
 
     down = _alembic("downgrade", PREV)
     record("downgrade_to_reliability", down.returncode == 0, (down.stderr or down.stdout)[-400:])
