@@ -544,6 +544,165 @@ def _ensure_platform_event_bus_tables(connection) -> None:
         ):
             connection.execute(text(sql))
 
+    _ensure_workflow_tables(connection)
+
+
+def _ensure_workflow_tables(connection) -> None:
+    """Workflow Builder Phase 1 — versioned definitions and executions."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables:
+        return
+
+    if "tenant_workflows" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_workflows ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "key VARCHAR(120) NOT NULL, "
+            "name VARCHAR(255) NOT NULL, "
+            "description TEXT, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'draft', "
+            "active_version_id UUID, "
+            "draft_version_id UUID, "
+            "draft_revision INTEGER NOT NULL DEFAULT 1, "
+            "trigger_event VARCHAR(80), "
+            "failure_policy VARCHAR(40) NOT NULL DEFAULT 'stop_on_failure', "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW(), "
+            "archived_at TIMESTAMPTZ, "
+            "CONSTRAINT uq_tenant_workflows_tenant_key UNIQUE (tenant_id, key)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflows_tenant_id ON tenant_workflows (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflows_tenant_status_updated "
+            "ON tenant_workflows (tenant_id, status, updated_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflows_tenant_trigger "
+            "ON tenant_workflows (tenant_id, trigger_event)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_workflow_versions" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_workflow_versions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "workflow_id UUID NOT NULL REFERENCES tenant_workflows(id) ON DELETE CASCADE, "
+            "version_number INTEGER NOT NULL, "
+            "state VARCHAR(20) NOT NULL DEFAULT 'draft', "
+            "definition JSONB NOT NULL DEFAULT '{}'::jsonb, "
+            "definition_hash VARCHAR(64), "
+            "validation_status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "validation_errors JSONB, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "published_at TIMESTAMPTZ, "
+            "CONSTRAINT uq_tenant_workflow_versions_workflow_number "
+            "UNIQUE (workflow_id, version_number)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_versions_tenant_id "
+            "ON tenant_workflow_versions (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_versions_workflow_id "
+            "ON tenant_workflow_versions (workflow_id)",
+        ):
+            connection.execute(text(sql))
+
+    # Deferred FKs workflows → versions
+    if "tenant_workflows" in set(inspect(connection).get_table_names()) and \
+            "tenant_workflow_versions" in set(inspect(connection).get_table_names()):
+        connection.execute(text(
+            "DO $$ BEGIN "
+            "IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_tenant_workflows_active_version') THEN "
+            "ALTER TABLE tenant_workflows ADD CONSTRAINT fk_tenant_workflows_active_version "
+            "FOREIGN KEY (active_version_id) REFERENCES tenant_workflow_versions(id) ON DELETE SET NULL; "
+            "END IF; END $$"
+        ))
+        connection.execute(text(
+            "DO $$ BEGIN "
+            "IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_tenant_workflows_draft_version') THEN "
+            "ALTER TABLE tenant_workflows ADD CONSTRAINT fk_tenant_workflows_draft_version "
+            "FOREIGN KEY (draft_version_id) REFERENCES tenant_workflow_versions(id) ON DELETE SET NULL; "
+            "END IF; END $$"
+        ))
+
+    if "tenant_workflow_executions" not in set(inspect(connection).get_table_names()):
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_workflow_executions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "workflow_id UUID NOT NULL REFERENCES tenant_workflows(id) ON DELETE CASCADE, "
+            "workflow_version_id UUID NOT NULL REFERENCES tenant_workflow_versions(id) ON DELETE CASCADE, "
+            "platform_event_id UUID, "
+            "execution_kind VARCHAR(20) NOT NULL DEFAULT 'event', "
+            "deduplication_key VARCHAR(200) NOT NULL, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "trigger_event VARCHAR(80) NOT NULL, "
+            "started_at TIMESTAMPTZ NOT NULL, "
+            "finished_at TIMESTAMPTZ, "
+            "duration_ms INTEGER, "
+            "matched_conditions JSONB, "
+            "current_step_id VARCHAR(80), "
+            "input_summary JSONB, "
+            "result_summary JSONB, "
+            "error_code VARCHAR(60), "
+            "error_category VARCHAR(40), "
+            "error_message TEXT, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_workflow_executions_dedup "
+            "UNIQUE (tenant_id, workflow_id, deduplication_key)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_executions_tenant_id "
+            "ON tenant_workflow_executions (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_executions_workflow_created "
+            "ON tenant_workflow_executions (workflow_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_executions_tenant_status_created "
+            "ON tenant_workflow_executions (tenant_id, status, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_executions_platform_event_id "
+            "ON tenant_workflow_executions (platform_event_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_workflow_step_executions" not in set(inspect(connection).get_table_names()):
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_workflow_step_executions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "workflow_execution_id UUID NOT NULL "
+            "REFERENCES tenant_workflow_executions(id) ON DELETE CASCADE, "
+            "step_id VARCHAR(80) NOT NULL, "
+            "step_type VARCHAR(40) NOT NULL, "
+            "action_type VARCHAR(60), "
+            "step_index INTEGER NOT NULL DEFAULT 0, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'pending', "
+            "started_at TIMESTAMPTZ, "
+            "finished_at TIMESTAMPTZ, "
+            "duration_ms INTEGER, "
+            "input_summary JSONB, "
+            "result_summary JSONB, "
+            "error_code VARCHAR(60), "
+            "error_category VARCHAR(40), "
+            "error_message TEXT, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_workflow_step_executions_exec_step "
+            "UNIQUE (workflow_execution_id, step_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_step_executions_tenant_id "
+            "ON tenant_workflow_step_executions (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_workflow_step_executions_execution_id "
+            "ON tenant_workflow_step_executions (workflow_execution_id)",
+        ):
+            connection.execute(text(sql))
+
 
 def _ensure_customer_success_journey_columns(connection) -> None:
     """Customer Success Journey — post-platform-ready adoption engine."""

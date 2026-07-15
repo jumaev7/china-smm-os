@@ -1,474 +1,809 @@
-"""
-One-click content preparation workflow — sequential steps with in-memory progress.
-"""
+"""Tenant workflow lifecycle — draft, validate, publish, pause, archive, clone."""
 from __future__ import annotations
 
-import asyncio
-import json
-import logging
 import re
 from datetime import datetime, timezone
-from uuid import UUID
+from typing import Any
+from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
-from app.core.database import AsyncSessionLocal
-from app.core.storage import storage
-from app.models.client import Client
-from app.models.content import ContentItem
-from app.schemas.workflow import WorkflowPrepareRequest, WorkflowStepId
-from app.services.ai_service import generate_content, get_openai, _validate_api_key
-from app.services.brand_profile import brand_profile_from_client
-from app.services.context_ai_service import build_context_signals
-from app.services.content_service import ContentService
-from app.services.telegram_instruction_service import extract_client_source_text
-from app.services.subtitle_service import (
-    TRANSLATED_LANG_CODES,
-    parse_srt,
-    save_subtitle_file,
-    subtitle_path_for,
-    translated_subtitle_path_for,
+from app.models.automation import AUTOMATION_ACTION_TYPES
+from app.models.workflow import (
+    MAX_CONDITION_DEPTH,
+    MAX_TOTAL_CONDITIONS,
+    MAX_WORKFLOW_STEPS,
+    TenantWorkflow,
+    TenantWorkflowExecution,
+    TenantWorkflowVersion,
 )
-from app.services.subtitle_translation_service import generate_translated_subtitles
-from app.services.transcription_service import transcribe_video_detailed
-
-logger = logging.getLogger(__name__)
-
-WORKFLOW_STEPS: list[tuple[WorkflowStepId, str]] = [
-    ("subtitles", "Subtitles"),
-    ("translations", "Translations"),
-    ("captions", "Captions"),
-    ("hashtags", "Hashtags"),
-    ("post_time", "Post time"),
-    ("voice", "Voiceover"),
-    ("export", "Final export"),
-    ("status", "Ready for approval"),
-]
-
-_workflows: dict[str, dict] = {}
-_workflow_lock = asyncio.Lock()
-
-_SRT_RANGE = re.compile(
-    r"^(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})$"
+from app.schemas.workflow import (
+    WorkflowCatalogResponse,
+    WorkflowDetail,
+    WorkflowExecutionDetail,
+    WorkflowExecutionListResponse,
+    WorkflowExecutionSummary,
+    WorkflowListResponse,
+    WorkflowPublishResponse,
+    WorkflowStatusChangeResponse,
+    WorkflowStepExecutionSummary,
+    WorkflowSummary,
+    WorkflowTestResponse,
+    WorkflowValidateResponse,
+    WorkflowValidationErrorItem,
+    WorkflowVersionDetail,
+    WorkflowVersionListResponse,
+    WorkflowVersionSummary,
 )
+from app.services.automation_errors import sanitize_payload_summary
+from app.services.workflow_field_catalog import (
+    catalog_as_api,
+    extract_allowlisted_fields,
+    list_workflow_trigger_events,
+)
+from app.services.workflow_rule_engine import WorkflowRuleEngine
+from app.services.workflow_validation_service import WorkflowValidationService
+
+_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{1,118}$")
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _empty_progress(content_id: UUID) -> dict:
+def _slugify(name: str) -> str:
+    base = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "workflow"
+    return base[:100]
+
+
+def _empty_definition(event: str | None = None) -> dict[str, Any]:
     return {
-        "content_id": str(content_id),
-        "status": "idle",
-        "current_step": None,
-        "steps": [
-            {"id": sid, "label": label, "status": "pending", "error": None,
-             "started_at": None, "finished_at": None}
-            for sid, label in WORKFLOW_STEPS
-        ],
-        "started_at": None,
-        "finished_at": None,
-        "message": "",
-        "can_retry": False,
-        "options": None,
-        "_segments": None,
+        "schema_version": 1,
+        "trigger": {"event": event or list_workflow_trigger_events()[0]},
+        "conditions": {"operator": "all", "items": []},
+        "steps": [],
+        "failure_policy": "stop_on_failure",
     }
 
 
-def get_progress(content_id: UUID) -> dict:
-    key = str(content_id)
-    state = _workflows.get(key)
-    if not state:
-        return _empty_progress(content_id)
-    return _public_state(state)
-
-
-def _public_state(state: dict) -> dict:
-    return {
-        "content_id": state["content_id"],
-        "status": state["status"],
-        "current_step": state["current_step"],
-        "steps": [
-            {k: v for k, v in step.items()}
-            for step in state["steps"]
-        ],
-        "started_at": state["started_at"],
-        "finished_at": state["finished_at"],
-        "message": state["message"],
-        "can_retry": state["can_retry"],
-    }
-
-
-def _step_index(step_id: WorkflowStepId) -> int:
-    return next(i for i, (sid, _) in enumerate(WORKFLOW_STEPS) if sid == step_id)
-
-
-def _set_step(state: dict, step_id: WorkflowStepId, *, status: str, error: str | None = None) -> None:
-    idx = _step_index(step_id)
-    step = state["steps"][idx]
-    now = _utcnow()
-    if status == "running":
-        step["started_at"] = now
-        step["error"] = None
-    if status in ("completed", "failed", "skipped"):
-        step["finished_at"] = now
-        if error:
-            step["error"] = error
-    step["status"] = status
-    logger.info(
-        "[Workflow] finished: step=%s content_id=%s status=%s%s",
-        step_id,
-        state["content_id"],
-        status,
-        f" error={error}" if error else "",
-    )
-
-
-def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
-    return int(h) * 3600 + int(m) * 60 + int(s) + int(ms) / 1000.0
-
-
-def _cues_to_segments(cues: list[dict]) -> list[dict]:
-    segments: list[dict] = []
-    for cue in cues:
-        match = _SRT_RANGE.match(cue["time_line"])
-        if not match:
-            continue
-        g = match.groups()
-        start = _ts_to_seconds(g[0], g[1], g[2], g[3])
-        end = _ts_to_seconds(g[4], g[5], g[6], g[7])
-        segments.append({"start": start, "end": end, "text": cue["text"]})
-    return segments
-
-
-def _extract_source_text(item: ContentItem) -> str | None:
-    text = extract_client_source_text(item.internal_notes)
-    return text or None
-
-
-def _append_internal_note(item: ContentItem, marker: str, value: str) -> None:
-    notes = item.internal_notes or ""
-    line = f"{marker} {value}".strip()
-    if marker in notes:
-        parts = notes.split("\n")
-        parts = [line if p.startswith(marker) else p for p in parts]
-        if not any(p.startswith(marker) for p in parts):
-            parts.append(line)
-        item.internal_notes = "\n".join(parts).strip()
-    else:
-        item.internal_notes = f"{notes}\n{line}".strip() if notes else line
-
-
-async def _suggest_posting_time(client: Client, item: ContentItem) -> str:
-    if settings.DEMO_MODE:
-        return "Wed 18:00–20:00 Tashkent (Asia/Tashkent) — Instagram / TikTok peak"
-
-    _validate_api_key()
-    openai = get_openai()
-    prompt = (
-        f"Business: {client.company_name} ({client.business_category})\n"
-        f"Platforms: {', '.join(item.platforms or ['instagram'])}\n"
-        f"Caption RU: {(item.caption_short_ru or '')[:200]}\n\n"
-        "Suggest the best posting time for Instagram/TikTok in Uzbekistan (Tashkent timezone). "
-        "Return JSON only: {\"suggestion\": \"short human-readable recommendation\"}"
-    )
-    response = await openai.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": "You are a social media scheduling expert for Uzbekistan."},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.4,
-        max_tokens=200,
-        response_format={"type": "json_object"},
-    )
-    raw = response.choices[0].message.content or "{}"
-    data = json.loads(raw)
-    return (data.get("suggestion") or "Weekday 18:00–20:00 Tashkent time").strip()
-
-
-async def _step_subtitles(db: AsyncSession, item: ContentItem, state: dict) -> None:
-    if not item.media_file or item.media_file.file_type != "video":
-        raise ValueError("Not a video — subtitles skipped")
-
-    sp = item.media_file.storage_path
-    if storage.exists(subtitle_path_for(sp)):
-        srt_bytes = await storage.read_file_bytes(subtitle_path_for(sp))
-        cues = parse_srt(srt_bytes.decode("utf-8", errors="replace"))
-        state["_segments"] = _cues_to_segments(cues)
-        return
-
-    raw = await storage.read_file_bytes(sp)
-    tx = await transcribe_video_detailed(raw)
-    if not tx.segments:
-        raise ValueError("No speech detected in video")
-
-    state["_segments"] = tx.segments
-    sub_key = await save_subtitle_file(sp, tx.segments)
-    if not sub_key:
-        raise ValueError("Failed to save subtitle file")
-
-    if tx.source_text:
-        _append_internal_note(item, "[Transcript]:", tx.source_text.strip())
-        await db.commit()
-
-
-async def _step_translations(db: AsyncSession, item: ContentItem, state: dict) -> None:
-    if not item.media_file or item.media_file.file_type != "video":
-        raise ValueError("Not a video — translations skipped")
-
-    sp = item.media_file.storage_path
-    missing = [
-        lang for lang in TRANSLATED_LANG_CODES
-        if not storage.exists(translated_subtitle_path_for(sp, lang))
+def _validation_errors_as_items(raw: list[dict[str, Any]] | None) -> list[WorkflowValidationErrorItem]:
+    if not raw:
+        return []
+    return [
+        WorkflowValidationErrorItem(
+            code=str(item.get("code", "invalid")),
+            message=str(item.get("message", "")),
+            path=item.get("path"),
+        )
+        for item in raw
+        if isinstance(item, dict)
     ]
-    if not missing:
-        return
-
-    segments = state.get("_segments")
-    if not segments and storage.exists(subtitle_path_for(sp)):
-        srt_bytes = await storage.read_file_bytes(subtitle_path_for(sp))
-        segments = _cues_to_segments(parse_srt(srt_bytes.decode("utf-8", errors="replace")))
-    if not segments:
-        raise ValueError("No subtitle segments available for translation")
-
-    await generate_translated_subtitles(sp, segments)
 
 
-async def _step_captions(db: AsyncSession, item: ContentItem, state: dict, options: WorkflowPrepareRequest) -> None:
-    result = await db.execute(select(Client).where(Client.id == item.client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise ValueError("Client not found")
+class WorkflowService:
+    @staticmethod
+    async def get_catalog() -> WorkflowCatalogResponse:
+        events = catalog_as_api()
+        return WorkflowCatalogResponse(
+            events=events,
+            action_types=sorted(AUTOMATION_ACTION_TYPES),
+            limits={
+                "max_steps": MAX_WORKFLOW_STEPS,
+                "max_condition_depth": MAX_CONDITION_DEPTH,
+                "max_total_conditions": MAX_TOTAL_CONDITIONS,
+            },
+        )
 
-    source_text = options.source_text or _extract_source_text(item)
-    source_lang = options.source_language or client.source_language or "zh"
-    context_signals = await build_context_signals(
-        db, client=client, item=item, source_text=source_text,
-    )
+    @staticmethod
+    async def list_workflows(
+        db: AsyncSession,
+        tenant_id: UUID,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        status: str | None = None,
+    ) -> WorkflowListResponse:
+        filters = [TenantWorkflow.tenant_id == tenant_id]
+        if status:
+            filters.append(TenantWorkflow.status == status)
+        total = (
+            await db.execute(select(func.count()).select_from(TenantWorkflow).where(*filters))
+        ).scalar_one()
+        rows = (
+            await db.execute(
+                select(TenantWorkflow)
+                .where(*filters)
+                .order_by(TenantWorkflow.updated_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size),
+            )
+        ).scalars().all()
+        items = []
+        for row in rows:
+            items.append(await WorkflowService._to_summary(db, row))
+        return WorkflowListResponse(items=items, total=int(total))
 
-    from app.services.client_knowledge_base_service import ClientKnowledgeBaseService
-    kb_block = await ClientKnowledgeBaseService.build_prompt_block(
-        db, client.id, context="content_generation",
-    )
+    @staticmethod
+    async def create_workflow(
+        db: AsyncSession,
+        tenant_id: UUID,
+        *,
+        name: str,
+        description: str | None = None,
+        key: str | None = None,
+        definition: dict[str, Any] | None = None,
+        created_by: UUID | None = None,
+    ) -> WorkflowDetail:
+        workflow_key = key or _slugify(name)
+        if not _KEY_RE.match(workflow_key):
+            raise HTTPException(status_code=400, detail="Invalid workflow key")
 
-    generated = await generate_content(
-        company_name=client.company_name,
-        business_category=client.business_category,
-        content_style=client.content_style,
-        source_language=source_lang,
-        source_text=source_text,
-        context_hint=options.context_hint,
-        client_notes=client.notes,
-        brand_profile=brand_profile_from_client(client),
-        context_signals=context_signals,
-        knowledge_base_block=kb_block or None,
-    )
-    await ContentService.apply_generated(db, item.id, generated)
+        existing = (
+            await db.execute(
+                select(TenantWorkflow.id).where(
+                    TenantWorkflow.tenant_id == tenant_id,
+                    TenantWorkflow.key == workflow_key,
+                ),
+            )
+        ).scalar_one_or_none()
+        if existing:
+            raise HTTPException(status_code=409, detail="Workflow key already exists")
 
+        defn = definition or _empty_definition()
+        validation = WorkflowValidationService.validate(defn)
+        # Allow incomplete drafts to be created; still store validation state.
+        stored = validation.normalized_definition if validation.valid else defn
 
-async def _step_hashtags(db: AsyncSession, item: ContentItem, state: dict, options: WorkflowPrepareRequest) -> None:
-    item = await ContentService.get(db, item.id)
-    if item.hashtags and item.hashtags.strip():
-        return
+        workflow = TenantWorkflow(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            key=workflow_key,
+            name=name.strip(),
+            description=description,
+            status="draft",
+            draft_revision=1,
+            trigger_event=(stored.get("trigger") or {}).get("event"),
+            failure_policy="stop_on_failure",
+            created_by=created_by,
+        )
+        db.add(workflow)
+        await db.flush()
 
-    result = await db.execute(select(Client).where(Client.id == item.client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise ValueError("Client not found")
+        version = TenantWorkflowVersion(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            workflow_id=workflow.id,
+            version_number=1,
+            state="draft",
+            definition=stored,
+            definition_hash=validation.definition_hash,
+            validation_status="valid" if validation.valid else ("invalid" if validation.errors else "pending"),
+            validation_errors=validation.to_error_dicts() or None,
+            created_by=created_by,
+        )
+        db.add(version)
+        await db.flush()
+        workflow.draft_version_id = version.id
+        await db.flush()
+        return await WorkflowService.get_workflow(db, tenant_id, workflow.id)
 
-    source_text = options.source_text or _extract_source_text(item)
-    context_signals = await build_context_signals(
-        db, client=client, item=item, source_text=source_text,
-    )
+    @staticmethod
+    async def get_workflow(db: AsyncSession, tenant_id: UUID, workflow_id: UUID) -> WorkflowDetail:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        return await WorkflowService._to_detail(db, workflow)
 
-    generated = await generate_content(
-        company_name=client.company_name,
-        business_category=client.business_category,
-        content_style=client.content_style,
-        source_language=options.source_language or client.source_language or "zh",
-        source_text=source_text,
-        context_hint=options.context_hint,
-        client_notes=client.notes,
-        brand_profile=brand_profile_from_client(client),
-        context_signals=context_signals,
-    )
-    item = await ContentService.get(db, item.id)
-    item.hashtags = generated.hashtags
-    await db.commit()
+    @staticmethod
+    async def update_workflow(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        *,
+        draft_revision: int,
+        name: str | None = None,
+        description: str | None = None,
+        definition: dict[str, Any] | None = None,
+        updated_by: UUID | None = None,
+    ) -> WorkflowDetail:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        if workflow.status == "archived":
+            raise HTTPException(status_code=409, detail="Archived workflows cannot be edited")
+        if workflow.draft_revision != draft_revision:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_draft_revision",
+                    "message": "Draft was updated elsewhere; reload and retry",
+                    "current_revision": workflow.draft_revision,
+                },
+            )
 
+        if name is not None:
+            workflow.name = name.strip()
+        if description is not None:
+            workflow.description = description
 
-async def _step_post_time(db: AsyncSession, item: ContentItem, state: dict) -> None:
-    result = await db.execute(select(Client).where(Client.id == item.client_id))
-    client = result.scalar_one_or_none()
-    if not client:
-        raise ValueError("Client not found")
+        draft = await WorkflowService._ensure_mutable_draft(db, workflow, updated_by=updated_by)
+        if definition is not None:
+            validation = WorkflowValidationService.validate(definition)
+            stored = validation.normalized_definition if validation.valid else definition
+            draft.definition = stored
+            draft.definition_hash = validation.definition_hash
+            draft.validation_status = "valid" if validation.valid else "invalid"
+            draft.validation_errors = validation.to_error_dicts() or None
+            workflow.trigger_event = (stored.get("trigger") or {}).get("event")
 
-    item = await ContentService.get(db, item.id)
-    suggestion = await _suggest_posting_time(client, item)
-    _append_internal_note(item, "[Suggested post time]:", suggestion)
-    await db.commit()
+        workflow.draft_revision = int(workflow.draft_revision) + 1
+        workflow.updated_at = _utcnow()
+        await db.flush()
+        return await WorkflowService.get_workflow(db, tenant_id, workflow_id)
 
+    @staticmethod
+    async def validate_workflow(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        *,
+        definition: dict[str, Any] | None = None,
+    ) -> WorkflowValidateResponse:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        if definition is None:
+            draft = await WorkflowService._get_version(db, tenant_id, workflow.draft_version_id)
+            if draft is None:
+                raise HTTPException(status_code=404, detail="Draft version not found")
+            definition = draft.definition
+        result = WorkflowValidationService.validate(definition)
+        return WorkflowValidateResponse(
+            valid=result.valid,
+            errors=_validation_errors_as_items(result.to_error_dicts()),
+            definition_hash=result.definition_hash,
+            normalized_definition=result.normalized_definition,
+        )
 
-async def _step_voice(db: AsyncSession, item: ContentItem, state: dict, options: WorkflowPrepareRequest) -> None:
-    if not item.media_file or item.media_file.file_type != "video":
-        raise ValueError("Not a video — voiceover skipped")
+    @staticmethod
+    async def publish_workflow(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        *,
+        published_by: UUID | None = None,
+    ) -> WorkflowPublishResponse:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        if workflow.status == "archived":
+            raise HTTPException(status_code=409, detail="Archived workflows cannot be published")
 
-    await ContentService.generate_voiceover(
-        db, item.id, options.voice_lang, mode=options.voice_mode,
-    )
+        draft = await WorkflowService._get_version(db, tenant_id, workflow.draft_version_id)
+        if draft is None or draft.state != "draft":
+            raise HTTPException(status_code=409, detail="No draft version to publish")
 
+        validation = WorkflowValidationService.validate(draft.definition)
+        if not validation.valid or not validation.normalized_definition:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "validation_failed",
+                    "errors": validation.to_error_dicts(),
+                },
+            )
 
-async def _step_export(db: AsyncSession, item: ContentItem, state: dict, options: WorkflowPrepareRequest) -> None:
-    if not item.media_file or item.media_file.file_type != "video":
-        raise ValueError("Not a video — export skipped")
+        # Freeze draft into published immutable version (new row if draft already published once)
+        now = _utcnow()
+        next_number = await WorkflowService._next_version_number(db, workflow.id)
 
-    await ContentService.generate_final_export(
-        db,
-        item.id,
-        options.subtitle_lang,
-        options.voice_lang,
-        options.voice_mode,
-    )
-
-
-async def _step_status(db: AsyncSession, item: ContentItem, state: dict) -> None:
-    await ContentService.mark_ready_for_approval(db, item.id)
-
-
-async def _run_step(
-    db: AsyncSession,
-    item: ContentItem,
-    state: dict,
-    step_id: WorkflowStepId,
-    options: WorkflowPrepareRequest,
-) -> None:
-    logger.info("[Workflow] step: %s content_id=%s", step_id, state["content_id"])
-    handlers = {
-        "subtitles": lambda: _step_subtitles(db, item, state),
-        "translations": lambda: _step_translations(db, item, state),
-        "captions": lambda: _step_captions(db, item, state, options),
-        "hashtags": lambda: _step_hashtags(db, item, state, options),
-        "post_time": lambda: _step_post_time(db, item, state),
-        "voice": lambda: _step_voice(db, item, state, options),
-        "export": lambda: _step_export(db, item, state, options),
-        "status": lambda: _step_status(db, item, state),
-    }
-    await handlers[step_id]()
-
-
-async def _execute_workflow(content_id: UUID, options: WorkflowPrepareRequest, from_step: WorkflowStepId | None = None) -> None:
-    key = str(content_id)
-    state = _workflows[key]
-    start_idx = _step_index(from_step) if from_step else 0
-
-    try:
-        async with AsyncSessionLocal() as db:
-            item = await ContentService.get(db, content_id)
-
-            for idx in range(start_idx, len(WORKFLOW_STEPS)):
-                step_id, _ = WORKFLOW_STEPS[idx]
-                state["current_step"] = step_id
-                _set_step(state, step_id, status="running")
-
-                try:
-                    item = await ContentService.get(db, content_id)
-                    await _run_step(db, item, state, step_id, options)
-                    _set_step(state, step_id, status="completed")
-                except ValueError as exc:
-                    msg = str(exc)
-                    if "skipped" in msg.lower():
-                        _set_step(state, step_id, status="skipped", error=msg)
-                    else:
-                        _set_step(state, step_id, status="failed", error=msg)
-                except Exception as exc:
-                    _set_step(state, step_id, status="failed", error=str(exc)[:500])
-                    logger.warning(
-                        "[Workflow] step failed: %s content_id=%s — %s",
-                        step_id, content_id, exc, exc_info=True,
-                    )
-
-            failed = [s for s in state["steps"] if s["status"] == "failed"]
-            state["current_step"] = None
-            state["finished_at"] = _utcnow()
-            state["can_retry"] = bool(failed)
-
-            if failed:
-                state["status"] = "failed"
-                state["message"] = f"Completed with {len(failed)} failed step(s)"
-            else:
-                state["status"] = "completed"
-                state["message"] = "Everything ready"
-                state["can_retry"] = False
-
-            logger.info("[Workflow] finished: content_id=%s status=%s", content_id, state["status"])
-    except Exception as exc:
-        state["status"] = "failed"
-        state["current_step"] = None
-        state["finished_at"] = _utcnow()
-        state["message"] = str(exc)[:200]
-        state["can_retry"] = True
-        logger.error("[Workflow] finished: content_id=%s fatal error=%s", content_id, exc, exc_info=True)
-
-
-async def start_workflow(content_id: UUID, options: WorkflowPrepareRequest) -> dict:
-    key = str(content_id)
-    async with _workflow_lock:
-        existing = _workflows.get(key)
-        if existing and existing["status"] == "running":
-            return _public_state(existing)
-
-        state = _empty_progress(content_id)
-        state["status"] = "running"
-        state["started_at"] = _utcnow()
-        state["message"] = "Preparing..."
-        state["options"] = options.model_dump()
-        _workflows[key] = state
-
-    logger.info("[Workflow] started: content_id=%s", content_id)
-    asyncio.create_task(_execute_workflow(content_id, options))
-    return _public_state(state)
-
-
-async def retry_workflow(content_id: UUID, step: WorkflowStepId | None = None) -> dict:
-    key = str(content_id)
-    async with _workflow_lock:
-        state = _workflows.get(key)
-        if not state or state["status"] == "running":
-            raise ValueError("No workflow to retry or workflow already running")
-
-        options_data = state.get("options") or {}
-        options = WorkflowPrepareRequest(**options_data)
-
-        if step:
-            from_idx = _step_index(step)
+        if draft.state == "draft" and draft.version_number == next_number - 1 and draft.published_at is None:
+            # Promote current draft in place to published
+            published = draft
+            published.state = "published"
+            published.definition = validation.normalized_definition
+            published.definition_hash = validation.definition_hash
+            published.validation_status = "valid"
+            published.validation_errors = None
+            published.published_at = now
         else:
-            failed_ids = [s["id"] for s in state["steps"] if s["status"] == "failed"]
-            if not failed_ids:
-                raise ValueError("No failed steps to retry")
-            from_idx = _step_index(failed_ids[0])
+            published = TenantWorkflowVersion(
+                id=uuid4(),
+                tenant_id=tenant_id,
+                workflow_id=workflow.id,
+                version_number=next_number,
+                state="published",
+                definition=validation.normalized_definition,
+                definition_hash=validation.definition_hash,
+                validation_status="valid",
+                validation_errors=None,
+                created_by=published_by,
+                published_at=now,
+            )
+            db.add(published)
+            await db.flush()
 
-        for i, (sid, _) in enumerate(WORKFLOW_STEPS):
-            if i >= from_idx:
-                state["steps"][i] = {
-                    "id": sid,
-                    "label": WORKFLOW_STEPS[i][1],
-                    "status": "pending",
-                    "error": None,
-                    "started_at": None,
-                    "finished_at": None,
-                }
+        # Supersede previous active
+        if workflow.active_version_id and workflow.active_version_id != published.id:
+            previous = await WorkflowService._get_version(db, tenant_id, workflow.active_version_id)
+            if previous is not None and previous.state == "published":
+                previous.state = "superseded"
 
-        state["status"] = "running"
-        state["current_step"] = None
-        state["finished_at"] = None
-        state["message"] = "Preparing..."
-        state["can_retry"] = False
-        from_step = WORKFLOW_STEPS[from_idx][0]
+        workflow.active_version_id = published.id
+        workflow.trigger_event = validation.normalized_definition["trigger"]["event"]
+        workflow.status = "published"
+        workflow.updated_at = now
 
-    logger.info("[Workflow] started: content_id=%s retry_from=%s", content_id, from_step)
-    asyncio.create_task(_execute_workflow(content_id, options, from_step=from_step))
-    return _public_state(state)
+        # Create a new draft copy for further edits (published stays immutable)
+        new_draft = TenantWorkflowVersion(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            workflow_id=workflow.id,
+            version_number=published.version_number + 1,
+            state="draft",
+            definition=dict(validation.normalized_definition),
+            definition_hash=validation.definition_hash,
+            validation_status="valid",
+            validation_errors=None,
+            created_by=published_by,
+        )
+        db.add(new_draft)
+        await db.flush()
+        workflow.draft_version_id = new_draft.id
+        workflow.draft_revision = int(workflow.draft_revision) + 1
+        # Re-touch updated_at so this second UPDATE carries an explicit value —
+        # otherwise the column's onupdate=func.now() default fires again without
+        # RETURNING, leaving the ORM attribute expired for the response below.
+        workflow.updated_at = _utcnow()
+        await db.flush()
+
+        return WorkflowPublishResponse(
+            id=workflow.id,
+            status=workflow.status,  # type: ignore[arg-type]
+            draft_revision=workflow.draft_revision,
+            updated_at=workflow.updated_at,
+            active_version_id=workflow.active_version_id,
+            draft_version_id=workflow.draft_version_id,
+            published_version_id=published.id,
+            published_version_number=published.version_number,
+            definition_hash=published.definition_hash,
+        )
+
+    @staticmethod
+    async def pause_workflow(db: AsyncSession, tenant_id: UUID, workflow_id: UUID) -> WorkflowStatusChangeResponse:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        if workflow.status == "archived":
+            raise HTTPException(status_code=409, detail="Archived workflows cannot be paused")
+        if workflow.status not in {"published", "paused"}:
+            raise HTTPException(status_code=409, detail="Only published workflows can be paused")
+        workflow.status = "paused"
+        workflow.updated_at = _utcnow()
+        await db.flush()
+        return WorkflowService._status_response(workflow)
+
+    @staticmethod
+    async def resume_workflow(db: AsyncSession, tenant_id: UUID, workflow_id: UUID) -> WorkflowStatusChangeResponse:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        if workflow.status != "paused":
+            raise HTTPException(status_code=409, detail="Only paused workflows can be resumed")
+        if not workflow.active_version_id:
+            raise HTTPException(status_code=409, detail="No published version to resume")
+        workflow.status = "published"
+        workflow.updated_at = _utcnow()
+        await db.flush()
+        return WorkflowService._status_response(workflow)
+
+    @staticmethod
+    async def archive_workflow(db: AsyncSession, tenant_id: UUID, workflow_id: UUID) -> WorkflowStatusChangeResponse:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        if workflow.status == "archived":
+            return WorkflowService._status_response(workflow)
+        workflow.status = "archived"
+        workflow.archived_at = _utcnow()
+        workflow.updated_at = workflow.archived_at
+        await db.flush()
+        return WorkflowService._status_response(workflow)
+
+    @staticmethod
+    async def clone_workflow(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        *,
+        created_by: UUID | None = None,
+    ) -> WorkflowDetail:
+        source = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        source_version = await WorkflowService._get_version(
+            db,
+            tenant_id,
+            source.draft_version_id or source.active_version_id,
+        )
+        if source_version is None:
+            raise HTTPException(status_code=404, detail="Source workflow version not found")
+
+        stamp = int(_utcnow().timestamp())
+        return await WorkflowService.create_workflow(
+            db,
+            tenant_id,
+            name=f"{source.name} (copy)",
+            description=source.description,
+            key=f"{source.key}_copy_{stamp}"[:120],
+            definition=dict(source_version.definition or {}),
+            created_by=created_by,
+        )
+
+    @staticmethod
+    async def list_versions(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+    ) -> WorkflowVersionListResponse:
+        await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        rows = (
+            await db.execute(
+                select(TenantWorkflowVersion)
+                .where(
+                    TenantWorkflowVersion.tenant_id == tenant_id,
+                    TenantWorkflowVersion.workflow_id == workflow_id,
+                )
+                .order_by(TenantWorkflowVersion.version_number.desc()),
+            )
+        ).scalars().all()
+        return WorkflowVersionListResponse(
+            items=[WorkflowService._to_version_summary(r) for r in rows],
+            total=len(rows),
+        )
+
+    @staticmethod
+    async def get_version(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        version_id: UUID,
+    ) -> WorkflowVersionDetail:
+        await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        row = await WorkflowService._get_version(db, tenant_id, version_id)
+        if row is None or row.workflow_id != workflow_id:
+            raise HTTPException(status_code=404, detail="Workflow version not found")
+        summary = WorkflowService._to_version_summary(row)
+        return WorkflowVersionDetail(
+            **summary.model_dump(),
+            definition=dict(row.definition or {}),
+            validation_errors=row.validation_errors,
+        )
+
+    @staticmethod
+    async def list_executions(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> WorkflowExecutionListResponse:
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        total = (
+            await db.execute(
+                select(func.count())
+                .select_from(TenantWorkflowExecution)
+                .where(
+                    TenantWorkflowExecution.tenant_id == tenant_id,
+                    TenantWorkflowExecution.workflow_id == workflow_id,
+                ),
+            )
+        ).scalar_one()
+        rows = (
+            await db.execute(
+                select(TenantWorkflowExecution)
+                .where(
+                    TenantWorkflowExecution.tenant_id == tenant_id,
+                    TenantWorkflowExecution.workflow_id == workflow_id,
+                )
+                .order_by(TenantWorkflowExecution.created_at.desc())
+                .offset((page - 1) * page_size)
+                .limit(page_size),
+            )
+        ).scalars().all()
+        return WorkflowExecutionListResponse(
+            items=[
+                WorkflowExecutionSummary(
+                    id=r.id,
+                    workflow_id=r.workflow_id,
+                    workflow_version_id=r.workflow_version_id,
+                    workflow_name=workflow.name,
+                    platform_event_id=r.platform_event_id,
+                    execution_kind=r.execution_kind,  # type: ignore[arg-type]
+                    status=r.status,  # type: ignore[arg-type]
+                    trigger_event=r.trigger_event,
+                    started_at=r.started_at,
+                    finished_at=r.finished_at,
+                    duration_ms=r.duration_ms,
+                    current_step_id=r.current_step_id,
+                    error_code=r.error_code,
+                    error_message=r.error_message,
+                    created_at=r.created_at,
+                )
+                for r in rows
+            ],
+            total=int(total),
+        )
+
+    @staticmethod
+    async def get_execution(
+        db: AsyncSession,
+        tenant_id: UUID,
+        execution_id: UUID,
+    ) -> WorkflowExecutionDetail:
+        from app.models.workflow import TenantWorkflowStepExecution
+
+        row = (
+            await db.execute(
+                select(TenantWorkflowExecution).where(
+                    TenantWorkflowExecution.tenant_id == tenant_id,
+                    TenantWorkflowExecution.id == execution_id,
+                ),
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Workflow execution not found")
+
+        workflow = await WorkflowService._require_workflow(db, tenant_id, row.workflow_id)
+        steps = (
+            await db.execute(
+                select(TenantWorkflowStepExecution)
+                .where(
+                    TenantWorkflowStepExecution.tenant_id == tenant_id,
+                    TenantWorkflowStepExecution.workflow_execution_id == row.id,
+                )
+                .order_by(TenantWorkflowStepExecution.step_index.asc()),
+            )
+        ).scalars().all()
+
+        return WorkflowExecutionDetail(
+            id=row.id,
+            workflow_id=row.workflow_id,
+            workflow_version_id=row.workflow_version_id,
+            workflow_name=workflow.name,
+            platform_event_id=row.platform_event_id,
+            execution_kind=row.execution_kind,  # type: ignore[arg-type]
+            status=row.status,  # type: ignore[arg-type]
+            trigger_event=row.trigger_event,
+            started_at=row.started_at,
+            finished_at=row.finished_at,
+            duration_ms=row.duration_ms,
+            current_step_id=row.current_step_id,
+            error_code=row.error_code,
+            error_message=row.error_message,
+            created_at=row.created_at,
+            matched_conditions=row.matched_conditions,
+            input_summary=sanitize_payload_summary(row.input_summary),
+            result_summary=sanitize_payload_summary(row.result_summary),
+            steps=[
+                WorkflowStepExecutionSummary(
+                    id=s.id,
+                    step_id=s.step_id,
+                    step_type=s.step_type,
+                    action_type=s.action_type,
+                    step_index=s.step_index,
+                    status=s.status,  # type: ignore[arg-type]
+                    started_at=s.started_at,
+                    finished_at=s.finished_at,
+                    duration_ms=s.duration_ms,
+                    error_code=s.error_code,
+                    error_message=s.error_message,
+                    input_summary=sanitize_payload_summary(s.input_summary),
+                    result_summary=sanitize_payload_summary(s.result_summary),
+                )
+                for s in steps
+            ],
+        )
+
+    @staticmethod
+    async def test_workflow(
+        db: AsyncSession,
+        tenant_id: UUID,
+        workflow_id: UUID,
+        *,
+        mode: str = "evaluate_only",
+        version_id: UUID | None = None,
+        synthetic_payload: dict[str, Any] | None = None,
+    ) -> WorkflowTestResponse:
+        if mode != "evaluate_only":
+            raise HTTPException(status_code=400, detail="Only evaluate_only test mode is supported")
+
+        workflow = await WorkflowService._require_workflow(db, tenant_id, workflow_id)
+        version = await WorkflowService._get_version(
+            db,
+            tenant_id,
+            version_id or workflow.draft_version_id or workflow.active_version_id,
+        )
+        if version is None or version.workflow_id != workflow.id:
+            raise HTTPException(status_code=404, detail="Workflow version not found")
+
+        validation = WorkflowValidationService.validate(version.definition)
+        if not validation.valid or not validation.normalized_definition:
+            return WorkflowTestResponse(
+                mode="evaluate_only",
+                valid=False,
+                validation_errors=_validation_errors_as_items(validation.to_error_dicts()),
+            )
+
+        defn = validation.normalized_definition
+        event_type = defn["trigger"]["event"]
+        # Only catalog-approved synthetic fields accepted
+        allowlisted = extract_allowlisted_fields(event_type, synthetic_payload or {})
+        evaluation = WorkflowRuleEngine.evaluate(
+            event_type=event_type,
+            payload=allowlisted,
+            conditions=defn.get("conditions"),
+        )
+        planned = [
+            {
+                "id": step.get("id"),
+                "type": step.get("type"),
+                "action_type": step.get("action_type"),
+            }
+            for step in defn.get("steps") or []
+            if isinstance(step, dict)
+        ]
+        return WorkflowTestResponse(
+            mode="evaluate_only",
+            valid=True,
+            matched=evaluation.matched,
+            evaluation_status=evaluation.status,
+            planned_steps=planned if evaluation.matched else [],
+            evaluated_conditions=[
+                {"condition_id": r.condition_id, "matched": r.matched, "reason": r.reason}
+                for r in evaluation.evaluated_conditions
+            ],
+            failed_condition_ids=list(evaluation.failed_condition_ids),
+            diagnostics=dict(evaluation.diagnostics),
+        )
+
+    # ── internals ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def _require_workflow(db: AsyncSession, tenant_id: UUID, workflow_id: UUID) -> TenantWorkflow:
+        row = (
+            await db.execute(
+                select(TenantWorkflow).where(
+                    TenantWorkflow.tenant_id == tenant_id,
+                    TenantWorkflow.id == workflow_id,
+                ),
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Workflow not found")
+        return row
+
+    @staticmethod
+    async def _get_version(
+        db: AsyncSession,
+        tenant_id: UUID,
+        version_id: UUID | None,
+    ) -> TenantWorkflowVersion | None:
+        if version_id is None:
+            return None
+        return (
+            await db.execute(
+                select(TenantWorkflowVersion).where(
+                    TenantWorkflowVersion.tenant_id == tenant_id,
+                    TenantWorkflowVersion.id == version_id,
+                ),
+            )
+        ).scalar_one_or_none()
+
+    @staticmethod
+    async def _next_version_number(db: AsyncSession, workflow_id: UUID) -> int:
+        current = (
+            await db.execute(
+                select(func.max(TenantWorkflowVersion.version_number)).where(
+                    TenantWorkflowVersion.workflow_id == workflow_id,
+                ),
+            )
+        ).scalar_one()
+        return int(current or 0) + 1
+
+    @staticmethod
+    async def _ensure_mutable_draft(
+        db: AsyncSession,
+        workflow: TenantWorkflow,
+        *,
+        updated_by: UUID | None = None,
+    ) -> TenantWorkflowVersion:
+        draft = await WorkflowService._get_version(db, workflow.tenant_id, workflow.draft_version_id)
+        if draft is not None and draft.state == "draft":
+            return draft
+
+        # Editing a published workflow without a draft: create new draft from active
+        source = draft or await WorkflowService._get_version(
+            db, workflow.tenant_id, workflow.active_version_id,
+        )
+        next_number = await WorkflowService._next_version_number(db, workflow.id)
+        new_draft = TenantWorkflowVersion(
+            id=uuid4(),
+            tenant_id=workflow.tenant_id,
+            workflow_id=workflow.id,
+            version_number=next_number,
+            state="draft",
+            definition=dict((source.definition if source else None) or _empty_definition(workflow.trigger_event)),
+            definition_hash=source.definition_hash if source else None,
+            validation_status=source.validation_status if source else "pending",
+            validation_errors=source.validation_errors if source else None,
+            created_by=updated_by,
+        )
+        db.add(new_draft)
+        await db.flush()
+        workflow.draft_version_id = new_draft.id
+        return new_draft
+
+    @staticmethod
+    def _status_response(workflow: TenantWorkflow) -> WorkflowStatusChangeResponse:
+        return WorkflowStatusChangeResponse(
+            id=workflow.id,
+            status=workflow.status,  # type: ignore[arg-type]
+            draft_revision=workflow.draft_revision,
+            updated_at=workflow.updated_at,
+            active_version_id=workflow.active_version_id,
+            draft_version_id=workflow.draft_version_id,
+        )
+
+    @staticmethod
+    def _to_version_summary(row: TenantWorkflowVersion) -> WorkflowVersionSummary:
+        return WorkflowVersionSummary(
+            id=row.id,
+            workflow_id=row.workflow_id,
+            version_number=row.version_number,
+            state=row.state,  # type: ignore[arg-type]
+            validation_status=row.validation_status,  # type: ignore[arg-type]
+            definition_hash=row.definition_hash,
+            created_at=row.created_at,
+            published_at=row.published_at,
+        )
+
+    @staticmethod
+    async def _to_summary(db: AsyncSession, workflow: TenantWorkflow) -> WorkflowSummary:
+        active_num = None
+        draft_num = None
+        if workflow.active_version_id:
+            active = await WorkflowService._get_version(db, workflow.tenant_id, workflow.active_version_id)
+            active_num = active.version_number if active else None
+        if workflow.draft_version_id:
+            draft = await WorkflowService._get_version(db, workflow.tenant_id, workflow.draft_version_id)
+            draft_num = draft.version_number if draft else None
+        return WorkflowSummary(
+            id=workflow.id,
+            key=workflow.key,
+            name=workflow.name,
+            description=workflow.description,
+            status=workflow.status,  # type: ignore[arg-type]
+            trigger_event=workflow.trigger_event,
+            active_version_id=workflow.active_version_id,
+            draft_version_id=workflow.draft_version_id,
+            draft_revision=workflow.draft_revision,
+            failure_policy=workflow.failure_policy,
+            created_at=workflow.created_at,
+            updated_at=workflow.updated_at,
+            archived_at=workflow.archived_at,
+            active_version_number=active_num,
+            draft_version_number=draft_num,
+        )
+
+    @staticmethod
+    async def _to_detail(db: AsyncSession, workflow: TenantWorkflow) -> WorkflowDetail:
+        summary = await WorkflowService._to_summary(db, workflow)
+        draft = await WorkflowService._get_version(db, workflow.tenant_id, workflow.draft_version_id)
+        active = await WorkflowService._get_version(db, workflow.tenant_id, workflow.active_version_id)
+        versions = (
+            await db.execute(
+                select(TenantWorkflowVersion)
+                .where(
+                    TenantWorkflowVersion.tenant_id == workflow.tenant_id,
+                    TenantWorkflowVersion.workflow_id == workflow.id,
+                )
+                .order_by(TenantWorkflowVersion.version_number.desc())
+                .limit(10),
+            )
+        ).scalars().all()
+        return WorkflowDetail(
+            **summary.model_dump(),
+            draft_definition=dict(draft.definition) if draft else None,
+            active_definition=dict(active.definition) if active else None,
+            draft_validation_status=draft.validation_status if draft else None,  # type: ignore[arg-type]
+            draft_validation_errors=draft.validation_errors if draft else None,
+            recent_versions=[WorkflowService._to_version_summary(v) for v in versions],
+        )

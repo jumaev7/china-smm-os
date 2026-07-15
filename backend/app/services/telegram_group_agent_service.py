@@ -19,7 +19,7 @@ from app.models.client import Client
 from app.models.content import ContentItem
 from app.models.media import MediaFile
 from app.models.telegram_buffer import TelegramGroupBufferMessage, TelegramProcessedUpdate
-from app.schemas.workflow import WorkflowPrepareRequest
+from app.schemas.content_workflow import WorkflowPrepareRequest
 from app.services.context_ai_service import detect_business_context, format_context_marker
 from app.services.telegram_instruction_service import (
     TG_GROUP_BUFFER_SOURCE,
@@ -897,7 +897,7 @@ async def create_content_from_buffer_selection(
     logger.info("[Group Agent] created_content_count: 1")
 
     if run_prepare and content_item.media_file_id:
-        from app.services.workflow_service import start_workflow
+        from app.services.content_workflow_service import start_workflow
         await start_workflow(
             content_item.id,
             WorkflowPrepareRequest(source_text=source_text),

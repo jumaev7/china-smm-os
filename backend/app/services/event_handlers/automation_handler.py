@@ -8,6 +8,7 @@ from app.models.platform_event import TenantAutomationTrigger
 from app.services.automation_execution_service import AutomationExecutionService
 from app.services.automation_service import AutomationService
 from app.services.event_handlers.base import IntegrationHandler
+from app.services.workflow_execution_service import WorkflowExecutionService
 
 _WORKFLOW_HINTS: dict[str, str] = {
     "tenant.crm.lead_created": "follow_up_workflow",
@@ -44,5 +45,9 @@ class AutomationEventHandler(IntegrationHandler):
 
         await AutomationService.ensure_system_flows(db, tenant_id)
         executions = await AutomationExecutionService.process_event(db, event)
-        detail = f"trigger={row.id} executions={len(executions)}"
+        workflow_executions = await WorkflowExecutionService.process_event(db, event)
+        detail = (
+            f"trigger={row.id} executions={len(executions)} "
+            f"workflows={len(workflow_executions)}"
+        )
         return self._handled(detail=detail)

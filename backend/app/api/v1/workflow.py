@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.schemas.workflow import (
+from app.schemas.content_workflow import (
     WorkflowPrepareRequest,
     WorkflowProgressResponse,
     WorkflowRetryRequest,
 )
 from app.services.content_service import ContentService
-from app.services.workflow_service import get_progress, retry_workflow, start_workflow
+from app.services.content_workflow_service import get_progress, retry_workflow, start_workflow
 
 logger = logging.getLogger(__name__)
 
