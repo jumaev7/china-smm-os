@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260904_automation_scheduler"
-HEAD = "20260905_workflow_definitions"
+FEATURE = "20260905_workflow_definitions"
+HEAD = "20260907_publishing_intelligence"
 
 WORKFLOW_TABLES = (
     "tenant_workflows",
@@ -56,7 +57,9 @@ async def _run() -> int:
     up = _alembic("upgrade", "head")
     record("upgrade_head", up.returncode == 0, (up.stderr or up.stdout)[-400:])
     cur = _alembic("current")
-    record("current_is_workflow_head", HEAD in (cur.stdout or ""), (cur.stdout or "")[:200])
+    record("current_is_head", HEAD in (cur.stdout or ""), (cur.stdout or "")[:200])
+    hist = _alembic("history", "-r", f"{PREV}:{HEAD}")
+    record("workflow_revision_in_chain", FEATURE in (hist.stdout or ""), (hist.stdout or "")[:200])
 
     down = _alembic("downgrade", PREV)
     record("downgrade_to_scheduler", down.returncode == 0, (down.stderr or down.stdout)[-400:])
