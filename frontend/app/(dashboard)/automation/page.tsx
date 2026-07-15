@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { AutomationCard } from "@/components/automation/AutomationCard";
 import { AutomationCenterHeader } from "@/components/automation/AutomationCenterHeader";
@@ -105,6 +106,17 @@ export default function AutomationPage() {
           <RefreshCw size={14} className={cn(isLoading && "animate-spin")} />
           {t("common.refresh")}
         </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2 text-sm">
+        <span className="rounded-md border border-foreground/20 bg-muted/40 px-3 py-1.5 font-medium">
+          Simple Automations
+        </span>
+        <Link href="/automation/workflows" className="rounded-md border px-3 py-1.5 hover:bg-muted/50">
+          Workflows
+        </Link>
+        <span className="rounded-md border px-3 py-1.5 text-muted-foreground">Scheduler Jobs</span>
+        <span className="rounded-md border px-3 py-1.5 text-muted-foreground">Executions</span>
       </div>
 
       {isLoading ? <AutomationCenterSkeleton /> : null}

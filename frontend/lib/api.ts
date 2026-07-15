@@ -13568,3 +13568,228 @@ export const AUTOMATION_LIST_QUERY_KEY = ["automation-flows"] as const;
 export const AUTOMATION_KPI_QUERY_KEY = ["automation-kpis"] as const;
 export const AUTOMATION_EXECUTIONS_QUERY_KEY = ["automation-executions"] as const;
 export const AUTOMATION_JOBS_QUERY_KEY = ["automation-jobs"] as const;
+
+// ── Workflow Builder Phase 1 ──────────────────────────────────────────────
+
+export type WorkflowStatus = "draft" | "published" | "paused" | "archived";
+export type WorkflowVersionState = "draft" | "published" | "superseded";
+export type WorkflowExecutionStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failed"
+  | "skipped"
+  | "cancelled";
+
+export interface WorkflowValidationErrorItem {
+  code: string;
+  message: string;
+  path?: string | null;
+}
+
+export interface WorkflowSummary {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  status: WorkflowStatus;
+  trigger_event?: string | null;
+  active_version_id?: string | null;
+  draft_version_id?: string | null;
+  draft_revision: number;
+  failure_policy: string;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+  active_version_number?: number | null;
+  draft_version_number?: number | null;
+}
+
+export interface WorkflowDetail extends WorkflowSummary {
+  draft_definition?: Record<string, unknown> | null;
+  active_definition?: Record<string, unknown> | null;
+  draft_validation_status?: "pending" | "valid" | "invalid" | null;
+  draft_validation_errors?: WorkflowValidationErrorItem[] | Record<string, unknown>[] | null;
+  recent_versions?: WorkflowVersionSummary[];
+}
+
+export interface WorkflowVersionSummary {
+  id: string;
+  workflow_id: string;
+  version_number: number;
+  state: WorkflowVersionState;
+  validation_status: "pending" | "valid" | "invalid";
+  definition_hash?: string | null;
+  created_at: string;
+  published_at?: string | null;
+}
+
+export interface WorkflowVersionDetail extends WorkflowVersionSummary {
+  definition: Record<string, unknown>;
+  validation_errors?: WorkflowValidationErrorItem[] | Record<string, unknown>[] | null;
+}
+
+export interface WorkflowListResponse {
+  items: WorkflowSummary[];
+  total: number;
+}
+
+export interface WorkflowVersionListResponse {
+  items: WorkflowVersionSummary[];
+  total: number;
+}
+
+export interface WorkflowStepExecutionSummary {
+  id: string;
+  step_id: string;
+  step_type: string;
+  action_type?: string | null;
+  step_index: number;
+  status: WorkflowExecutionStatus;
+  started_at?: string | null;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  input_summary?: Record<string, unknown> | null;
+  result_summary?: Record<string, unknown> | null;
+}
+
+export interface WorkflowExecutionSummary {
+  id: string;
+  workflow_id: string;
+  workflow_version_id: string;
+  workflow_name?: string | null;
+  platform_event_id?: string | null;
+  execution_kind: "event" | "manual" | "test";
+  status: WorkflowExecutionStatus;
+  trigger_event: string;
+  started_at: string;
+  finished_at?: string | null;
+  duration_ms?: number | null;
+  current_step_id?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at: string;
+}
+
+export interface WorkflowExecutionDetail extends WorkflowExecutionSummary {
+  matched_conditions?: Record<string, unknown> | unknown[] | null;
+  input_summary?: Record<string, unknown> | null;
+  result_summary?: Record<string, unknown> | null;
+  steps: WorkflowStepExecutionSummary[];
+}
+
+export interface WorkflowExecutionListResponse {
+  items: WorkflowExecutionSummary[];
+  total: number;
+}
+
+export interface WorkflowValidateResponse {
+  valid: boolean;
+  errors: WorkflowValidationErrorItem[];
+  definition_hash?: string | null;
+  normalized_definition?: Record<string, unknown> | null;
+}
+
+export interface WorkflowPublishResponse {
+  id: string;
+  status: WorkflowStatus;
+  draft_revision: number;
+  updated_at: string;
+  active_version_id?: string | null;
+  draft_version_id?: string | null;
+  published_version_id: string;
+  published_version_number: number;
+  definition_hash?: string | null;
+}
+
+export interface WorkflowTestResponse {
+  mode: "evaluate_only";
+  valid: boolean;
+  matched?: boolean | null;
+  evaluation_status?: string | null;
+  planned_steps: Array<Record<string, unknown>>;
+  evaluated_conditions: Array<Record<string, unknown>>;
+  failed_condition_ids: string[];
+  diagnostics: Record<string, unknown>;
+  validation_errors: WorkflowValidationErrorItem[];
+}
+
+export interface WorkflowCatalogField {
+  name: string;
+  type: string;
+  description?: string;
+  operators: string[];
+  enum_values?: string[] | null;
+}
+
+export interface WorkflowCatalogEvent {
+  event: string;
+  fields: WorkflowCatalogField[];
+}
+
+export interface WorkflowCatalogResponse {
+  events: WorkflowCatalogEvent[];
+  action_types: string[];
+  limits: Record<string, number>;
+}
+
+export const workflowsApi = {
+  getCatalog: () => api.get<WorkflowCatalogResponse>("/workflows/catalog"),
+  list: (params?: { page?: number; page_size?: number; status?: WorkflowStatus }) =>
+    api.get<WorkflowListResponse>("/workflows", { params }),
+  create: (body: {
+    name: string;
+    description?: string;
+    key?: string;
+    definition?: Record<string, unknown>;
+  }) => api.post<WorkflowDetail>("/workflows", body),
+  get: (id: string) => api.get<WorkflowDetail>(`/workflows/${id}`),
+  update: (
+    id: string,
+    body: {
+      draft_revision: number;
+      name?: string;
+      description?: string;
+      definition?: Record<string, unknown>;
+    },
+  ) => api.patch<WorkflowDetail>(`/workflows/${id}`, body),
+  validate: (id: string, definition?: Record<string, unknown>) =>
+    api.post<WorkflowValidateResponse>(`/workflows/${id}/validate`, {
+      definition: definition ?? null,
+    }),
+  publish: (id: string) => api.post<WorkflowPublishResponse>(`/workflows/${id}/publish`),
+  pause: (id: string) =>
+    api.post<{ id: string; status: WorkflowStatus; draft_revision: number; updated_at: string }>(
+      `/workflows/${id}/pause`,
+    ),
+  resume: (id: string) =>
+    api.post<{ id: string; status: WorkflowStatus; draft_revision: number; updated_at: string }>(
+      `/workflows/${id}/resume`,
+    ),
+  archive: (id: string) =>
+    api.post<{ id: string; status: WorkflowStatus; draft_revision: number; updated_at: string }>(
+      `/workflows/${id}/archive`,
+    ),
+  clone: (id: string) => api.post<WorkflowDetail>(`/workflows/${id}/clone`),
+  listVersions: (id: string) =>
+    api.get<WorkflowVersionListResponse>(`/workflows/${id}/versions`),
+  getVersion: (id: string, versionId: string) =>
+    api.get<WorkflowVersionDetail>(`/workflows/${id}/versions/${versionId}`),
+  listExecutions: (id: string, params?: { page?: number; page_size?: number }) =>
+    api.get<WorkflowExecutionListResponse>(`/workflows/${id}/executions`, { params }),
+  getExecution: (executionId: string) =>
+    api.get<WorkflowExecutionDetail>(`/workflow-executions/${executionId}`),
+  test: (
+    id: string,
+    body: {
+      mode?: "evaluate_only";
+      version_id?: string;
+      synthetic_payload?: Record<string, unknown>;
+    },
+  ) => api.post<WorkflowTestResponse>(`/workflows/${id}/test`, body),
+};
+
+export const WORKFLOWS_LIST_QUERY_KEY = ["workflows"] as const;
+export const WORKFLOWS_CATALOG_QUERY_KEY = ["workflows-catalog"] as const;
