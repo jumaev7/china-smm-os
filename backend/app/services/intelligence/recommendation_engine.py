@@ -158,6 +158,68 @@ class RecommendationEngine:
                 )
             )
 
+        variants_generated = counts.get("publishing.variant_generated", 0)
+        variants_declined = counts.get("publishing.variant_score_declined", 0)
+        variants_applied = counts.get("publishing.variant_applied", 0)
+        optimizer_failed = counts.get("publishing.optimizer_failed", 0)
+        if variants_generated >= 1 and variants_applied == 0:
+            results.append(
+                RecommendationEngine._rec(
+                    key="publishing.review_platform_variants",
+                    category="publishing",
+                    title="Review deterministic platform variants",
+                    reason=(
+                        f"{variants_generated} platform variant(s) generated "
+                        f"without an apply action in the last {SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{variants_generated} variants generated"],
+                    evidence={"variant_generated": variants_generated},
+                    priority="medium",
+                    confidence=Decimal("0.860"),
+                    rule_id="rule.publishing_review_platform_variants",
+                    action_url="/content",
+                    recommendation_text="Compare source and platform variants, then explicitly accept or apply a reviewed variant.",
+                )
+            )
+        if variants_declined >= 2:
+            results.append(
+                RecommendationEngine._rec(
+                    key="publishing.review_lower_scoring_variants",
+                    category="publishing",
+                    title="Review a lower-scoring platform variant",
+                    reason=(
+                        f"{variants_declined} variant score-decline signal(s) in the last "
+                        f"{SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{variants_declined} score declines"],
+                    evidence={"variant_score_declined": variants_declined},
+                    priority="low",
+                    confidence=Decimal("0.820"),
+                    rule_id="rule.publishing_variant_score_declined",
+                    action_url="/content",
+                    recommendation_text="Lower score is advisory — review transformations and policy fit before applying.",
+                )
+            )
+        if optimizer_failed >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="publishing.add_approved_templates",
+                    category="publishing",
+                    title="Add an approved CTA template",
+                    reason=(
+                        f"{optimizer_failed} optimizer failure signal(s) detected "
+                        f"over {SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{optimizer_failed} optimizer failures"],
+                    evidence={"optimizer_failed": optimizer_failed},
+                    priority="medium",
+                    confidence=Decimal("0.840"),
+                    rule_id="rule.publishing_optimizer_failed",
+                    action_url="/content",
+                    recommendation_text="Add platform-ready hashtags or an approved CTA template, then regenerate variants after source changes.",
+                )
+            )
+
         disconnected = counts.get("integration.disconnected", 0)
         if disconnected >= INTEGRATION_DISCONNECT_THRESHOLD:
             results.append(

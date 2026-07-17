@@ -189,6 +189,18 @@ class ContentService:
             from app.services.content_review_service import ContentReviewService
             await ContentReviewService.after_content_scheduled(db, item)
 
+        # Caption / hashtag / platform edits invalidate unapplied optimizer variants.
+        dirty = data.model_dump(exclude_unset=True)
+        optimizer_fields = {
+            "caption_short_ru", "caption_long_ru",
+            "caption_short_uz", "caption_long_uz",
+            "caption_short_en", "caption_long_en",
+            "hashtags", "platforms", "internal_notes",
+        }
+        if optimizer_fields.intersection(dirty.keys()):
+            from app.services.content_optimizer.optimizer_service import ContentOptimizerService
+            await ContentOptimizerService.mark_stale_for_content_edit(db, content_id)
+
         await db.commit()
         # Re-fetch so media_file relationship reflects any media_file_id change
         return await ContentService.get(db, content_id)

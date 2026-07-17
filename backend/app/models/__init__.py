@@ -113,6 +113,12 @@ from app.models.publishing_intelligence import (
     TenantPublishingReviewCheck,
     TenantPublishingPlatformReview,
 )
+from app.models.content_optimizer import (
+    TenantContentOptimizationRun,
+    TenantContentVariant,
+    TenantContentVariantTransformation,
+    TenantContentTemplate,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -235,4 +241,8 @@ __all__ = [
     "TenantPublishingReview",
     "TenantPublishingReviewCheck",
     "TenantPublishingPlatformReview",
+    "TenantContentOptimizationRun",
+    "TenantContentVariant",
+    "TenantContentVariantTransformation",
+    "TenantContentTemplate",
 ]

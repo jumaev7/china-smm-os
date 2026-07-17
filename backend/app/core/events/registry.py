@@ -205,6 +205,58 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         description="Publishing review became stale after content edit",
         integrations=EventIntegrations(activity=True, intelligence=True),
     ),
+    _def(
+        "tenant.publishing.optimization_requested",
+        category="publishing",
+        description="Deterministic content optimization run requested",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.variant_generated",
+        category="publishing",
+        description="Content optimization variant generated",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.variant_accepted",
+        category="publishing",
+        description="Content optimization variant accepted",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.variant_rejected",
+        category="publishing",
+        description="Content optimization variant rejected",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.variant_applied",
+        category="publishing",
+        description="Content optimization variant applied to source content",
+        integrations=EventIntegrations(
+            audit=True,
+            activity=True,
+            notification=True,
+            intelligence=True,
+        ),
+    ),
+    _def(
+        "tenant.publishing.variant_stale",
+        category="publishing",
+        description="Content optimization variant became stale after source change",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tenant.publishing.optimization_failed",
+        category="publishing",
+        description="Deterministic content optimization run failed",
+        integrations=EventIntegrations(
+            audit=True,
+            activity=True,
+            notification=True,
+            intelligence=True,
+        ),
+    ),
 )
 
 

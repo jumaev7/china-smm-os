@@ -547,6 +547,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
     _ensure_workflow_tables(connection)
     _ensure_intelligence_tables(connection)
     _ensure_publishing_intelligence_tables(connection)
+    _ensure_content_optimizer_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -1021,6 +1022,174 @@ async def ensure_publishing_intelligence_schema() -> None:
     """Apply idempotent DDL for Publishing Intelligence tables."""
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_publishing_intelligence_tables)
+
+
+def _ensure_content_optimizer_tables(connection) -> None:
+    """Content Optimizer — deterministic, immutable platform content variants."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables or "content_items" not in tables:
+        return
+    # Variants reference publishing reviews; require that table first.
+    if "tenant_publishing_reviews" not in tables:
+        return
+
+    if "tenant_content_optimization_runs" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_content_optimization_runs ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "content_id UUID NOT NULL REFERENCES content_items(id) ON DELETE CASCADE, "
+            "source_fingerprint VARCHAR(64) NOT NULL, "
+            "optimizer_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "policy_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "requested_platforms JSONB, "
+            "requested_locales JSONB, "
+            "configuration JSONB, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'generated', "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "completed_at TIMESTAMPTZ, "
+            "superseded_at TIMESTAMPTZ, "
+            "failure_code VARCHAR(80), "
+            "failure_metadata JSONB"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_optimization_runs_tenant_id "
+            "ON tenant_content_optimization_runs (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_optimization_runs_content_id "
+            "ON tenant_content_optimization_runs (content_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_opt_runs_tenant_content_created "
+            "ON tenant_content_optimization_runs (tenant_id, content_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_opt_runs_tenant_status_created "
+            "ON tenant_content_optimization_runs (tenant_id, status, created_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_content_templates" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_content_templates ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "template_type VARCHAR(40) NOT NULL, "
+            "name VARCHAR(120) NOT NULL, "
+            "locale VARCHAR(10) NOT NULL, "
+            "content TEXT NOT NULL, "
+            "allowed_platforms JSONB, "
+            "is_active BOOLEAN NOT NULL DEFAULT true, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_templates_tenant_id "
+            "ON tenant_content_templates (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_templates_tenant_type_locale "
+            "ON tenant_content_templates (tenant_id, template_type, locale)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_templates_tenant_active "
+            "ON tenant_content_templates (tenant_id, is_active)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_content_variants" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_content_variants ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "optimization_run_id UUID NOT NULL "
+            "REFERENCES tenant_content_optimization_runs(id) ON DELETE CASCADE, "
+            "content_id UUID NOT NULL REFERENCES content_items(id) ON DELETE CASCADE, "
+            "platform VARCHAR(40) NOT NULL, "
+            "locale VARCHAR(10) NOT NULL, "
+            "length_profile VARCHAR(20) NOT NULL, "
+            "variant_version INTEGER NOT NULL DEFAULT 1, "
+            "caption TEXT NOT NULL DEFAULT '', "
+            "hashtags JSONB, "
+            "cta TEXT, "
+            "link TEXT, "
+            "source_fingerprint VARCHAR(64) NOT NULL, "
+            "variant_fingerprint VARCHAR(64) NOT NULL, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'generated', "
+            "publish_readiness VARCHAR(40), "
+            "publishing_review_id UUID "
+            "REFERENCES tenant_publishing_reviews(id) ON DELETE SET NULL, "
+            "source_score INTEGER, "
+            "variant_score INTEGER, "
+            "score_delta INTEGER, "
+            "category_deltas JSONB, "
+            "unsupported_reason VARCHAR(120), "
+            "accepted_by UUID, "
+            "accepted_at TIMESTAMPTZ, "
+            "rejected_by UUID, "
+            "rejected_at TIMESTAMPTZ, "
+            "applied_by UUID, "
+            "applied_at TIMESTAMPTZ, "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_content_variants_run_platform_locale_profile "
+            "UNIQUE (optimization_run_id, platform, locale, length_profile)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_tenant_id "
+            "ON tenant_content_variants (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_content_id "
+            "ON tenant_content_variants (content_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_optimization_run_id "
+            "ON tenant_content_variants (optimization_run_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_publishing_review_id "
+            "ON tenant_content_variants (publishing_review_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_tenant_content_created "
+            "ON tenant_content_variants (tenant_id, content_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_tenant_platform_locale_created "
+            "ON tenant_content_variants (tenant_id, platform, locale, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_run_platform_locale_profile "
+            "ON tenant_content_variants (optimization_run_id, platform, locale, length_profile)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_content_variant_transformations" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_content_variant_transformations ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "content_variant_id UUID NOT NULL "
+            "REFERENCES tenant_content_variants(id) ON DELETE CASCADE, "
+            "sequence INTEGER NOT NULL, "
+            "operation_key VARCHAR(80) NOT NULL, "
+            "category VARCHAR(40) NOT NULL, "
+            "source_excerpt_hash VARCHAR(64), "
+            "source_position JSONB, "
+            "result_excerpt_hash VARCHAR(64), "
+            "reason_key VARCHAR(80) NOT NULL, "
+            "reason_params JSONB, "
+            "policy_key VARCHAR(80), "
+            "policy_version VARCHAR(20), "
+            "result_summary VARCHAR(240), "
+            "created_at TIMESTAMPTZ DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_content_variant_transformations_variant_seq "
+            "UNIQUE (content_variant_id, sequence)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variant_transformations_tenant_id "
+            "ON tenant_content_variant_transformations (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variant_transformations_content_variant_id "
+            "ON tenant_content_variant_transformations (content_variant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variant_xf_tenant_variant "
+            "ON tenant_content_variant_transformations (tenant_id, content_variant_id)",
+        ):
+            connection.execute(text(sql))
+
+
+async def ensure_content_optimizer_schema() -> None:
+    """Apply idempotent DDL for Content Optimizer tables."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_publishing_intelligence_tables)
+        await conn.run_sync(_ensure_content_optimizer_tables)
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:

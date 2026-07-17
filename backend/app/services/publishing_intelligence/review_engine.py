@@ -49,9 +49,24 @@ logger = logging.getLogger(__name__)
 
 REVIEW_ENGINE_VERSION = "1.0.0"
 
+# Marker stored in review.summary for variant (optimizer) reviews. These must
+# never be treated as the canonical "latest content review".
+VARIANT_REVIEW_SUMMARY_KEY = "variant_review"
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _non_variant_clause():
+    """SQL predicate selecting reviews that are not optimizer variant reviews."""
+    return (
+        func.coalesce(
+            TenantPublishingReview.summary[VARIANT_REVIEW_SUMMARY_KEY].astext,
+            "false",
+        )
+        != "true"
+    )
 
 
 def _parse_hashtags(raw: str | None) -> list[str]:
@@ -218,6 +233,7 @@ class PublishingReviewEngine:
                 TenantPublishingReview.tenant_id == tenant_id,
                 TenantPublishingReview.content_id == content_id,
                 TenantPublishingReview.status == "completed",
+                _non_variant_clause(),
             )
             .values(status="superseded", superseded_at=now)
         )
@@ -267,11 +283,14 @@ class PublishingReviewEngine:
         account_statuses = await PublishingReviewEngine._account_statuses(
             db, tenant_id, ctx.platforms,
         )
-        checks = run_all_checks(ctx, account_status_by_platform=account_statuses)
-        category_scores = compute_category_scores(checks)
-        overall, score_meta = compute_overall_score(category_scores)
-        platform_reviews = compute_platform_reviews(ctx.platforms, checks, category_scores)
-        recommendations = build_recommendations(checks)
+        (
+            checks,
+            category_scores,
+            overall,
+            platform_reviews,
+            recommendations,
+            score_meta,
+        ) = PublishingReviewEngine.evaluate_context(ctx, account_statuses)
 
         # Hard publish readiness from existing safety (advisory score never blocks alone)
         publish_readiness = await PublishingReviewEngine._publish_readiness(
@@ -303,6 +322,7 @@ class PublishingReviewEngine:
             "score_meta": score_meta,
             "score_engine_version": SCORE_ENGINE_VERSION,
             "advisory": True,
+            VARIANT_REVIEW_SUMMARY_KEY: False,
             "notes": [
                 "Publishing Score is advisory and does not replace hard publish validation.",
                 "Phase 1 checks are deterministic rule-based heuristics — not AI understanding.",
@@ -375,6 +395,172 @@ class PublishingReviewEngine:
             failure_count=failure_count,
             critical_count=critical_count,
         )
+
+        return PublishingReviewEngine._to_result(
+            review,
+            checks=checks,
+            category_scores=category_scores,
+            platform_reviews=platform_reviews,
+            recommendations=recommendations,
+            fingerprint_current=fingerprint,
+        )
+
+    @staticmethod
+    def evaluate_context(
+        ctx: ReviewContext,
+        account_statuses: dict[str, str] | None = None,
+    ) -> tuple[
+        list[CheckResult],
+        dict[str, CategoryScore],
+        int,
+        list[PlatformReviewResult],
+        list[RecommendationItem],
+        dict[str, Any],
+    ]:
+        """Run all deterministic checks and scoring for a context without persisting."""
+        checks = run_all_checks(ctx, account_status_by_platform=account_statuses or {})
+        category_scores = compute_category_scores(checks)
+        overall, score_meta = compute_overall_score(category_scores)
+        platform_reviews = compute_platform_reviews(ctx.platforms, checks, category_scores)
+        recommendations = build_recommendations(checks)
+        return checks, category_scores, overall, platform_reviews, recommendations, score_meta
+
+    @staticmethod
+    async def create_review_from_context(
+        db: AsyncSession,
+        tenant_id: UUID,
+        content_id: UUID,
+        ctx: ReviewContext,
+        *,
+        created_by: UUID | None = None,
+        variant_review: bool = False,
+        emit_signals: bool = True,
+    ) -> ReviewEngineResult:
+        """Persist a review for a supplied context.
+
+        When ``variant_review`` is True the previous *content* reviews are not
+        superseded (the variant is an alternative snapshot, not a replacement) and
+        intelligence signals are suppressed so variant scoring stays side-effect
+        light. The review is still persisted with a unique ``review_version``.
+        """
+        item = await PublishingReviewEngine._load_content_for_tenant(db, tenant_id, content_id)
+        fingerprint = compute_content_fingerprint(ctx)
+        account_statuses = await PublishingReviewEngine._account_statuses(
+            db, tenant_id, ctx.platforms,
+        )
+        (
+            checks,
+            category_scores,
+            overall,
+            platform_reviews,
+            recommendations,
+            score_meta,
+        ) = PublishingReviewEngine.evaluate_context(ctx, account_statuses)
+
+        publish_readiness = await PublishingReviewEngine._publish_readiness(
+            db, item, ctx.platforms,
+        )
+
+        now = _utcnow()
+        if not variant_review:
+            await PublishingReviewEngine._supersede_previous(db, tenant_id, content_id, now=now)
+        version = await PublishingReviewEngine._next_version(db, content_id)
+
+        warning_count = sum(1 for c in checks if c.status == "warning")
+        failure_count = sum(1 for c in checks if c.status == "failed")
+        critical_count = sum(
+            1 for c in checks if c.status == "failed" and c.severity in {"critical", "error"}
+        )
+
+        summary = {
+            "overall_score": overall,
+            "warning_count": warning_count,
+            "failure_count": failure_count,
+            "critical_issue_count": critical_count,
+            "category_scores": {
+                k: {"score": v.score, "applicable": v.applicable, "weight": v.weight}
+                for k, v in category_scores.items()
+            },
+            "platform_scores": {p.platform: p.platform_score for p in platform_reviews},
+            "recommendation_keys": [r.key for r in recommendations[:20]],
+            "publish_readiness": publish_readiness,
+            "score_meta": score_meta,
+            "score_engine_version": SCORE_ENGINE_VERSION,
+            "advisory": True,
+            VARIANT_REVIEW_SUMMARY_KEY: variant_review,
+            "notes": [
+                "Publishing Score is advisory and does not replace hard publish validation.",
+                "Phase 1 checks are deterministic rule-based heuristics — not AI understanding.",
+            ],
+        }
+
+        review = TenantPublishingReview(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            content_id=content_id,
+            review_version=version,
+            review_engine_version=REVIEW_ENGINE_VERSION,
+            content_fingerprint=fingerprint,
+            overall_score=overall,
+            status="completed",
+            primary_language=ctx.primary_language,
+            target_platforms=list(ctx.platforms),
+            summary=summary,
+            created_by=created_by,
+            created_at=now,
+            completed_at=now,
+        )
+        db.add(review)
+        await db.flush()
+
+        for c in checks:
+            db.add(
+                TenantPublishingReviewCheck(
+                    id=uuid4(),
+                    tenant_id=tenant_id,
+                    publishing_review_id=review.id,
+                    check_key=c.check_key,
+                    category=c.category,
+                    severity=c.severity,
+                    status=c.status,
+                    score=c.score,
+                    weight=c.weight,
+                    evidence=c.evidence,
+                    recommendation_key=c.recommendation_key,
+                    recommendation_params=c.recommendation_params,
+                    created_at=now,
+                )
+            )
+        for pr in platform_reviews:
+            db.add(
+                TenantPublishingPlatformReview(
+                    id=uuid4(),
+                    tenant_id=tenant_id,
+                    publishing_review_id=review.id,
+                    platform=pr.platform,
+                    platform_score=pr.platform_score,
+                    caption_score=pr.caption_score,
+                    media_score=pr.media_score,
+                    cta_score=pr.cta_score,
+                    hashtag_score=pr.hashtag_score,
+                    language_score=pr.language_score,
+                    compliance_score=pr.compliance_score,
+                    recommendations=pr.recommendations,
+                    created_at=now,
+                )
+            )
+        await db.flush()
+
+        if emit_signals and not variant_review:
+            await PublishingReviewEngine._emit_intelligence_signals(
+                db,
+                tenant_id=tenant_id,
+                review=review,
+                platform_reviews=platform_reviews,
+                warning_count=warning_count,
+                failure_count=failure_count,
+                critical_count=critical_count,
+            )
 
         return PublishingReviewEngine._to_result(
             review,
@@ -487,6 +673,7 @@ class PublishingReviewEngine:
             .where(
                 TenantPublishingReview.tenant_id == tenant_id,
                 TenantPublishingReview.content_id == content_id,
+                _non_variant_clause(),
             )
             .order_by(TenantPublishingReview.review_version.desc())
             .limit(1)
