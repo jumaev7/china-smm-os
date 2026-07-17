@@ -257,6 +257,71 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
             intelligence=True,
         ),
     ),
+    # Governed AI Content Adaptation (Phase 2B)
+    _def(
+        "ai.content_adaptation_requested",
+        category="publishing",
+        description="AI content adaptation requested",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "ai.content_adaptation_completed",
+        category="publishing",
+        description="AI content adaptation completed",
+        integrations=EventIntegrations(activity=True, intelligence=True, audit=True),
+    ),
+    _def(
+        "ai.content_adaptation_failed",
+        category="publishing",
+        description="AI content adaptation failed",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, intelligence=True,
+        ),
+    ),
+    _def(
+        "ai.content_validation_failed",
+        category="publishing",
+        description="AI generation failed factual or safety validation",
+        integrations=EventIntegrations(activity=True, intelligence=True, audit=True),
+    ),
+    _def(
+        "ai.quota_exceeded",
+        category="publishing",
+        description="AI quota exceeded for tenant",
+        integrations=EventIntegrations(activity=True, intelligence=True, notification=True),
+    ),
+    _def(
+        "ai.variant_generated",
+        category="publishing",
+        description="AI-assisted content variant generated",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "ai.variant_accepted",
+        category="publishing",
+        description="AI-assisted content variant accepted",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "ai.variant_rejected",
+        category="publishing",
+        description="AI-assisted content variant rejected",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "ai.variant_applied",
+        category="publishing",
+        description="AI-assisted content variant applied to source",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, intelligence=True,
+        ),
+    ),
+    _def(
+        "brand.profile_published",
+        category="brand",
+        description="Tenant brand profile version published",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
 )
 
 

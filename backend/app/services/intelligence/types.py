@@ -8,8 +8,8 @@ from typing import Any
 from uuid import UUID
 
 # Scoring / recommendation engine versions (deterministic, bump on rule changes).
-SCORING_ENGINE_VERSION = "1.2.0"
-RECOMMENDATION_ENGINE_VERSION = "1.2.0"
+SCORING_ENGINE_VERSION = "1.3.0"
+RECOMMENDATION_ENGINE_VERSION = "1.3.0"
 EXPLANATION_ENGINE_VERSION = "1.0.0"
 
 # Lookback windows (days) for score computation.
@@ -46,6 +46,14 @@ SIGNAL_TYPES = frozenset({
     "publishing.variant_score_declined",
     "publishing.variant_applied",
     "publishing.optimizer_failed",
+    "ai.content_adaptation_completed",
+    "ai.content_adaptation_failed",
+    "ai.factual_validation_failed",
+    "ai.quota_exceeded",
+    "ai.variant_score_improved",
+    "ai.variant_score_declined",
+    "ai.variant_applied",
+    "brand.profile_published",
     "crm.lead_created",
     "crm.deal_stage_changed",
     "crm.deal_won",
@@ -81,6 +89,16 @@ PLATFORM_EVENT_TO_SOURCE: dict[str, str] = {
     "tenant.publishing.variant_applied": "publishing",
     "tenant.publishing.variant_stale": "publishing",
     "tenant.publishing.optimization_failed": "publishing",
+    "ai.content_adaptation_requested": "publishing",
+    "ai.content_adaptation_completed": "publishing",
+    "ai.content_adaptation_failed": "publishing",
+    "ai.content_validation_failed": "publishing",
+    "ai.quota_exceeded": "publishing",
+    "ai.variant_generated": "publishing",
+    "ai.variant_accepted": "publishing",
+    "ai.variant_rejected": "publishing",
+    "ai.variant_applied": "publishing",
+    "brand.profile_published": "brand",
     "tenant.content.created": "content",
     "tenant.crm.lead_created": "crm",
     "tenant.crm.deal_stage_changed": "crm",

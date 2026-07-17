@@ -1015,6 +1015,30 @@ class ContentOptimizerService:
             resource_id=str(variant.id),
             title=f"Content {event_suffix.replace('_', ' ')}",
         )
+        # Mirror accept/reject/apply for AI-assisted variants (safe payload, no caption).
+        if (
+            (variant.generation_method or "") == "ai_assisted"
+            and event_suffix in ("variant_accepted", "variant_rejected", "variant_applied")
+        ):
+            await emit_domain_event(
+                db,
+                f"ai.{event_suffix}",
+                tenant_id,
+                payload={
+                    "content_id": str(variant.content_id),
+                    "variant_id": str(variant.id),
+                    "ai_request_id": str(variant.ai_request_id) if variant.ai_request_id else None,
+                    "ai_generation_id": str(variant.ai_generation_id) if variant.ai_generation_id else None,
+                    "platform": variant.platform,
+                    "locale": variant.locale,
+                    "model_alias": variant.model_alias,
+                    "score_delta": variant.score_delta,
+                },
+                actor_id=actor_id,
+                resource_type="content_variant",
+                resource_id=str(variant.id),
+                title=f"AI {event_suffix.replace('_', ' ')}",
+            )
 
     # ------------------------------------------------------------------ reads
 

@@ -25,6 +25,12 @@ _EVENT_MAP = {
     "tenant.publishing.variant_generated": ("publishing.variant_generated", "info", Decimal("1.000")),
     "tenant.publishing.variant_applied": ("publishing.variant_applied", "success", Decimal("1.000")),
     "tenant.publishing.optimization_failed": ("publishing.optimizer_failed", "error", Decimal("1.000")),
+    "ai.content_adaptation_completed": ("ai.content_adaptation_completed", "success", Decimal("1.000")),
+    "ai.content_adaptation_failed": ("ai.content_adaptation_failed", "error", Decimal("1.000")),
+    "ai.content_validation_failed": ("ai.factual_validation_failed", "warning", Decimal("1.000")),
+    "ai.quota_exceeded": ("ai.quota_exceeded", "warning", Decimal("1.000")),
+    "ai.variant_applied": ("ai.variant_applied", "success", Decimal("1.000")),
+    "brand.profile_published": ("brand.profile_published", "info", Decimal("1.000")),
 }
 
 # Safe metadata keys for review/optimizer signals — never include caption or template text.
@@ -53,6 +59,15 @@ _SAFE_REVIEW_KEYS = frozenset({
     "optimizer_version",
     "policy_version",
     "failure_code",
+    "request_id",
+    "generation_id",
+    "model_alias",
+    "prompt_version",
+    "brand_profile_version",
+    "token_usage",
+    "estimated_cost_minor",
+    "validation_status",
+    "task_type",
 })
 
 
@@ -71,6 +86,10 @@ class PublishingCollector(SignalCollector):
         "tenant.publishing.variant_rejected",
         "tenant.publishing.variant_stale",
         "tenant.publishing.optimization_requested",
+        "ai.content_adaptation_requested",
+        "ai.variant_generated",
+        "ai.variant_accepted",
+        "ai.variant_rejected",
     })
 
     def collect(self, event: PlatformEvent) -> list[NormalizedSignal]:
@@ -80,7 +99,7 @@ class PublishingCollector(SignalCollector):
 
         if mapped:
             signal_type, severity, confidence = mapped
-            if event.event_type.startswith("tenant.publishing."):
+            if event.event_type.startswith("tenant.publishing.") or event.event_type.startswith("ai.") or event.event_type.startswith("brand."):
                 meta: dict[str, Any] = {
                     "title": event.title,
                     "payload": _safe_payload(payload),
@@ -109,13 +128,23 @@ class PublishingCollector(SignalCollector):
             )
 
         # Derive score improved/declined from variant_generated without extra events.
-        if event.event_type == "tenant.publishing.variant_generated":
+        if event.event_type in ("tenant.publishing.variant_generated", "ai.variant_generated"):
             delta = payload.get("score_delta")
+            improved_type = (
+                "ai.variant_score_improved"
+                if event.event_type.startswith("ai.")
+                else "publishing.variant_score_improved"
+            )
+            declined_type = (
+                "ai.variant_score_declined"
+                if event.event_type.startswith("ai.")
+                else "publishing.variant_score_declined"
+            )
             if isinstance(delta, int) and delta > 0:
                 signals.append(
                     normalize_signal(
                         tenant_id=event.require_tenant_id(),
-                        signal_type="publishing.variant_score_improved",
+                        signal_type=improved_type,
                         source=self.source,
                         severity="info",
                         confidence=Decimal("1.000"),
@@ -132,7 +161,7 @@ class PublishingCollector(SignalCollector):
                 signals.append(
                     normalize_signal(
                         tenant_id=event.require_tenant_id(),
-                        signal_type="publishing.variant_score_declined",
+                        signal_type=declined_type,
                         source=self.source,
                         severity="warning",
                         confidence=Decimal("1.000"),

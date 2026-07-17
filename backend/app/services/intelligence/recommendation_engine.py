@@ -220,6 +220,105 @@ class RecommendationEngine:
                 )
             )
 
+        # Governed AI recommendations (deterministic; never claim engagement improvement).
+        ai_failed = counts.get("ai.content_adaptation_failed", 0)
+        ai_factual = counts.get("ai.factual_validation_failed", 0)
+        ai_quota = counts.get("ai.quota_exceeded", 0)
+        ai_declined = counts.get("ai.variant_score_declined", 0)
+        ai_applied = counts.get("ai.variant_applied", 0)
+        ai_completed = counts.get("ai.content_adaptation_completed", 0)
+        brand_published = counts.get("brand.profile_published", 0)
+
+        if ai_factual >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="ai.review_protected_fact_changes",
+                    category="publishing",
+                    title="Review an AI variant with modified protected facts",
+                    reason=(
+                        f"{ai_factual} AI factual-validation failure signal(s) in the last "
+                        f"{SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{ai_factual} factual validation failures"],
+                    evidence={"ai_factual_validation_failed": ai_factual},
+                    priority="high",
+                    confidence=Decimal("0.900"),
+                    rule_id="rule.ai_factual_validation_failed",
+                    action_url="/content",
+                    recommendation_text="Inspect protected-fact diffs and regenerate only after correcting source facts or Brand Profile claims.",
+                )
+            )
+        if ai_failed >= 1 and brand_published == 0:
+            results.append(
+                RecommendationEngine._rec(
+                    key="ai.publish_brand_profile",
+                    category="brand",
+                    title="Publish a Brand Profile before requesting AI adaptation",
+                    reason="AI adaptation failures occurred without a recent Brand Profile publish signal.",
+                    evidence_lines=["AI adaptation without brand.profile_published"],
+                    evidence={"ai_failed": ai_failed, "brand_published": brand_published},
+                    priority="medium",
+                    confidence=Decimal("0.840"),
+                    rule_id="rule.ai_brand_profile_required",
+                    action_url="/settings/brand-profile",
+                    recommendation_text="Publish an immutable Brand Profile version so AI adaptation uses approved tone and claim constraints.",
+                )
+            )
+        if ai_declined >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="ai.review_lower_scoring_variant",
+                    category="publishing",
+                    title="Review a lower-scoring AI variant",
+                    reason=(
+                        f"{ai_declined} AI variant score-decline signal(s) in the last "
+                        f"{SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{ai_declined} AI score declines"],
+                    evidence={"ai_variant_score_declined": ai_declined},
+                    priority="low",
+                    confidence=Decimal("0.820"),
+                    rule_id="rule.ai_variant_score_declined",
+                    action_url="/content",
+                    recommendation_text="Lower Publishing Score is advisory — review factual validation and hard readiness before applying.",
+                )
+            )
+        if ai_quota >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="ai.resolve_quota_limit",
+                    category="publishing",
+                    title="Resolve AI quota limit",
+                    reason=(
+                        f"{ai_quota} AI quota-exceeded signal(s) in the last "
+                        f"{SIGNAL_COUNT_LOOKBACK_DAYS} days."
+                    ),
+                    evidence_lines=[f"{ai_quota} quota blocks"],
+                    evidence={"ai_quota_exceeded": ai_quota},
+                    priority="medium",
+                    confidence=Decimal("0.880"),
+                    rule_id="rule.ai_quota_exceeded",
+                    action_url="/settings/brand-profile",
+                    recommendation_text="Wait for the quota window to reset or adjust tenant AI limits with an administrator.",
+                )
+            )
+        if ai_completed >= 1 and ai_applied == 0:
+            results.append(
+                RecommendationEngine._rec(
+                    key="ai.regenerate_after_source_change",
+                    category="publishing",
+                    title="Regenerate after source content changed",
+                    reason="AI adaptations completed recently without an apply — confirm source fingerprint before applying stale variants.",
+                    evidence_lines=[f"{ai_completed} AI completions", f"{ai_applied} AI applies"],
+                    evidence={"ai_completed": ai_completed, "ai_applied": ai_applied},
+                    priority="low",
+                    confidence=Decimal("0.780"),
+                    rule_id="rule.ai_stale_or_unapplied",
+                    action_url="/content",
+                    recommendation_text="If source captions changed, request a new AI adaptation; stale apply returns 409 Conflict.",
+                )
+            )
+
         disconnected = counts.get("integration.disconnected", 0)
         if disconnected >= INTEGRATION_DISCONNECT_THRESHOLD:
             results.append(
