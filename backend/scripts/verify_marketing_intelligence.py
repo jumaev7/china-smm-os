@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260905_workflow_definitions"
 # Chain head includes Publishing Intelligence after MIP.
-HEAD = "20260907_publishing_intelligence"
+HEAD = "20260908_content_optimizer"
 MIP_REVISION = "20260906_marketing_intelligence"
 
 INTEL_TABLES = (
