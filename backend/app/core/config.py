@@ -16,9 +16,28 @@ class Settings(BaseSettings):
     # Pilot readiness route probes spawn nested API calls; keep them off locally unless explicit.
     ROUTE_PROBING_ENABLED: bool = False
 
-    # OpenAI
+    # OpenAI (legacy caption generation — separate from governed AI platform)
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o"
+
+    # Governed AI Platform (Phase 2B) — optional; disabled when no provider configured
+    AI_PLATFORM_ENABLED: bool = False
+    AI_DEFAULT_PROVIDER: str = "mock"
+    AI_FALLBACK_PROVIDER: str = ""
+    AI_OPENAI_API_KEY: str = ""
+    AI_CONTENT_MODEL_FAST: str = "gpt-4o-mini"
+    AI_CONTENT_MODEL_STANDARD: str = "gpt-4o"
+    AI_CONTENT_MODEL_HIGH_QUALITY: str = "gpt-4o"
+    AI_REQUEST_TIMEOUT_SECONDS: float = 45.0
+    AI_MAX_INPUT_TOKENS: int = 8000
+    AI_MAX_OUTPUT_TOKENS: int = 2000
+    AI_MAX_REQUESTS_PER_TENANT_PER_HOUR: int = 30
+    AI_MAX_DAILY_TOKENS_PER_TENANT: int = 200000
+    AI_MAX_VARIANTS_PER_REQUEST: int = 15
+    AI_MAX_RETRY_COUNT: int = 2
+    AI_STORE_REDACTED_INPUT: bool = True
+    AI_STORE_REDACTED_OUTPUT: bool = True
+    AI_ROUTING_VERSION: str = "1.0.0"
 
     # Storage
     USE_S3: bool = False
