@@ -14240,3 +14240,251 @@ export const contentOptimizerApi = {
 };
 
 export const CONTENT_OPTIMIZER_QUERY_KEY = ["content-optimizer"] as const;
+
+// ---------------------------------------------------------------------------
+// Governed AI Brand Profiles + AI-assisted content adaptation.
+// Clients never send tenant_id, raw provider/model controls, system prompts, or scores.
+// ---------------------------------------------------------------------------
+
+export type BrandProfileDraftPayload = {
+  locale?: string;
+  company_name?: string;
+  company_description?: string;
+  audience_description?: string;
+  tone_traits?: string[];
+  preferred_terms?: string[];
+  forbidden_terms?: string[];
+  approved_claims?: string[];
+  prohibited_claims?: string[];
+  cta_preferences?: Record<string, unknown>;
+  emoji_policy?: Record<string, unknown>;
+  formatting_preferences?: Record<string, unknown>;
+  platform_guidance?: Record<string, unknown>;
+  source_references?: string[];
+};
+
+export interface BrandProfile {
+  id: string;
+  name: string;
+  status: string;
+  current_version_id?: string | null;
+  draft_payload: BrandProfileDraftPayload;
+  draft_version?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface BrandProfileVersion {
+  id: string;
+  brand_profile_id: string;
+  version: number;
+  locale: string;
+  company_name: string;
+  company_description: string;
+  audience_description: string;
+  tone_traits: string[];
+  preferred_terms: string[];
+  forbidden_terms: string[];
+  approved_claims: string[];
+  prohibited_claims: string[];
+  cta_preferences: Record<string, unknown>;
+  emoji_policy: Record<string, unknown>;
+  formatting_preferences: Record<string, unknown>;
+  platform_guidance: Record<string, unknown>;
+  source_references: string[];
+  published_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface BrandProfileListResponse {
+  items: BrandProfile[];
+  total: number;
+}
+
+export interface BrandProfileVersionListResponse {
+  items: BrandProfileVersion[];
+  total: number;
+}
+
+export interface BrandProfileCreateBody {
+  name: string;
+  draft?: BrandProfileDraftPayload;
+}
+
+export interface BrandProfileDraftUpdateBody {
+  name?: string;
+  draft: BrandProfileDraftPayload;
+  expected_draft_version?: number | null;
+}
+
+export interface AIAdaptContentBody {
+  platforms?: string[];
+  locales?: string[];
+  length_profiles?: string[];
+  brand_profile_version_id?: string | null;
+  approved_template_ids?: string[];
+  quality_mode?: "fast" | "standard" | "high" | string | null;
+  idempotency_key?: string | null;
+}
+
+export interface AIUsageSummary {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_minor: number;
+  currency: string;
+  note?: string | null;
+}
+
+export interface AIContentVariant {
+  variant_id?: string | null;
+  id?: string | null;
+  generation_method?: string | null;
+  platform: string;
+  locale: string;
+  length_profile: string;
+  caption?: string | null;
+  hashtags: string[];
+  cta?: string | null;
+  link?: string | null;
+  status: string;
+  is_stale: boolean;
+  ai_request_id?: string | null;
+  ai_generation_id?: string | null;
+  brand_profile_version_id?: string | null;
+  prompt_key?: string | null;
+  prompt_version?: string | null;
+  factual_validation_status?: string | null;
+  safety_validation_status?: string | null;
+  factual_validation?: Record<string, unknown> | null;
+  protected_fact_summary?: Record<string, unknown> | null;
+  source_score?: number | null;
+  variant_score?: number | null;
+  score_delta?: number | null;
+  category_deltas: Record<string, unknown>;
+  publish_readiness?: string | null;
+  publishing_review_id?: string | null;
+  source_fingerprint?: string | null;
+  created_at?: string | null;
+  warnings: string[];
+}
+
+export interface AIGeneration {
+  generation_id: string;
+  ai_request_id?: string | null;
+  generation_version?: number | null;
+  platform?: string | null;
+  locale?: string | null;
+  length_profile?: string | null;
+  validation_status?: string | null;
+  safety_status?: string | null;
+  factual_validation?: Record<string, unknown> | null;
+  protected_fact_summary?: Record<string, unknown> | null;
+  content_variant_id?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  estimated_cost_minor?: number | null;
+  currency?: string | null;
+  created_at?: string | null;
+}
+
+export interface AIRequest {
+  request_id: string;
+  status: string;
+  content_id?: string | null;
+  source_fingerprint?: string | null;
+  brand_profile_version?: number | null;
+  brand_profile_version_id?: string | null;
+  prompt_key?: string | null;
+  prompt_version?: string | null;
+  variants: AIContentVariant[];
+  generations: AIGeneration[];
+  usage?: AIUsageSummary | Record<string, unknown> | null;
+  validation_summary?: Record<string, unknown> | null;
+  failure_code?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+  configuration: Record<string, unknown>;
+}
+
+export interface AIRequestListItem {
+  request_id: string;
+  status: string;
+  prompt_version?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+  failure_code?: string | null;
+}
+
+export interface AIRequestListResponse {
+  items: AIRequestListItem[];
+  total: number;
+}
+
+export interface AIConfiguration {
+  ai_enabled: boolean;
+  platform_enabled: boolean;
+  tenant_enabled: boolean;
+  allowed_task_types: string[];
+  allowed_locales: string[];
+  allowed_platforms: string[];
+  quality_modes: string[];
+  prompt_key?: string | null;
+  prompt_version?: string | null;
+  hourly_request_limit?: number | null;
+  daily_token_limit?: number | null;
+  max_variants_per_request?: number | null;
+  notes: string[];
+}
+
+export interface AIUsageDailyRow {
+  usage_date: string;
+  task_type?: string | null;
+  request_count: number;
+  successful_request_count: number;
+  failed_request_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  estimated_cost_minor: number;
+  currency: string;
+}
+
+export interface AIUsageResponse {
+  period_days: number;
+  rows: AIUsageDailyRow[];
+  totals: Record<string, unknown>;
+  note?: string | null;
+}
+
+export const brandProfilesApi = {
+  list: () => api.get<BrandProfileListResponse>("/brand-profiles/"),
+  create: (body: BrandProfileCreateBody) =>
+    api.post<BrandProfile>("/brand-profiles/", body),
+  get: (profileId: string) => api.get<BrandProfile>(`/brand-profiles/${profileId}`),
+  updateDraft: (profileId: string, body: BrandProfileDraftUpdateBody) =>
+    api.patch<BrandProfile>(`/brand-profiles/${profileId}/draft`, body),
+  publish: (profileId: string) =>
+    api.post<BrandProfileVersion>(`/brand-profiles/${profileId}/publish`),
+  listVersions: (profileId: string) =>
+    api.get<BrandProfileVersionListResponse>(`/brand-profiles/${profileId}/versions`),
+  getVersion: (profileId: string, versionId: string) =>
+    api.get<BrandProfileVersion>(`/brand-profiles/${profileId}/versions/${versionId}`),
+};
+
+export const aiContentApi = {
+  adapt: (contentId: string, body: AIAdaptContentBody) =>
+    api.post<AIRequest>(`/ai-content/content/${contentId}/adapt`, body),
+  listRequests: (contentId: string) =>
+    api.get<AIRequestListResponse>(`/ai-content/content/${contentId}/requests`),
+  getRequest: (requestId: string) => api.get<AIRequest>(`/ai-content/requests/${requestId}`),
+  getGeneration: (generationId: string) =>
+    api.get<AIGeneration>(`/ai-content/generations/${generationId}`),
+  retry: (requestId: string) => api.post<AIRequest>(`/ai-content/requests/${requestId}/retry`),
+  configuration: () => api.get<AIConfiguration>("/ai-content/configuration"),
+  usage: (params?: { days?: number }) => api.get<AIUsageResponse>("/ai-content/usage", { params }),
+};
+
+export const BRAND_PROFILES_QUERY_KEY = ["brand-profiles"] as const;
+export const AI_CONTENT_QUERY_KEY = ["ai-content"] as const;
