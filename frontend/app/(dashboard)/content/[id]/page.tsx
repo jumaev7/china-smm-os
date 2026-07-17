@@ -17,6 +17,7 @@ import { useDropzone } from "react-dropzone";
 import { ScheduleModal } from "@/components/content/ScheduleModal";
 import { PublishingChecklist, useContentReadiness } from "@/components/content/PublishingChecklist";
 import { PublishingReviewPanel } from "@/components/content/PublishingReviewPanel";
+import { ContentOptimizerPanel } from "@/components/content/ContentOptimizerPanel";
 import { ClientReviewStatusBadge, ClientReviewStatusPanel } from "@/components/content/ClientReviewStatus";
 import { WorkflowPanel } from "@/components/content/WorkflowPanel";
 import { ContentPlatformLinks } from "@/components/platform/ContentPlatformLinks";
@@ -829,6 +830,16 @@ export default function ContentDetailPage() {
           )}
 
           <PublishingReviewPanel contentId={id} />
+
+          <ContentOptimizerPanel
+            contentId={id}
+            onApplied={() => {
+              qc.invalidateQueries({ queryKey: ["content", id] });
+              qc.invalidateQueries({ queryKey: ["content-readiness", id] });
+              qc.invalidateQueries({ queryKey: ["publishing-intelligence"] });
+              qc.invalidateQueries({ queryKey: ["content-optimizer"] });
+            }}
+          />
 
           <ClientReviewStatusPanel
             item={item}

@@ -14061,3 +14061,182 @@ export const publishingIntelligenceApi = {
 };
 
 export const PUBLISHING_INTELLIGENCE_QUERY_KEY = ["publishing-intelligence"] as const;
+
+// ---------------------------------------------------------------------------
+// Deterministic Content Optimizer (Phase 2A) — structural platform adaptation.
+// No LLM / no rewrite. Clients never send tenant_id, versions, scores, or output.
+// ---------------------------------------------------------------------------
+
+export interface TransformationRecord {
+  sequence: number;
+  operation_key: string;
+  category: string;
+  reason_key: string;
+  reason_params?: Record<string, unknown> | null;
+  result_summary?: string | null;
+  policy_key?: string | null;
+  policy_version?: string | null;
+}
+
+export interface ContentOptimizerVariant {
+  variant_id?: string | null;
+  id?: string | null;
+  optimization_run_id?: string | null;
+  content_id?: string | null;
+  platform: string;
+  locale: string;
+  length_profile: string;
+  status: string;
+  caption?: string | null;
+  hashtags: string[];
+  cta?: string | null;
+  link?: string | null;
+  source_fingerprint: string;
+  variant_fingerprint: string;
+  source_score?: number | null;
+  variant_score?: number | null;
+  score_delta?: number | null;
+  category_deltas: Record<string, unknown>;
+  publish_readiness?: string | null;
+  publishing_review_id?: string | null;
+  unsupported_reason?: string | null;
+  is_stale: boolean;
+  transformations: TransformationRecord[];
+  created_at?: string | null;
+  accepted_at?: string | null;
+  rejected_at?: string | null;
+  applied_at?: string | null;
+}
+
+export interface ContentOptimizerRun {
+  run_id?: string | null;
+  id?: string | null;
+  content_id: string;
+  source_fingerprint: string;
+  optimizer_version: string;
+  policy_version: string;
+  status: string;
+  requested_platforms: string[];
+  requested_locales: string[];
+  configuration: Record<string, unknown>;
+  generated_count?: number | null;
+  failed_count?: number | null;
+  failure_code?: string | null;
+  variants: ContentOptimizerVariant[];
+  created_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface ContentOptimizerRunDetail {
+  run: ContentOptimizerRun;
+  variants: ContentOptimizerVariant[];
+}
+
+export interface ContentOptimizerRunList {
+  items: ContentOptimizerRun[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ContentOptimizerConfiguration {
+  optimizer_version: string;
+  source_fingerprint_version?: string | null;
+  fingerprint_version?: string | null;
+  variant_fingerprint_version?: string | null;
+  policy_catalog_version?: string | null;
+  platform_policy_version?: string | null;
+  supported_platforms: string[];
+  supported_locales: string[];
+  supported_length_profiles: string[];
+  length_profiles: string[];
+  available_operations: Array<Record<string, string>>;
+  maximum_input_length?: number | null;
+  maximum_variants_per_run?: number | null;
+  limits: Record<string, unknown>;
+  guarantees: string[];
+  profiles: Record<string, unknown>;
+  platform_strategies: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface ContentOptimizerTemplate {
+  id: string;
+  template_type: string;
+  name: string;
+  locale: string;
+  content: string;
+  allowed_platforms: string[];
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ContentOptimizerTemplateList {
+  items: ContentOptimizerTemplate[];
+  total: number;
+}
+
+export interface ContentOptimizerOperationsCatalog {
+  operations: Array<Record<string, string>>;
+}
+
+export interface OptimizeContentBody {
+  platforms?: string[];
+  locales?: string[];
+  length_profiles?: string[];
+  include_existing_cta?: boolean;
+  include_existing_hashtags?: boolean;
+  approved_template_ids?: string[];
+}
+
+export interface CreateTemplateBody {
+  template_type: string;
+  name: string;
+  locale: string;
+  content: string;
+  allowed_platforms?: string[];
+}
+
+export interface UpdateTemplateBody {
+  name?: string;
+  content?: string;
+  allowed_platforms?: string[];
+  is_active?: boolean;
+}
+
+export const contentOptimizerApi = {
+  optimize: (contentId: string, body: OptimizeContentBody) =>
+    api.post<ContentOptimizerRunDetail>(
+      `/content-optimizer/content/${contentId}/optimize`,
+      body,
+    ),
+  listRuns: (contentId: string, params?: { page?: number; page_size?: number }) =>
+    api.get<ContentOptimizerRunList>(`/content-optimizer/content/${contentId}/runs`, {
+      params,
+    }),
+  getRun: (runId: string) =>
+    api.get<ContentOptimizerRunDetail>(`/content-optimizer/runs/${runId}`),
+  getVariant: (variantId: string) =>
+    api.get<ContentOptimizerVariant>(`/content-optimizer/variants/${variantId}`),
+  acceptVariant: (variantId: string) =>
+    api.post<ContentOptimizerVariant>(`/content-optimizer/variants/${variantId}/accept`),
+  rejectVariant: (variantId: string) =>
+    api.post<ContentOptimizerVariant>(`/content-optimizer/variants/${variantId}/reject`),
+  applyVariant: (variantId: string, body: { expected_source_fingerprint: string }) =>
+    api.post<ContentOptimizerVariant>(`/content-optimizer/variants/${variantId}/apply`, body),
+  getConfiguration: () =>
+    api.get<ContentOptimizerConfiguration>("/content-optimizer/configuration"),
+  listOperations: () =>
+    api.get<ContentOptimizerOperationsCatalog>("/content-optimizer/operations"),
+  listTemplates: () =>
+    api.get<ContentOptimizerTemplateList>("/content-optimizer/templates"),
+  createTemplate: (body: CreateTemplateBody) =>
+    api.post<ContentOptimizerTemplate>("/content-optimizer/templates", body),
+  updateTemplate: (id: string, body: UpdateTemplateBody) =>
+    api.patch<ContentOptimizerTemplate>(`/content-optimizer/templates/${id}`, body),
+  deleteTemplate: (id: string) =>
+    api.delete<{ ok: boolean }>(`/content-optimizer/templates/${id}`),
+};
+
+export const CONTENT_OPTIMIZER_QUERY_KEY = ["content-optimizer"] as const;
