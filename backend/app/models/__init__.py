@@ -119,6 +119,14 @@ from app.models.content_optimizer import (
     TenantContentVariantTransformation,
     TenantContentTemplate,
 )
+from app.models.governed_ai import (
+    TenantAIPolicy,
+    TenantAIRequest,
+    TenantAIGeneration,
+    TenantAIUsageDaily,
+    TenantBrandProfile,
+    TenantBrandProfileVersion,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -245,4 +253,10 @@ __all__ = [
     "TenantContentVariant",
     "TenantContentVariantTransformation",
     "TenantContentTemplate",
+    "TenantAIPolicy",
+    "TenantAIRequest",
+    "TenantAIGeneration",
+    "TenantAIUsageDaily",
+    "TenantBrandProfile",
+    "TenantBrandProfileVersion",
 ]

@@ -184,6 +184,20 @@ class TenantContentVariant(Base):
     rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     applied_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Governed AI Content Adaptation (Phase 2B) — optional provenance fields
+    generation_method: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="deterministic",
+    )
+    ai_request_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    ai_generation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    brand_profile_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    prompt_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    model_alias: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    resolved_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    resolved_model: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    factual_validation_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    safety_validation_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
     )

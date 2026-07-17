@@ -489,6 +489,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
   {
     sectionKey: "nav.sectionTenantSettings",
     items: [
+      { href: "/settings/brand-profile", icon: Shield, labelKey: "nav.brandProfile" },
       { href: "/automation", icon: Zap, labelKey: "nav.automation" },
       { href: "/notifications", icon: Bell, labelKey: "nav.notifications" },
       { href: "/integrations", icon: Plug, labelKey: "nav.integrations" },

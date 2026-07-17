@@ -548,6 +548,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
     _ensure_intelligence_tables(connection)
     _ensure_publishing_intelligence_tables(connection)
     _ensure_content_optimizer_tables(connection)
+    _ensure_governed_ai_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -1190,6 +1191,243 @@ async def ensure_content_optimizer_schema() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_publishing_intelligence_tables)
         await conn.run_sync(_ensure_content_optimizer_tables)
+
+
+def _ensure_governed_ai_tables(connection) -> None:
+    """Governed AI Content Adaptation — policies, requests, generations, brand profiles."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables:
+        return
+    if "tenant_content_optimization_runs" not in tables or "tenant_content_variants" not in tables:
+        return
+
+    if "tenant_ai_policies" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ai_policies ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "is_enabled BOOLEAN NOT NULL DEFAULT false, "
+            "allowed_task_types JSONB, "
+            "allowed_locales JSONB, "
+            "allowed_platforms JSONB, "
+            "allow_provider_processing BOOLEAN NOT NULL DEFAULT true, "
+            "allow_fallback_provider BOOLEAN NOT NULL DEFAULT false, "
+            "store_redacted_inputs BOOLEAN NOT NULL DEFAULT true, "
+            "store_redacted_outputs BOOLEAN NOT NULL DEFAULT true, "
+            "hourly_request_limit INTEGER, "
+            "daily_token_limit INTEGER, "
+            "monthly_cost_limit_minor INTEGER, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ai_policies_tenant UNIQUE (tenant_id)"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_policies_tenant_id "
+            "ON tenant_ai_policies (tenant_id)"
+        ))
+
+    if "tenant_ai_requests" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ai_requests ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "task_type VARCHAR(80) NOT NULL, "
+            "entity_type VARCHAR(40) NOT NULL DEFAULT 'content', "
+            "entity_id UUID NOT NULL, "
+            "request_status VARCHAR(40) NOT NULL DEFAULT 'queued', "
+            "model_alias VARCHAR(40) NOT NULL, "
+            "resolved_provider VARCHAR(40), "
+            "resolved_model VARCHAR(80), "
+            "routing_version VARCHAR(20), "
+            "prompt_key VARCHAR(120) NOT NULL, "
+            "prompt_version VARCHAR(20) NOT NULL, "
+            "input_fingerprint VARCHAR(64) NOT NULL, "
+            "idempotency_key VARCHAR(128) NOT NULL, "
+            "brand_profile_version_id UUID, "
+            "optimization_run_id UUID REFERENCES tenant_content_optimization_runs(id) ON DELETE SET NULL, "
+            "configuration JSONB, "
+            "requested_by UUID, "
+            "requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "started_at TIMESTAMPTZ, "
+            "completed_at TIMESTAMPTZ, "
+            "failure_code VARCHAR(80), "
+            "failure_metadata JSONB, "
+            "CONSTRAINT uq_tenant_ai_requests_tenant_idempotency "
+            "UNIQUE (tenant_id, idempotency_key)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_requests_tenant_id ON tenant_ai_requests (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_requests_entity_id ON tenant_ai_requests (entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_requests_tenant_content_created "
+            "ON tenant_ai_requests (tenant_id, entity_id, requested_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_requests_tenant_status_requested "
+            "ON tenant_ai_requests (tenant_id, request_status, requested_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ai_generations" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ai_generations ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "ai_request_id UUID NOT NULL REFERENCES tenant_ai_requests(id) ON DELETE CASCADE, "
+            "generation_version INTEGER NOT NULL DEFAULT 1, "
+            "platform VARCHAR(40), "
+            "locale VARCHAR(10), "
+            "length_profile VARCHAR(20), "
+            "structured_output JSONB, "
+            "redacted_input_snapshot JSONB, "
+            "redacted_output_snapshot JSONB, "
+            "output_fingerprint VARCHAR(64), "
+            "input_tokens INTEGER NOT NULL DEFAULT 0, "
+            "output_tokens INTEGER NOT NULL DEFAULT 0, "
+            "total_tokens INTEGER NOT NULL DEFAULT 0, "
+            "estimated_cost_minor INTEGER NOT NULL DEFAULT 0, "
+            "currency VARCHAR(8) NOT NULL DEFAULT 'USD', "
+            "latency_ms INTEGER, "
+            "finish_reason VARCHAR(40), "
+            "validation_status VARCHAR(40) NOT NULL DEFAULT 'pending', "
+            "safety_status VARCHAR(40) NOT NULL DEFAULT 'pending', "
+            "factual_validation JSONB, "
+            "protected_fact_summary JSONB, "
+            "content_variant_id UUID REFERENCES tenant_content_variants(id) ON DELETE SET NULL, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ai_generations_request_version "
+            "UNIQUE (ai_request_id, generation_version)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_generations_tenant_id ON tenant_ai_generations (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_generations_ai_request_id "
+            "ON tenant_ai_generations (ai_request_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_generations_tenant_request "
+            "ON tenant_ai_generations (tenant_id, ai_request_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ai_usage_daily" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ai_usage_daily ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "usage_date DATE NOT NULL, "
+            "provider VARCHAR(40) NOT NULL, "
+            "model VARCHAR(80) NOT NULL, "
+            "task_type VARCHAR(80) NOT NULL, "
+            "request_count INTEGER NOT NULL DEFAULT 0, "
+            "successful_request_count INTEGER NOT NULL DEFAULT 0, "
+            "failed_request_count INTEGER NOT NULL DEFAULT 0, "
+            "input_tokens INTEGER NOT NULL DEFAULT 0, "
+            "output_tokens INTEGER NOT NULL DEFAULT 0, "
+            "total_tokens INTEGER NOT NULL DEFAULT 0, "
+            "estimated_cost_minor INTEGER NOT NULL DEFAULT 0, "
+            "currency VARCHAR(8) NOT NULL DEFAULT 'USD', "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ai_usage_daily_dims "
+            "UNIQUE (tenant_id, usage_date, provider, model, task_type)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_usage_daily_tenant_id ON tenant_ai_usage_daily (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ai_usage_daily_tenant_date "
+            "ON tenant_ai_usage_daily (tenant_id, usage_date)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_brand_profiles" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_brand_profiles ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "name VARCHAR(160) NOT NULL, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'draft', "
+            "current_version_id UUID, "
+            "draft_payload JSONB, "
+            "draft_version INTEGER NOT NULL DEFAULT 0, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_brand_profiles_tenant_id ON tenant_brand_profiles (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_brand_profiles_tenant_status "
+            "ON tenant_brand_profiles (tenant_id, status)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_brand_profile_versions" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_brand_profile_versions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "brand_profile_id UUID NOT NULL REFERENCES tenant_brand_profiles(id) ON DELETE CASCADE, "
+            "version INTEGER NOT NULL, "
+            "locale VARCHAR(10) NOT NULL DEFAULT 'en', "
+            "company_name VARCHAR(200) NOT NULL DEFAULT '', "
+            "company_description TEXT NOT NULL DEFAULT '', "
+            "audience_description TEXT NOT NULL DEFAULT '', "
+            "tone_traits JSONB, "
+            "preferred_terms JSONB, "
+            "forbidden_terms JSONB, "
+            "approved_claims JSONB, "
+            "prohibited_claims JSONB, "
+            "cta_preferences JSONB, "
+            "emoji_policy JSONB, "
+            "formatting_preferences JSONB, "
+            "platform_guidance JSONB, "
+            "source_references JSONB, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "published_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_brand_profile_versions_profile_version "
+            "UNIQUE (brand_profile_id, version)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_brand_profile_versions_tenant_id "
+            "ON tenant_brand_profile_versions (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_brand_profile_versions_brand_profile_id "
+            "ON tenant_brand_profile_versions (brand_profile_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_brand_profile_versions_tenant_profile "
+            "ON tenant_brand_profile_versions (tenant_id, brand_profile_id)",
+        ):
+            connection.execute(text(sql))
+
+    # AI columns on content variants (idempotent)
+    if "tenant_content_variants" in tables:
+        for sql in (
+            "ALTER TABLE tenant_content_variants "
+            "ADD COLUMN IF NOT EXISTS generation_method VARCHAR(40) NOT NULL DEFAULT 'deterministic'",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS ai_request_id UUID",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS ai_generation_id UUID",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS brand_profile_version_id UUID",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS prompt_key VARCHAR(120)",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS prompt_version VARCHAR(20)",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS model_alias VARCHAR(40)",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS resolved_provider VARCHAR(40)",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS resolved_model VARCHAR(80)",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS factual_validation_status VARCHAR(40)",
+            "ALTER TABLE tenant_content_variants ADD COLUMN IF NOT EXISTS safety_validation_status VARCHAR(40)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_ai_request_id "
+            "ON tenant_content_variants (ai_request_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_variants_ai_generation_id "
+            "ON tenant_content_variants (ai_generation_id)",
+        ):
+            connection.execute(text(sql))
+
+
+async def ensure_governed_ai_schema() -> None:
+    """Apply idempotent DDL for Governed AI Content Adaptation tables/columns."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_publishing_intelligence_tables)
+        await conn.run_sync(_ensure_content_optimizer_tables)
+        await conn.run_sync(_ensure_governed_ai_tables)
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:
