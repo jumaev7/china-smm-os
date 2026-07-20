@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260906_marketing_intelligence"
-HEAD = "20260909_governed_ai_content"
+HEAD = "20260910_campaign_planner"
 
 PI_TABLES = (
     "tenant_publishing_reviews",

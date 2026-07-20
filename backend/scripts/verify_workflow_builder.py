@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260904_automation_scheduler"
 FEATURE = "20260905_workflow_definitions"
-HEAD = "20260909_governed_ai_content"
+HEAD = "20260910_campaign_planner"
 
 WORKFLOW_TABLES = (
     "tenant_workflows",
