@@ -549,6 +549,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
     _ensure_publishing_intelligence_tables(connection)
     _ensure_content_optimizer_tables(connection)
     _ensure_governed_ai_tables(connection)
+    _ensure_campaign_planner_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -1428,6 +1429,368 @@ async def ensure_governed_ai_schema() -> None:
         await conn.run_sync(_ensure_publishing_intelligence_tables)
         await conn.run_sync(_ensure_content_optimizer_tables)
         await conn.run_sync(_ensure_governed_ai_tables)
+
+
+def _ensure_campaign_planner_tables(connection) -> None:
+    """Smart Publishing Phase 3 — Campaign Planner tenant-scoped tables."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables:
+        return
+
+    if "tenant_marketing_campaigns" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_marketing_campaigns ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "name VARCHAR(200) NOT NULL, "
+            "description TEXT, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'draft', "
+            "objective VARCHAR(120), "
+            "timezone VARCHAR(64) NOT NULL DEFAULT 'UTC', "
+            "primary_locale VARCHAR(10) NOT NULL DEFAULT 'en', "
+            "locales JSONB, "
+            "platforms JSONB, "
+            "start_date DATE, "
+            "end_date DATE, "
+            "blackout_dates JSONB, "
+            "cadence JSONB, "
+            "brand_profile_id UUID, "
+            "brand_profile_version_id UUID, "
+            "current_plan_version_id UUID, "
+            "published_plan_version_id UUID, "
+            "planner_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "policy_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "metadata_json JSONB, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "archived_at TIMESTAMPTZ"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_campaigns_tenant_id ON tenant_marketing_campaigns (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_campaigns_tenant_status ON tenant_marketing_campaigns (tenant_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_marketing_campaigns_tenant_created ON tenant_marketing_campaigns (tenant_id, created_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_campaign_goals" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_goals ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "goal_type VARCHAR(40) NOT NULL DEFAULT 'other', "
+            "title VARCHAR(200) NOT NULL, "
+            "description TEXT, "
+            "priority VARCHAR(20) NOT NULL DEFAULT 'medium', "
+            "target_metric VARCHAR(120), "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_goals_tenant_campaign "
+            "ON tenant_campaign_goals (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_campaign_kpis" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_kpis ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "name VARCHAR(200) NOT NULL, "
+            "metric_key VARCHAR(120) NOT NULL, "
+            "target_value NUMERIC(18,4), "
+            "unit VARCHAR(40), "
+            "comparator VARCHAR(10) NOT NULL DEFAULT '>=', "
+            "timeframe VARCHAR(40), "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_kpis_tenant_campaign "
+            "ON tenant_campaign_kpis (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_campaign_audiences" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_audiences ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "name VARCHAR(200) NOT NULL, "
+            "description TEXT, "
+            "locale VARCHAR(10), "
+            "platforms JSONB, "
+            "segment JSONB, "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_audiences_tenant_campaign "
+            "ON tenant_campaign_audiences (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_content_pillars" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_content_pillars ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "name VARCHAR(160) NOT NULL, "
+            "slug VARCHAR(160) NOT NULL, "
+            "description TEXT, "
+            "color VARCHAR(20), "
+            "default_weight INTEGER NOT NULL DEFAULT 1, "
+            "is_active BOOLEAN NOT NULL DEFAULT true, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_content_pillars_tenant_slug UNIQUE (tenant_id, slug)"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_content_pillars_tenant_active "
+            "ON tenant_content_pillars (tenant_id, is_active)"
+        ))
+
+    if "tenant_campaign_pillars" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_pillars ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "pillar_id UUID NOT NULL REFERENCES tenant_content_pillars(id) ON DELETE CASCADE, "
+            "weight INTEGER NOT NULL DEFAULT 1, "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_campaign_pillars_campaign_pillar UNIQUE (campaign_id, pillar_id)"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_pillars_tenant_campaign "
+            "ON tenant_campaign_pillars (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_campaign_phases" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_phases ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "name VARCHAR(160) NOT NULL, "
+            "phase_type VARCHAR(40) NOT NULL DEFAULT 'custom', "
+            "description TEXT, "
+            "start_date DATE, "
+            "end_date DATE, "
+            "weight INTEGER NOT NULL DEFAULT 1, "
+            "sort_order INTEGER NOT NULL DEFAULT 0, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_phases_tenant_campaign "
+            "ON tenant_campaign_phases (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_campaign_plan_versions" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_plan_versions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "version INTEGER NOT NULL, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'draft', "
+            "generation_method VARCHAR(40) NOT NULL DEFAULT 'deterministic', "
+            "plan_fingerprint VARCHAR(64) NOT NULL, "
+            "planner_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "policy_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "parameters JSONB, "
+            "summary JSONB, "
+            "notes TEXT, "
+            "source_ai_request_id UUID, "
+            "parent_version_id UUID, "
+            "slot_count INTEGER NOT NULL DEFAULT 0, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "reviewed_at TIMESTAMPTZ, "
+            "published_at TIMESTAMPTZ, "
+            "superseded_at TIMESTAMPTZ, "
+            "CONSTRAINT uq_tenant_campaign_plan_versions_campaign_version UNIQUE (campaign_id, version)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_plan_versions_tenant_campaign "
+            "ON tenant_campaign_plan_versions (tenant_id, campaign_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_plan_versions_tenant_status "
+            "ON tenant_campaign_plan_versions (tenant_id, status)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_campaign_calendar_slots" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_calendar_slots ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "plan_version_id UUID NOT NULL REFERENCES tenant_campaign_plan_versions(id) ON DELETE CASCADE, "
+            "slot_index INTEGER NOT NULL DEFAULT 0, "
+            "platform VARCHAR(40) NOT NULL, "
+            "locale VARCHAR(10) NOT NULL DEFAULT 'en', "
+            "pillar_id UUID, "
+            "phase_id UUID, "
+            "scheduled_date DATE NOT NULL, "
+            "scheduled_time TIME NOT NULL, "
+            "suggested_time_label VARCHAR(80), "
+            "status VARCHAR(20) NOT NULL DEFAULT 'unassigned', "
+            "slot_fingerprint VARCHAR(64) NOT NULL, "
+            "notes TEXT, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_calendar_slots_tenant_plan "
+            "ON tenant_campaign_calendar_slots (tenant_id, plan_version_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_calendar_slots_plan_date "
+            "ON tenant_campaign_calendar_slots (plan_version_id, scheduled_date)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_calendar_slots_plan_platform_dt "
+            "ON tenant_campaign_calendar_slots (plan_version_id, platform, scheduled_date, scheduled_time)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_campaign_slot_assignments" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_slot_assignments ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "plan_version_id UUID NOT NULL REFERENCES tenant_campaign_plan_versions(id) ON DELETE CASCADE, "
+            "slot_id UUID NOT NULL REFERENCES tenant_campaign_calendar_slots(id) ON DELETE CASCADE, "
+            "content_id UUID REFERENCES content_items(id) ON DELETE SET NULL, "
+            "content_variant_id UUID, "
+            "assignment_type VARCHAR(40) NOT NULL DEFAULT 'content', "
+            "assigned_platform VARCHAR(40), "
+            "assigned_locale VARCHAR(10), "
+            "assignment_status VARCHAR(40) NOT NULL DEFAULT 'assigned', "
+            "readiness_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "readiness_score INTEGER, "
+            "publishing_review_id UUID, "
+            "warnings JSONB, "
+            "assigned_by UUID, "
+            "assigned_at TIMESTAMPTZ, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_campaign_slot_assignments_slot UNIQUE (slot_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_slot_assignments_tenant_campaign "
+            "ON tenant_campaign_slot_assignments (tenant_id, campaign_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_slot_assignments_tenant_content "
+            "ON tenant_campaign_slot_assignments (tenant_id, content_id)",
+        ):
+            connection.execute(text(sql))
+    else:
+        # Idempotent column add for assignment_type if upgrading older ensure.
+        connection.execute(text(
+            "ALTER TABLE tenant_campaign_slot_assignments "
+            "ADD COLUMN IF NOT EXISTS assignment_type VARCHAR(40) NOT NULL DEFAULT 'content'"
+        ))
+
+    if "tenant_campaign_reviews" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_reviews ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "plan_version_id UUID REFERENCES tenant_campaign_plan_versions(id) ON DELETE CASCADE, "
+            "review_type VARCHAR(20) NOT NULL DEFAULT 'plan', "
+            "coverage_score INTEGER, "
+            "readiness_score INTEGER, "
+            "total_slots INTEGER NOT NULL DEFAULT 0, "
+            "assigned_slots INTEGER NOT NULL DEFAULT 0, "
+            "blocked_slots INTEGER NOT NULL DEFAULT 0, "
+            "unassigned_slots INTEGER NOT NULL DEFAULT 0, "
+            "conflict_count INTEGER NOT NULL DEFAULT 0, "
+            "gap_count INTEGER NOT NULL DEFAULT 0, "
+            "summary JSONB, "
+            "engine_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_reviews_tenant_campaign "
+            "ON tenant_campaign_reviews (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_campaign_gaps" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_gaps ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "plan_version_id UUID REFERENCES tenant_campaign_plan_versions(id) ON DELETE CASCADE, "
+            "review_id UUID REFERENCES tenant_campaign_reviews(id) ON DELETE CASCADE, "
+            "gap_type VARCHAR(40) NOT NULL, "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'medium', "
+            "dimension VARCHAR(40), "
+            "dimension_value VARCHAR(120), "
+            "detail JSONB, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'open', "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_gaps_tenant_campaign "
+            "ON tenant_campaign_gaps (tenant_id, campaign_id)"
+        ))
+
+    if "tenant_campaign_recommendations" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_campaign_recommendations ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "plan_version_id UUID, "
+            "recommendation_key VARCHAR(120) NOT NULL, "
+            "category VARCHAR(40) NOT NULL DEFAULT 'campaign', "
+            "title VARCHAR(200) NOT NULL, "
+            "reason TEXT NOT NULL, "
+            "evidence JSONB, "
+            "priority VARCHAR(20) NOT NULL DEFAULT 'medium', "
+            "rule_id VARCHAR(120) NOT NULL, "
+            "rule_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "status VARCHAR(20) NOT NULL DEFAULT 'open', "
+            "action_url VARCHAR(200), "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_campaign_recommendations_key "
+            "UNIQUE (tenant_id, campaign_id, recommendation_key)"
+            ")"
+        ))
+        connection.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_tenant_campaign_recommendations_tenant_campaign "
+            "ON tenant_campaign_recommendations (tenant_id, campaign_id)"
+        ))
+
+
+async def ensure_campaign_planner_schema() -> None:
+    """Apply idempotent DDL for Campaign Planner tables."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_campaign_planner_tables)
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:

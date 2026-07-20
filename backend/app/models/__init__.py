@@ -127,6 +127,21 @@ from app.models.governed_ai import (
     TenantBrandProfile,
     TenantBrandProfileVersion,
 )
+from app.models.campaign_planner import (
+    TenantMarketingCampaign,
+    TenantCampaignGoal,
+    TenantCampaignKpi,
+    TenantCampaignAudience,
+    TenantContentPillar,
+    TenantCampaignPillar,
+    TenantCampaignPhase,
+    TenantCampaignPlanVersion,
+    TenantCampaignCalendarSlot,
+    TenantCampaignSlotAssignment,
+    TenantCampaignReview,
+    TenantCampaignGap,
+    TenantCampaignRecommendation,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -259,4 +274,17 @@ __all__ = [
     "TenantAIUsageDaily",
     "TenantBrandProfile",
     "TenantBrandProfileVersion",
+    "TenantMarketingCampaign",
+    "TenantCampaignGoal",
+    "TenantCampaignKpi",
+    "TenantCampaignAudience",
+    "TenantContentPillar",
+    "TenantCampaignPillar",
+    "TenantCampaignPhase",
+    "TenantCampaignPlanVersion",
+    "TenantCampaignCalendarSlot",
+    "TenantCampaignSlotAssignment",
+    "TenantCampaignReview",
+    "TenantCampaignGap",
+    "TenantCampaignRecommendation",
 ]
