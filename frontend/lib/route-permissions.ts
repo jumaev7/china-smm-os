@@ -100,6 +100,7 @@ export const TENANT_BUSINESS_PATHS = [
   "/calendar",
   "/publishing",
   "/campaigns",
+  "/campaign-planner",
   "/media-library",
   "/content-studio",
   "/pipeline",

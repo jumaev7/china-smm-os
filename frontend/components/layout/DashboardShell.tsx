@@ -68,6 +68,8 @@ import {
 
   Megaphone,
 
+  CalendarRange,
+
   Images,
 
   Columns3,
@@ -376,6 +378,8 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/pipeline", icon: Columns3, labelKey: "nav.pipeline" },
 
       { href: "/campaigns", icon: Megaphone, labelKey: "nav.campaigns" },
+
+      { href: "/campaign-planner", icon: CalendarRange, labelKey: "nav.campaignPlanner" },
 
       { href: "/content-studio", icon: Sparkles, labelKey: "nav.contentStudio" },
 

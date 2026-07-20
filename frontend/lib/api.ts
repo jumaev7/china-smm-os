@@ -14488,3 +14488,529 @@ export const aiContentApi = {
 
 export const BRAND_PROFILES_QUERY_KEY = ["brand-profiles"] as const;
 export const AI_CONTENT_QUERY_KEY = ["ai-content"] as const;
+
+// ---------------------------------------------------------------------------
+// Campaign Planner (tenant-scoped) — /campaign-planner
+// Separate from legacy client-scoped /campaigns. Clients never send tenant_id,
+// raw provider/model controls, system prompts, or scores. Assignment never
+// schedules or publishes; published plan versions are read-only.
+// ---------------------------------------------------------------------------
+
+export const CAMPAIGN_PLATFORMS = ["telegram", "facebook", "instagram", "tiktok", "linkedin"] as const;
+export const CAMPAIGN_LOCALES = ["en", "ru", "uz", "zh"] as const;
+export const CAMPAIGN_PLANNER_STATUSES = [
+  "draft",
+  "planning",
+  "approved",
+  "active",
+  "paused",
+  "completed",
+  "archived",
+] as const;
+
+export type MarketingCampaignStatus = (typeof CAMPAIGN_PLANNER_STATUSES)[number];
+
+/** Extract the stable Campaign Planner error contract ({code, message, details}). */
+export function getCampaignPlannerError(err: unknown): {
+  code?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+} {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+    if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+      const d = detail as { code?: string; message?: string; details?: Record<string, unknown> };
+      return { code: d.code, message: d.message, details: d.details };
+    }
+    if (typeof detail === "string") return { message: detail };
+  }
+  return {};
+}
+
+export interface ContentPillar {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  color?: string | null;
+  default_weight: number;
+  is_active: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ContentPillarListResponse {
+  items: ContentPillar[];
+  total: number;
+}
+
+export interface ContentPillarCreateBody {
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  color?: string | null;
+  default_weight?: number;
+  is_active?: boolean;
+}
+
+export interface ContentPillarUpdateBody {
+  name?: string;
+  description?: string | null;
+  color?: string | null;
+  default_weight?: number;
+  is_active?: boolean;
+}
+
+export interface MarketingCampaign {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: MarketingCampaignStatus | string;
+  objective?: string | null;
+  timezone: string;
+  primary_locale: string;
+  locales: string[];
+  platforms: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  blackout_dates: string[];
+  cadence: Record<string, unknown>;
+  brand_profile_id?: string | null;
+  brand_profile_version_id?: string | null;
+  current_plan_version_id?: string | null;
+  published_plan_version_id?: string | null;
+  planner_version?: string | null;
+  policy_version?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  archived_at?: string | null;
+}
+
+export interface CampaignListResponse {
+  items: MarketingCampaign[];
+  total: number;
+}
+
+export interface CampaignCreateBody {
+  name: string;
+  description?: string | null;
+  objective?: string | null;
+  timezone?: string;
+  primary_locale?: string;
+  locales?: string[];
+  platforms?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  blackout_dates?: string[];
+  cadence?: Record<string, unknown> | null;
+  brand_profile_id?: string | null;
+  brand_profile_version_id?: string | null;
+}
+
+export interface CampaignUpdateBody {
+  name?: string;
+  description?: string | null;
+  objective?: string | null;
+  status?: string;
+  timezone?: string;
+  primary_locale?: string;
+  locales?: string[];
+  platforms?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
+  blackout_dates?: string[];
+  cadence?: Record<string, unknown> | null;
+  brand_profile_id?: string | null;
+  brand_profile_version_id?: string | null;
+  expected_updated_at?: string | null;
+}
+
+export interface CampaignGoal {
+  id: string;
+  campaign_id: string;
+  goal_type: string;
+  title: string;
+  description?: string | null;
+  priority: string;
+  target_metric?: string | null;
+  sort_order: number;
+  created_at?: string | null;
+}
+
+export interface CampaignKpi {
+  id: string;
+  campaign_id: string;
+  name: string;
+  metric_key: string;
+  target_value?: number | null;
+  unit?: string | null;
+  comparator: string;
+  timeframe?: string | null;
+  sort_order: number;
+}
+
+export interface CampaignAudience {
+  id: string;
+  campaign_id: string;
+  name: string;
+  description?: string | null;
+  locale?: string | null;
+  platforms: string[];
+  segment?: Record<string, unknown> | null;
+  sort_order: number;
+}
+
+export interface CampaignPhase {
+  id: string;
+  campaign_id: string;
+  name: string;
+  phase_type: string;
+  description?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  weight: number;
+  sort_order: number;
+}
+
+export interface CampaignPillarLink {
+  id: string;
+  campaign_id: string;
+  pillar_id: string;
+  weight: number;
+  sort_order: number;
+}
+
+export interface CampaignNestedListResponse<T> {
+  items: T[];
+  total: number;
+}
+
+export interface PlanVersion {
+  id: string;
+  campaign_id: string;
+  version: number;
+  status: string;
+  generation_method: string;
+  plan_fingerprint: string;
+  planner_version?: string | null;
+  policy_version?: string | null;
+  parameters: Record<string, unknown>;
+  summary: Record<string, unknown>;
+  notes?: string | null;
+  source_ai_request_id?: string | null;
+  parent_version_id?: string | null;
+  slot_count: number;
+  created_at?: string | null;
+  reviewed_at?: string | null;
+  published_at?: string | null;
+}
+
+export interface PlanListResponse {
+  items: PlanVersion[];
+  total: number;
+}
+
+export interface CalendarSlot {
+  id: string;
+  plan_version_id: string;
+  campaign_id: string;
+  slot_index: number;
+  platform: string;
+  locale: string;
+  pillar_id?: string | null;
+  phase_id?: string | null;
+  scheduled_date: string;
+  scheduled_time: string;
+  suggested_time_label?: string | null;
+  status: string;
+  slot_fingerprint?: string | null;
+  notes?: string | null;
+}
+
+export interface SlotListResponse {
+  items: CalendarSlot[];
+  total: number;
+}
+
+export interface SlotCreateBody {
+  platform: string;
+  locale?: string;
+  scheduled_date: string;
+  scheduled_time: string;
+  pillar_id?: string | null;
+  phase_id?: string | null;
+  suggested_time_label?: string | null;
+  notes?: string | null;
+}
+
+export interface SlotUpdateBody {
+  platform?: string;
+  locale?: string;
+  scheduled_date?: string;
+  scheduled_time?: string;
+  pillar_id?: string | null;
+  phase_id?: string | null;
+  notes?: string | null;
+}
+
+export interface CampaignAssignment {
+  id: string;
+  slot_id: string;
+  content_id?: string | null;
+  content_variant_id?: string | null;
+  assignment_type: string;
+  assigned_platform?: string | null;
+  assigned_locale?: string | null;
+  assignment_status: string;
+  readiness_status: string;
+  readiness_score?: number | null;
+  publishing_review_id?: string | null;
+  warnings?: Record<string, unknown> | unknown[] | null;
+  assigned_at?: string | null;
+}
+
+export interface SlotAssignBody {
+  content_id: string;
+  content_variant_id?: string | null;
+  platform?: string | null;
+  locale?: string | null;
+  allow_warnings?: boolean;
+}
+
+export interface AutoAssignBody {
+  allow_warnings?: boolean;
+  run_publish_safety?: boolean;
+}
+
+export interface AutoAssignResponse {
+  assigned: number;
+  skipped: number;
+  total_open: number;
+  results: Array<Record<string, unknown>>;
+}
+
+export interface CampaignReview {
+  id: string;
+  campaign_id: string;
+  plan_version_id?: string | null;
+  review_type: string;
+  coverage_score?: number | null;
+  readiness_score?: number | null;
+  total_slots: number;
+  assigned_slots: number;
+  blocked_slots: number;
+  unassigned_slots: number;
+  conflict_count: number;
+  gap_count: number;
+  summary: Record<string, unknown>;
+  engine_version?: string | null;
+  created_at?: string | null;
+}
+
+export interface CampaignReviewListResponse {
+  items: CampaignReview[];
+  total: number;
+}
+
+export interface CampaignInventoryItem {
+  content_id: string;
+  status: string;
+  platforms: string[];
+  available_locales: string[];
+  has_media: boolean;
+  is_assigned_in_campaign: boolean;
+  approved: boolean;
+  created_at?: string | null;
+  /** Present when API distinguishes source vs deterministic vs AI variants. */
+  generation_method?: string | null;
+  title?: string | null;
+}
+
+export interface CampaignInventoryResponse {
+  items: CampaignInventoryItem[];
+  total: number;
+  returned: number;
+}
+
+export interface CampaignAIPlanRequestBody {
+  brand_profile_version_id?: string | null;
+  quality_mode?: string | null;
+  idempotency_key?: string | null;
+}
+
+export interface CampaignAIPlanProposal {
+  summary: string;
+  cadence_suggestions: Record<string, unknown>;
+  pillar_notes_count: number;
+  phase_notes_count: number;
+  slot_hint_count: number;
+  warnings: string[];
+  disclaimers: string[];
+}
+
+export interface CampaignAIPlanRequest {
+  request_id: string;
+  status: string;
+  campaign_id?: string | null;
+  source_fingerprint?: string | null;
+  brand_profile_version_id?: string | null;
+  prompt_key?: string | null;
+  prompt_version?: string | null;
+  model_alias?: string | null;
+  routing_version?: string | null;
+  proposal?: CampaignAIPlanProposal | null;
+  apply_status?: string | null;
+  applied_plan_version_id?: string | null;
+  usage?: Record<string, unknown> | null;
+  failure_code?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface CampaignAIPlanRequestListItem {
+  request_id: string;
+  status: string;
+  model_alias?: string | null;
+  prompt_version?: string | null;
+  apply_status?: string | null;
+  created_at?: string | null;
+  completed_at?: string | null;
+  failure_code?: string | null;
+}
+
+export interface CampaignAIPlanRequestListResponse {
+  items: CampaignAIPlanRequestListItem[];
+  total: number;
+}
+
+export const campaignPlannerApi = {
+  // Content pillars (tenant-reusable)
+  listPillars: (params?: { active_only?: boolean }) =>
+    api.get<ContentPillarListResponse>("/campaign-planner/content-pillars", { params }),
+  createPillar: (body: ContentPillarCreateBody) =>
+    api.post<ContentPillar>("/campaign-planner/content-pillars", body),
+  getPillar: (pillarId: string) =>
+    api.get<ContentPillar>(`/campaign-planner/content-pillars/${pillarId}`),
+  updatePillar: (pillarId: string, body: ContentPillarUpdateBody) =>
+    api.patch<ContentPillar>(`/campaign-planner/content-pillars/${pillarId}`, body),
+  deletePillar: (pillarId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/content-pillars/${pillarId}`),
+
+  // Campaigns
+  listCampaigns: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get<CampaignListResponse>("/campaign-planner/campaigns", { params }),
+  createCampaign: (body: CampaignCreateBody) =>
+    api.post<MarketingCampaign>("/campaign-planner/campaigns", body),
+  getCampaign: (campaignId: string) =>
+    api.get<MarketingCampaign>(`/campaign-planner/campaigns/${campaignId}`),
+  updateCampaign: (campaignId: string, body: CampaignUpdateBody) =>
+    api.patch<MarketingCampaign>(`/campaign-planner/campaigns/${campaignId}`, body),
+  archiveCampaign: (campaignId: string) =>
+    api.post<MarketingCampaign>(`/campaign-planner/campaigns/${campaignId}/archive`),
+
+  // Nested resources
+  listGoals: (campaignId: string) =>
+    api.get<CampaignNestedListResponse<CampaignGoal>>(`/campaign-planner/campaigns/${campaignId}/goals`),
+  createGoal: (campaignId: string, body: Partial<CampaignGoal> & { title: string }) =>
+    api.post<CampaignGoal>(`/campaign-planner/campaigns/${campaignId}/goals`, body),
+  updateGoal: (campaignId: string, goalId: string, body: Partial<CampaignGoal>) =>
+    api.patch<CampaignGoal>(`/campaign-planner/campaigns/${campaignId}/goals/${goalId}`, body),
+  deleteGoal: (campaignId: string, goalId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/campaigns/${campaignId}/goals/${goalId}`),
+
+  listKpis: (campaignId: string) =>
+    api.get<CampaignNestedListResponse<CampaignKpi>>(`/campaign-planner/campaigns/${campaignId}/kpis`),
+  createKpi: (campaignId: string, body: Partial<CampaignKpi> & { name: string; metric_key: string }) =>
+    api.post<CampaignKpi>(`/campaign-planner/campaigns/${campaignId}/kpis`, body),
+  updateKpi: (campaignId: string, kpiId: string, body: Partial<CampaignKpi>) =>
+    api.patch<CampaignKpi>(`/campaign-planner/campaigns/${campaignId}/kpis/${kpiId}`, body),
+  deleteKpi: (campaignId: string, kpiId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/campaigns/${campaignId}/kpis/${kpiId}`),
+
+  listAudiences: (campaignId: string) =>
+    api.get<CampaignNestedListResponse<CampaignAudience>>(`/campaign-planner/campaigns/${campaignId}/audiences`),
+  createAudience: (campaignId: string, body: Partial<CampaignAudience> & { name: string }) =>
+    api.post<CampaignAudience>(`/campaign-planner/campaigns/${campaignId}/audiences`, body),
+  updateAudience: (campaignId: string, audienceId: string, body: Partial<CampaignAudience>) =>
+    api.patch<CampaignAudience>(`/campaign-planner/campaigns/${campaignId}/audiences/${audienceId}`, body),
+  deleteAudience: (campaignId: string, audienceId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/campaigns/${campaignId}/audiences/${audienceId}`),
+
+  listCampaignPillars: (campaignId: string) =>
+    api.get<CampaignNestedListResponse<CampaignPillarLink>>(`/campaign-planner/campaigns/${campaignId}/pillars`),
+  addCampaignPillar: (campaignId: string, body: { pillar_id: string; weight?: number; sort_order?: number }) =>
+    api.post<CampaignPillarLink>(`/campaign-planner/campaigns/${campaignId}/pillars`, body),
+  updateCampaignPillar: (campaignId: string, linkId: string, body: { weight?: number; sort_order?: number }) =>
+    api.patch<CampaignPillarLink>(`/campaign-planner/campaigns/${campaignId}/pillars/${linkId}`, body),
+  removeCampaignPillar: (campaignId: string, linkId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/campaigns/${campaignId}/pillars/${linkId}`),
+
+  listPhases: (campaignId: string) =>
+    api.get<CampaignNestedListResponse<CampaignPhase>>(`/campaign-planner/campaigns/${campaignId}/phases`),
+  createPhase: (campaignId: string, body: Partial<CampaignPhase> & { name: string }) =>
+    api.post<CampaignPhase>(`/campaign-planner/campaigns/${campaignId}/phases`, body),
+  updatePhase: (campaignId: string, phaseId: string, body: Partial<CampaignPhase>) =>
+    api.patch<CampaignPhase>(`/campaign-planner/campaigns/${campaignId}/phases/${phaseId}`, body),
+  deletePhase: (campaignId: string, phaseId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/campaigns/${campaignId}/phases/${phaseId}`),
+
+  // Plans
+  generatePlan: (campaignId: string, body?: { cadence?: Record<string, unknown> | null; notes?: string | null }) =>
+    api.post<PlanVersion>(`/campaign-planner/campaigns/${campaignId}/plans/generate`, body ?? {}),
+  listPlans: (campaignId: string) =>
+    api.get<PlanListResponse>(`/campaign-planner/campaigns/${campaignId}/plans`),
+  getPlan: (campaignId: string, planId: string) =>
+    api.get<PlanVersion>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}`),
+  reviewPlan: (campaignId: string, planId: string) =>
+    api.post<CampaignReview>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/review`),
+  publishPlan: (campaignId: string, planId: string) =>
+    api.post<PlanVersion>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/publish`),
+  clonePlan: (campaignId: string, planId: string) =>
+    api.post<PlanVersion>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/clone`),
+
+  // Slots
+  listSlots: (campaignId: string, planId: string) =>
+    api.get<SlotListResponse>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/slots`),
+  createSlot: (campaignId: string, planId: string, body: SlotCreateBody) =>
+    api.post<CalendarSlot>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/slots`, body),
+  updateSlot: (campaignId: string, planId: string, slotId: string, body: SlotUpdateBody) =>
+    api.patch<CalendarSlot>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/slots/${slotId}`, body),
+  deleteSlot: (campaignId: string, planId: string, slotId: string) =>
+    api.delete<{ ok: boolean }>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/slots/${slotId}`),
+  assignSlot: (campaignId: string, planId: string, slotId: string, body: SlotAssignBody) =>
+    api.post<CampaignAssignment>(
+      `/campaign-planner/campaigns/${campaignId}/plans/${planId}/slots/${slotId}/assign`,
+      body,
+    ),
+  unassignSlot: (campaignId: string, planId: string, slotId: string) =>
+    api.delete<{ ok: boolean }>(
+      `/campaign-planner/campaigns/${campaignId}/plans/${planId}/slots/${slotId}/assignment`,
+    ),
+  autoAssign: (campaignId: string, planId: string, body?: AutoAssignBody) =>
+    api.post<AutoAssignResponse>(`/campaign-planner/campaigns/${campaignId}/plans/${planId}/auto-assign`, body ?? {}),
+
+  // Reviews / inventory
+  listReviews: (campaignId: string) =>
+    api.get<CampaignReviewListResponse>(`/campaign-planner/campaigns/${campaignId}/reviews`),
+  latestReview: (campaignId: string) =>
+    api.get<CampaignReview>(`/campaign-planner/campaigns/${campaignId}/reviews/latest`),
+  contentInventory: (
+    campaignId: string,
+    params?: { platform?: string; locale?: string; limit?: number; offset?: number },
+  ) =>
+    api.get<CampaignInventoryResponse>(`/campaign-planner/campaigns/${campaignId}/content-inventory`, { params }),
+
+  // AI-assisted campaign proposal (optional, governed)
+  requestAiPlan: (campaignId: string, body?: CampaignAIPlanRequestBody) =>
+    api.post<CampaignAIPlanRequest>(`/campaign-planner/campaigns/${campaignId}/ai-plan`, body ?? {}),
+  listAiPlanRequests: (campaignId: string) =>
+    api.get<CampaignAIPlanRequestListResponse>(`/campaign-planner/campaigns/${campaignId}/ai-plan-requests`),
+  getAiPlanRequest: (requestId: string) =>
+    api.get<CampaignAIPlanRequest>(`/campaign-planner/campaign-ai-requests/${requestId}`),
+  applyAiPlan: (requestId: string) =>
+    api.post<CampaignAIPlanRequest>(`/campaign-planner/campaign-ai-requests/${requestId}/apply`),
+  rejectAiPlan: (requestId: string) =>
+    api.post<CampaignAIPlanRequest>(`/campaign-planner/campaign-ai-requests/${requestId}/reject`),
+};
+
+export const CAMPAIGN_PLANNER_QUERY_KEY = ["campaign-planner"] as const;
