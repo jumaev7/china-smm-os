@@ -322,6 +322,99 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         description="Tenant brand profile version published",
         integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
     ),
+    # Smart Publishing Phase 3 — Campaign Planner
+    _def(
+        "campaign.created",
+        category="campaign",
+        description="Marketing campaign created",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.updated",
+        category="campaign",
+        description="Marketing campaign updated",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.archived",
+        category="campaign",
+        description="Marketing campaign archived",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.plan_generated",
+        category="campaign",
+        description="Campaign plan version generated",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.plan_reviewed",
+        category="campaign",
+        description="Campaign plan review completed",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.plan_published",
+        category="campaign",
+        description="Campaign plan version published (immutable)",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.slot_created",
+        category="campaign",
+        description="Campaign calendar slot created",
+        integrations=EventIntegrations(activity=True),
+    ),
+    _def(
+        "campaign.slot_assigned",
+        category="campaign",
+        description="Content assigned to campaign calendar slot",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.slot_unassigned",
+        category="campaign",
+        description="Content unassigned from campaign calendar slot",
+        integrations=EventIntegrations(activity=True),
+    ),
+    _def(
+        "campaign.slot_blocked",
+        category="campaign",
+        description="Campaign slot assignment blocked by readiness",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.gap_detected",
+        category="campaign",
+        description="Campaign plan gaps detected",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.ai_plan_requested",
+        category="campaign",
+        description="AI campaign plan proposal requested",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.ai_plan_completed",
+        category="campaign",
+        description="AI campaign plan proposal completed",
+        integrations=EventIntegrations(activity=True, intelligence=True, audit=True),
+    ),
+    _def(
+        "campaign.ai_plan_failed",
+        category="campaign",
+        description="AI campaign plan proposal failed",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, intelligence=True,
+        ),
+    ),
+    _def(
+        "campaign.ai_plan_applied",
+        category="campaign",
+        description="AI campaign plan proposal applied as draft plan version",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
 )
 
 

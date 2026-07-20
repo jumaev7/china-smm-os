@@ -8,6 +8,7 @@ from typing import Any
 
 MODEL_ALIASES = ("content_fast", "content_standard", "content_high_quality")
 TASK_AI_CONTENT_ADAPTATION = "ai_content_adaptation"
+TASK_CAMPAIGN_PLAN_PROPOSAL = "campaign_plan_proposal"
 ROUTING_VERSION_DEFAULT = "1.0.0"
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.core.events.types import PlatformEvent
 from app.services.intelligence.collectors.automation import AutomationCollector
 from app.services.intelligence.collectors.base import SignalCollector
+from app.services.intelligence.collectors.campaign import CampaignCollector
 from app.services.intelligence.collectors.content import ContentCollector
 from app.services.intelligence.collectors.crm import CrmCollector
 from app.services.intelligence.collectors.customer_success import CustomerSuccessCollector
@@ -17,6 +18,7 @@ from app.services.intelligence.types import NormalizedSignal
 def default_collectors() -> list[SignalCollector]:
     return [
         PublishingCollector(),
+        CampaignCollector(),
         CrmCollector(),
         WorkflowCollector(),
         AutomationCollector(),

@@ -337,16 +337,40 @@ class ScoringEngine:
     def _score_content(counts: dict[str, int]) -> ScoreResult:
         created = counts.get("content.created", 0)
         published = counts.get("publishing.completed", 0)
-        if created == 0 and published == 0:
+        plan_gen = counts.get("campaign.plan_generated", 0)
+        plan_pub = counts.get("campaign.plan_published", 0)
+        coverage_low = counts.get("campaign.coverage_low", 0)
+        unassigned_high = counts.get("campaign.unassigned_slots_high", 0)
+        if created == 0 and published == 0 and plan_gen == 0:
             score = 55
-            reasoning = "No content creation or publishing activity."
+            reasoning = "No content creation, publishing, or campaign planning activity."
         else:
-            score = _clamp(55 + min(30, created * 4) + min(20, published * 3))
-            reasoning = f"{created} content items created, {published} published."
+            score = _clamp(
+                55
+                + min(25, created * 4)
+                + min(15, published * 3)
+                + min(15, plan_gen * 3 + plan_pub * 4)
+                - min(15, coverage_low * 4 + unassigned_high * 5)
+            )
+            reasoning = (
+                f"{created} content items created, {published} published, "
+                f"{plan_gen} plans generated / {plan_pub} published."
+            )
         return ScoringEngine._result(
             "content",
             score,
-            evidence={"created": created, "published": published},
-            evidence_lines=[f"{created} created", f"{published} published"],
+            evidence={
+                "created": created,
+                "published": published,
+                "plan_generated": plan_gen,
+                "plan_published": plan_pub,
+                "coverage_low": coverage_low,
+                "unassigned_slots_high": unassigned_high,
+            },
+            evidence_lines=[
+                f"{created} created",
+                f"{published} published",
+                f"{plan_gen} plans generated",
+            ],
             reasoning=reasoning,
         )

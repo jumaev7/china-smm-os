@@ -319,6 +319,138 @@ class RecommendationEngine:
                 )
             )
 
+        # Campaign Planner recommendations (advisory; never schedule/publish).
+        unassigned_high = counts.get("campaign.unassigned_slots_high", 0)
+        blocked_slots = counts.get("campaign.conflicts_detected", 0)
+        coverage_low = counts.get("campaign.coverage_low", 0)
+        readiness_low = counts.get("campaign.readiness_low", 0)
+        pillar_imbalance = counts.get("campaign.pillar_imbalance", 0)
+        ai_plan_failed = counts.get("campaign.ai_plan_failed", 0)
+        plan_generated = counts.get("campaign.plan_generated", 0)
+        brand_published_for_campaign = counts.get("brand.profile_published", 0)
+
+        if unassigned_high >= 1 or coverage_low >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.assign_unfilled_slots",
+                    category="content",
+                    title="Assign content to unfilled campaign slots",
+                    reason=(
+                        f"Campaign coverage/unassigned signals detected "
+                        f"(unassigned_high={unassigned_high}, coverage_low={coverage_low})."
+                    ),
+                    evidence_lines=[
+                        f"unassigned_slots_high={unassigned_high}",
+                        f"coverage_low={coverage_low}",
+                    ],
+                    evidence={"unassigned_slots_high": unassigned_high, "coverage_low": coverage_low},
+                    priority="high",
+                    confidence=Decimal("0.880"),
+                    rule_id="rule.campaign_unfilled_slots",
+                    action_url="/campaign-planner",
+                    recommendation_text="Open the campaign plan and assign eligible content or run auto-assign.",
+                )
+            )
+        if blocked_slots >= 1 or readiness_low >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.resolve_blocked_accounts",
+                    category="content",
+                    title="Resolve blocked accounts for campaign slots",
+                    reason="Campaign readiness/conflict signals indicate blocked or conflicted slots.",
+                    evidence_lines=[
+                        f"conflicts_detected={blocked_slots}",
+                        f"readiness_low={readiness_low}",
+                    ],
+                    evidence={"conflicts_detected": blocked_slots, "readiness_low": readiness_low},
+                    priority="high",
+                    confidence=Decimal("0.900"),
+                    rule_id="rule.campaign_blocked_accounts",
+                    action_url="/integrations",
+                    recommendation_text="Reconnect publishing accounts and clear hard readiness blockers before assignment.",
+                )
+            )
+        if pillar_imbalance >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.balance_pillars",
+                    category="content",
+                    title="Add content for underrepresented pillar",
+                    reason=f"{pillar_imbalance} pillar-imbalance signal(s) in the lookback window.",
+                    evidence_lines=[f"pillar_imbalance={pillar_imbalance}"],
+                    evidence={"pillar_imbalance": pillar_imbalance},
+                    priority="medium",
+                    confidence=Decimal("0.820"),
+                    rule_id="rule.campaign_pillar_imbalance",
+                    action_url="/campaign-planner",
+                    recommendation_text="Generate or assign more content for under-weighted pillars.",
+                )
+            )
+        if plan_generated >= 1 and coverage_low >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.complete_locale_coverage",
+                    category="content",
+                    title="Complete missing locale coverage",
+                    reason="A campaign plan was generated with low coverage — check locale distribution.",
+                    evidence_lines=[f"plan_generated={plan_generated}", f"coverage_low={coverage_low}"],
+                    evidence={"plan_generated": plan_generated, "coverage_low": coverage_low},
+                    priority="medium",
+                    confidence=Decimal("0.800"),
+                    rule_id="rule.campaign_locale_missing",
+                    action_url="/campaign-planner",
+                    recommendation_text="Ensure each campaign locale has slots and assignable content.",
+                )
+            )
+        if readiness_low >= 1:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.review_stale_variants",
+                    category="content",
+                    title="Review stale variants in campaign assignments",
+                    reason="Low readiness signals suggest assigned content may be stale or incomplete.",
+                    evidence_lines=[f"readiness_low={readiness_low}"],
+                    evidence={"readiness_low": readiness_low},
+                    priority="low",
+                    confidence=Decimal("0.780"),
+                    rule_id="rule.campaign_stale_content",
+                    action_url="/content",
+                    recommendation_text="Re-review assigned variants; Publishing Score is advisory only.",
+                )
+            )
+        if blocked_slots >= 2:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.reduce_same_day_conflicts",
+                    category="content",
+                    title="Reduce same-day campaign conflicts",
+                    reason=f"{blocked_slots} conflict signal(s) detected across campaign plans.",
+                    evidence_lines=[f"conflicts_detected={blocked_slots}"],
+                    evidence={"conflicts_detected": blocked_slots},
+                    priority="medium",
+                    confidence=Decimal("0.840"),
+                    rule_id="rule.campaign_same_day_conflicts",
+                    action_url="/campaign-planner",
+                    recommendation_text="Adjust slot times or redistribute same-day posts per platform.",
+                )
+            )
+        if ai_plan_failed >= 1 and brand_published_for_campaign == 0:
+            results.append(
+                RecommendationEngine._rec(
+                    key="campaign.publish_brand_profile_for_ai",
+                    category="brand",
+                    title="Publish Brand Profile before AI campaign planning",
+                    reason="AI campaign plan failures occurred without a recent Brand Profile publish signal.",
+                    evidence_lines=["campaign.ai_plan_failed without brand.profile_published"],
+                    evidence={"ai_plan_failed": ai_plan_failed, "brand_published": brand_published_for_campaign},
+                    priority="medium",
+                    confidence=Decimal("0.850"),
+                    rule_id="rule.campaign_brand_profile_for_ai",
+                    action_url="/settings/brand-profile",
+                    recommendation_text="Publish an immutable Brand Profile version, then retry AI plan proposal. Deterministic planning remains available.",
+                )
+            )
+
         disconnected = counts.get("integration.disconnected", 0)
         if disconnected >= INTEGRATION_DISCONNECT_THRESHOLD:
             results.append(

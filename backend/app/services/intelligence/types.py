@@ -8,8 +8,8 @@ from typing import Any
 from uuid import UUID
 
 # Scoring / recommendation engine versions (deterministic, bump on rule changes).
-SCORING_ENGINE_VERSION = "1.3.0"
-RECOMMENDATION_ENGINE_VERSION = "1.3.0"
+SCORING_ENGINE_VERSION = "1.4.0"
+RECOMMENDATION_ENGINE_VERSION = "1.4.0"
 EXPLANATION_ENGINE_VERSION = "1.0.0"
 
 # Lookback windows (days) for score computation.
@@ -70,6 +70,16 @@ SIGNAL_TYPES = frozenset({
     "content.created",
     "onboarding.step_completed",
     "onboarding.platform_ready",
+    "campaign.created",
+    "campaign.plan_generated",
+    "campaign.plan_published",
+    "campaign.coverage_low",
+    "campaign.readiness_low",
+    "campaign.conflicts_detected",
+    "campaign.unassigned_slots_high",
+    "campaign.pillar_imbalance",
+    "campaign.ai_plan_completed",
+    "campaign.ai_plan_failed",
 })
 
 # Map platform event types → collector domain.
@@ -109,6 +119,19 @@ PLATFORM_EVENT_TO_SOURCE: dict[str, str] = {
     "tenant.integration.disconnected": "integration",
     "tenant.onboarding.step_completed": "onboarding",
     "tenant.onboarding.platform_ready": "onboarding",
+    "campaign.created": "content",
+    "campaign.updated": "content",
+    "campaign.archived": "content",
+    "campaign.plan_generated": "content",
+    "campaign.plan_reviewed": "content",
+    "campaign.plan_published": "content",
+    "campaign.slot_assigned": "content",
+    "campaign.slot_blocked": "content",
+    "campaign.gap_detected": "content",
+    "campaign.ai_plan_requested": "content",
+    "campaign.ai_plan_completed": "content",
+    "campaign.ai_plan_failed": "content",
+    "campaign.ai_plan_applied": "content",
 }
 
 

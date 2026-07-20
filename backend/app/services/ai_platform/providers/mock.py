@@ -116,6 +116,35 @@ class MockAIProvider(AIProvider):
             output: dict[str, Any] = {"invalid": True}
         elif self._custom_output is not None:
             output = dict(self._custom_output)
+        elif request.task_type == "campaign_plan_proposal":
+            platforms = list((meta.get("platforms") if isinstance(meta.get("platforms"), list) else None) or ["instagram", "telegram"])
+            locales = list((meta.get("locales") if isinstance(meta.get("locales"), list) else None) or ["en"])
+            output = {
+                "summary": "Rule-based campaign cadence proposal for the configured platforms and locales.",
+                "cadence_suggestions": {
+                    "posts_per_week": 3,
+                    "max_posts_per_day_per_platform": 2,
+                    "min_spacing_minutes": 120,
+                    "include_weekends": True,
+                },
+                "pillar_notes": ["Balance educational and promotional pillars evenly."],
+                "phase_notes": ["Keep launch phase denser than sustain phase."],
+                "slot_hints": [
+                    {
+                        "platform": platforms[0],
+                        "locale": locales[0],
+                        "day_offset": 0,
+                        "suggested_time": "10:00",
+                        "pillar_key": None,
+                        "note": "rule-based suggested time",
+                    }
+                ],
+                "warnings": [],
+                "disclaimers": [
+                    "Suggested times are rule-based, not engagement-optimal.",
+                    "No performance or ROI claims are made.",
+                ],
+            }
         else:
             claims = []
             for i, token in enumerate(protected[:5]):
