@@ -142,6 +142,19 @@ from app.models.campaign_planner import (
     TenantCampaignGap,
     TenantCampaignRecommendation,
 )
+from app.models.measurement import (
+    TenantExternalPublication,
+    TenantMetricIngestionRun,
+    TenantPublicationMetricSnapshot,
+    TenantPublicationMetricValue,
+    TenantPublicationMetricAggregate,
+    TenantCampaignMetricAggregate,
+    TenantAttributionRecord,
+    TenantMeasurementAnomaly,
+    TenantMeasurementJob,
+    TenantTrackedLink,
+    TenantTrackedLinkClicksDaily,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -287,4 +300,15 @@ __all__ = [
     "TenantCampaignReview",
     "TenantCampaignGap",
     "TenantCampaignRecommendation",
+    "TenantExternalPublication",
+    "TenantMetricIngestionRun",
+    "TenantPublicationMetricSnapshot",
+    "TenantPublicationMetricValue",
+    "TenantPublicationMetricAggregate",
+    "TenantCampaignMetricAggregate",
+    "TenantAttributionRecord",
+    "TenantMeasurementAnomaly",
+    "TenantMeasurementJob",
+    "TenantTrackedLink",
+    "TenantTrackedLinkClicksDaily",
 ]
