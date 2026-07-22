@@ -431,6 +431,8 @@ const NAV_SECTIONS: NavSection[] = [
 
       { href: "/analytics", icon: BarChart3, labelKey: "nav.analytics" },
 
+      { href: "/analytics/performance", icon: TrendingUp, labelKey: "nav.analyticsPerformance" },
+
       { href: "/audit", icon: ClipboardCheck, labelKey: "nav.audit" },
 
       { href: "/system", icon: Activity, labelKey: "nav.system" },
@@ -484,6 +486,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
     sectionKey: "nav.sectionTenantAnalytics",
     items: [
       { href: "/analytics", icon: BarChart3, labelKey: "nav.analytics" },
+      { href: "/analytics/performance", icon: Activity, labelKey: "nav.analyticsPerformance" },
       { href: "/growth-center", icon: TrendingUp, labelKey: "nav.growthCenter" },
       { href: "/export-growth", icon: Globe, labelKey: "nav.exportGrowth" },
       { href: "/customer-success", icon: Sparkles, labelKey: "nav.customerSuccess" },
@@ -574,8 +577,8 @@ function communicationsNavMatches(pathname: string, path: string): boolean {
 
 function navIsActive(pathname: string, href: string, searchParams: URLSearchParams): boolean {
   const [path, queryString] = href.split("?");
-  const pathMatches = path === "/publishing"
-    ? pathname === "/publishing"
+  const pathMatches = path === "/publishing" || path === "/analytics"
+    ? pathname === path
     : path.startsWith("/communications")
       ? communicationsNavMatches(pathname, path)
       : pathname === path || pathname.startsWith(`${path}/`);

@@ -18,8 +18,10 @@ import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates
 import { KpiCard, PageHeader, PageSection, PageShell } from "@/components/ui/design-system";
 import {
   INTELLIGENCE_QUERY_KEY,
+  MEASUREMENT_QUERY_KEY,
   getApiErrorMessage,
   intelligenceApi,
+  measurementApi,
   type MarketingRecommendation,
   type MarketingScore,
   type MarketingSignal,
@@ -167,6 +169,11 @@ export default function MarketingIntelligencePage() {
   const historyQuery = useQuery({
     queryKey: [...INTELLIGENCE_QUERY_KEY, "history"],
     queryFn: () => intelligenceApi.history({ days: 30 }).then((r) => r.data),
+    ...QUERY_OPTS,
+  });
+  const measurementCoverageQuery = useQuery({
+    queryKey: [...MEASUREMENT_QUERY_KEY, "overview", 30, "mi-card"],
+    queryFn: () => measurementApi.overview({ days: 30 }).then((r) => r.data),
     ...QUERY_OPTS,
   });
 
@@ -323,6 +330,51 @@ export default function MarketingIntelligencePage() {
                     ))}
                 </ul>
               </div>
+            ) : null}
+          </PageSection>
+
+          <PageSection title="Measurement coverage">
+            <p className="mb-3 text-sm text-slate-500 dark-tenant:text-slate-400">
+              Observed publication freshness and attribution coverage (last 30 days by publish date).
+            </p>
+            {measurementCoverageQuery.isLoading ? (
+              <p className="text-sm text-slate-500">Loading coverage…</p>
+            ) : measurementCoverageQuery.isError ? (
+              <p className="flex items-center gap-2 text-sm text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {getApiErrorMessage(measurementCoverageQuery.error)}
+              </p>
+            ) : measurementCoverageQuery.data ? (
+              <>
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <KpiCard
+                    label="Measured publications"
+                    value={String(measurementCoverageQuery.data.measured_publications)}
+                    icon={Activity}
+                  />
+                  <KpiCard
+                    label="Fresh / stale"
+                    value={`${measurementCoverageQuery.data.fresh_count} / ${measurementCoverageQuery.data.stale_count}`}
+                    icon={Radio}
+                  />
+                  <KpiCard
+                    label="Unsupported"
+                    value={String(measurementCoverageQuery.data.unsupported_count)}
+                    icon={AlertTriangle}
+                  />
+                  <KpiCard
+                    label="Open anomalies"
+                    value={String(measurementCoverageQuery.data.open_anomalies)}
+                    icon={AlertTriangle}
+                  />
+                </div>
+                <Link
+                  href="/analytics/performance"
+                  className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-slate-900 underline-offset-2 hover:underline dark-tenant:text-slate-100"
+                >
+                  Open performance overview <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </>
             ) : null}
           </PageSection>
 

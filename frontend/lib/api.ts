@@ -15014,3 +15014,331 @@ export const campaignPlannerApi = {
 };
 
 export const CAMPAIGN_PLANNER_QUERY_KEY = ["campaign-planner"] as const;
+
+// ---------------------------------------------------------------------------
+// Marketing Intelligence Phase 2 — Measurement (read-only analytics)
+// Tenant is derived from auth; never send tenant_id in request bodies/params.
+// ---------------------------------------------------------------------------
+
+export type MeasurementPeriodDays = 7 | 30 | 90;
+
+export interface MeasurementPlatformCount {
+  platform: string;
+  publication_count: number;
+  capability_status?: string | null;
+  fresh_count?: number;
+  stale_count?: number;
+  unsupported_count?: number;
+}
+
+export interface MeasurementAttributionCoverage {
+  attributed_publications: number;
+  unattributed_publications: number;
+  coverage_ratio: number | null;
+}
+
+export interface MeasurementIngestionFailure {
+  id: string;
+  platform?: string | null;
+  status: string;
+  error_summary?: string | null;
+  created_at?: string | null;
+  finished_at?: string | null;
+}
+
+export interface MeasurementOverview {
+  period_days: number;
+  window_start: string;
+  window_end: string;
+  timezone?: string | null;
+  measured_publications: number;
+  fresh_count: number;
+  aging_count?: number;
+  stale_count: number;
+  unsupported_count: number;
+  unavailable_count?: number;
+  platform_distribution: MeasurementPlatformCount[];
+  attribution_coverage: MeasurementAttributionCoverage;
+  open_anomalies: number;
+  recent_ingestion_failures: MeasurementIngestionFailure[];
+  notes?: string[];
+}
+
+export interface MeasurementMetricValue {
+  metric_key: string;
+  value: number | null;
+  value_type?: string | null;
+  aggregation_type?: string | null;
+  normalization_status?: string | null;
+  provider_metric_key?: string | null;
+  window_key?: string | null;
+  observed_at?: string | null;
+  confidence?: number | null;
+  formula?: string | null;
+}
+
+export interface MeasurementContentPerformanceRow {
+  publication_id: string;
+  provider_publication_id?: string | null;
+  platform: string;
+  account_label?: string | null;
+  publishing_account_id?: string | null;
+  published_at?: string | null;
+  last_metric_at?: string | null;
+  content_id?: string | null;
+  content_title?: string | null;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  pillar_name?: string | null;
+  generation_method?: string | null;
+  publishing_score_at_publish?: number | null;
+  freshness_status: string;
+  latest_metrics: Record<string, number | null>;
+  attribution_method?: string | null;
+  attribution_confidence?: number | null;
+  baseline_classification?: string | null;
+  baseline_metric_key?: string | null;
+  is_mock?: boolean;
+}
+
+export interface MeasurementContentPerformanceResponse {
+  items: MeasurementContentPerformanceRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  sort_metric: string;
+  sort_dir?: string;
+  period_days: number;
+  window_start?: string | null;
+  window_end?: string | null;
+  /** Publications whose publish date falls in the selected window. */
+  publication_date_scope?: string | null;
+  /** Metric values reflect latest observations (observation date ≠ publish date). */
+  observation_note?: string | null;
+}
+
+export interface MeasurementTimelinePoint {
+  metric_key: string;
+  observed_at: string;
+  value: number | null;
+  snapshot_id?: string | null;
+  normalization_status?: string | null;
+}
+
+export interface MeasurementAnomaly {
+  id: string;
+  anomaly_key: string;
+  severity: string;
+  status: string;
+  message?: string | null;
+  metric_key?: string | null;
+  detected_at?: string | null;
+  evidence?: Record<string, unknown> | null;
+}
+
+export interface MeasurementAttribution {
+  method: string;
+  confidence: number;
+  status: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  evidence?: Record<string, unknown> | null;
+}
+
+export interface MeasurementDerivedRate {
+  metric_key: string;
+  value: number | null;
+  formula: string;
+  numerator_keys: string[];
+  denominator_keys: string[];
+  missing_inputs?: string[];
+}
+
+export interface MeasurementPublicationDetail {
+  id: string;
+  platform: string;
+  provider_publication_id: string;
+  provider_permalink?: string | null;
+  publication_status: string;
+  published_at?: string | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  last_metric_at?: string | null;
+  freshness_status: string;
+  is_mock: boolean;
+  content_id?: string | null;
+  content_title?: string | null;
+  content_variant_id?: string | null;
+  publishing_account_id?: string | null;
+  account_label?: string | null;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  campaign_plan_version_id?: string | null;
+  campaign_slot_id?: string | null;
+  generation_method?: string | null;
+  publishing_score_at_publish?: number | null;
+  normalized_metrics: MeasurementMetricValue[];
+  provider_native_metrics: MeasurementMetricValue[];
+  derived_rates: MeasurementDerivedRate[];
+  timeline: MeasurementTimelinePoint[];
+  anomalies: MeasurementAnomaly[];
+  attribution?: MeasurementAttribution | null;
+  baseline_classifications?: Array<{
+    metric_key: string;
+    classification: string;
+    value?: number | null;
+    baseline_median?: number | null;
+    delta_ratio?: number | null;
+  }>;
+}
+
+export interface MeasurementKpiProgress {
+  kpi_id: string;
+  name?: string | null;
+  metric_key: string;
+  target_value: number | null;
+  current_value: number | null;
+  comparator: string;
+  status: string;
+  progress_ratio: number | null;
+  confidence: number;
+  freshness_status: string;
+  evidence?: Record<string, unknown> | null;
+}
+
+export interface MeasurementCampaignSummary {
+  campaign_id: string;
+  campaign_name?: string | null;
+  status?: string | null;
+  attributed_publications: number;
+  unattributed_publications: number;
+  attribution_confidence_avg?: number | null;
+  freshness: {
+    fresh: number;
+    stale: number;
+    unsupported: number;
+    unavailable?: number;
+  };
+  measurement_gaps: string[];
+  attributed_observed_metrics: MeasurementMetricValue[];
+  kpi_progress: MeasurementKpiProgress[];
+  notes?: string[];
+}
+
+export interface MeasurementFreshnessSummary {
+  fresh: number;
+  aging: number;
+  stale: number;
+  unsupported: number;
+  unavailable: number;
+  platforms?: MeasurementPlatformCount[];
+}
+
+export interface MeasurementAnomalyList {
+  items: MeasurementAnomaly[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface MeasurementPlatformCapability {
+  platform: string;
+  capability_status: string;
+  supports_post_level_metrics: boolean;
+  supported_metric_keys: string[];
+  unsupported_reason?: string | null;
+  notes?: string | null;
+  last_successful_sync_at?: string | null;
+}
+
+export interface MeasurementConfiguration {
+  catalog_version: string;
+  calculation_version?: string | null;
+  platforms: MeasurementPlatformCapability[];
+  notes?: string[];
+}
+
+export const measurementApi = {
+  overview: (params?: { days?: MeasurementPeriodDays }) =>
+    api.get<MeasurementOverview>("/measurement/overview", { params }),
+  platforms: () => api.get<{ platforms: MeasurementPlatformCount[] }>("/measurement/platforms"),
+  contentPerformance: (params?: {
+    days?: MeasurementPeriodDays;
+    page?: number;
+    page_size?: number;
+    sort_metric?: string;
+    sort_dir?: "asc" | "desc";
+    platform?: string;
+    campaign_id?: string;
+    freshness?: string;
+  }) =>
+    api.get<MeasurementContentPerformanceResponse>("/measurement/content-performance", { params }),
+  freshness: () => api.get<MeasurementFreshnessSummary>("/measurement/freshness"),
+  anomalies: (params?: { page?: number; page_size?: number; status?: string }) =>
+    api.get<MeasurementAnomalyList>("/measurement/anomalies", { params }),
+  configuration: () => api.get<MeasurementConfiguration>("/measurement/configuration"),
+  getPublication: (publicationId: string) =>
+    api.get<MeasurementPublicationDetail>(`/measurement/publications/${publicationId}`),
+  listPublications: (params?: {
+    page?: number;
+    page_size?: number;
+    platform?: string;
+    freshness?: string;
+    days?: MeasurementPeriodDays;
+  }) =>
+    api.get<{ items: MeasurementContentPerformanceRow[]; total: number; page: number; page_size: number }>(
+      "/measurement/publications",
+      { params },
+    ),
+  publicationSnapshots: (publicationId: string, params?: { page?: number; page_size?: number }) =>
+    api.get<{
+      items: Array<{
+        id: string;
+        observed_at: string;
+        status: string;
+        source?: string | null;
+      }>;
+      total: number;
+    }>(`/measurement/publications/${publicationId}/snapshots`, { params }),
+  publicationMetrics: (publicationId: string, params?: { window_key?: string }) =>
+    api.get<{ items: MeasurementMetricValue[] }>(
+      `/measurement/publications/${publicationId}/metrics`,
+      { params },
+    ),
+  publicationPerformance: (publicationId: string) =>
+    api.get<{
+      classifications: Array<{
+        metric_key: string;
+        classification: string;
+        value?: number | null;
+        baseline_median?: number | null;
+        delta_ratio?: number | null;
+      }>;
+    }>(`/measurement/publications/${publicationId}/performance`),
+  refreshPublication: (publicationId: string) =>
+    api.post<{ status: string; message?: string }>(
+      `/measurement/publications/${publicationId}/refresh`,
+    ),
+  getCampaign: (campaignId: string) =>
+    api.get<MeasurementCampaignSummary>(`/measurement/campaigns/${campaignId}`),
+  campaignMetrics: (campaignId: string) =>
+    api.get<{ items: MeasurementMetricValue[] }>(`/measurement/campaigns/${campaignId}/metrics`),
+  campaignKpis: (campaignId: string) =>
+    api.get<{ items: MeasurementKpiProgress[] }>(`/measurement/campaigns/${campaignId}/kpis`),
+  campaignAttribution: (campaignId: string) =>
+    api.get<{
+      attributed_publications: number;
+      unattributed_publications: number;
+      methods: Array<{ method: string; count: number; avg_confidence?: number | null }>;
+    }>(`/measurement/campaigns/${campaignId}/attribution`),
+  campaignContentPerformance: (
+    campaignId: string,
+    params?: { page?: number; page_size?: number; sort_metric?: string },
+  ) =>
+    api.get<MeasurementContentPerformanceResponse>(
+      `/measurement/campaigns/${campaignId}/content-performance`,
+      { params },
+    ),
+};
+
+export const MEASUREMENT_QUERY_KEY = ["measurement"] as const;
