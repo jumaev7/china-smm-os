@@ -80,6 +80,18 @@ SIGNAL_TYPES = frozenset({
     "campaign.pillar_imbalance",
     "campaign.ai_plan_completed",
     "campaign.ai_plan_failed",
+    "measurement.snapshot_ingested",
+    "measurement.snapshot_failed",
+    "measurement.metrics_stale",
+    "measurement.anomaly_detected",
+    "publication.performance_above_baseline",
+    "publication.performance_below_baseline",
+    "campaign.kpi_progress_updated",
+    "campaign.measurement_incomplete",
+    "campaign.attribution_low",
+    "integration.metrics_collection_blocked",
+    "publication.registered",
+    "attribution.recorded",
 })
 
 # Map platform event types → collector domain.
@@ -132,6 +144,16 @@ PLATFORM_EVENT_TO_SOURCE: dict[str, str] = {
     "campaign.ai_plan_completed": "content",
     "campaign.ai_plan_failed": "content",
     "campaign.ai_plan_applied": "content",
+    "publication.registered": "content",
+    "publication.metrics_ingested": "content",
+    "publication.metrics_failed": "content",
+    "publication.metrics_stale": "content",
+    "publication.measurement_anomaly_detected": "content",
+    "campaign.metrics_updated": "content",
+    "campaign.kpi_progress_updated": "content",
+    "attribution.recorded": "content",
+    "attribution.updated": "content",
+    "tracked_link.created": "content",
 }
 
 

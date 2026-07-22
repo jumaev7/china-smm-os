@@ -712,7 +712,7 @@ class PublishService:
                     if not result.get("success"):
                         all_ok = False
 
-                await PublishService._record_attempt(
+                attempt = await PublishService._record_attempt(
                     db, content_id=content_id, platform=platform, account=account, result=result,
                 )
                 results.append(result)
@@ -723,6 +723,31 @@ class PublishService:
                     result.get("success"),
                     result.get("platform_post_id"),
                 )
+                # Best-effort measurement registration — never break publishing.
+                if (
+                    not test_mode
+                    and result.get("success")
+                    and result.get("platform_post_id")
+                ):
+                    try:
+                        from app.services.measurement.publication_registry import (
+                            register_from_publish_attempt,
+                        )
+
+                        await register_from_publish_attempt(
+                            db,
+                            tenant_id=content_tenant_id,
+                            content=item,
+                            attempt=attempt,
+                            result=result,
+                            account=account,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "[Publish] measurement registration failed: content=%s platform=%s",
+                            content_id,
+                            platform,
+                        )
 
             if test_mode:
                 await db.commit()

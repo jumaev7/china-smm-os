@@ -415,6 +415,73 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         description="AI campaign plan proposal applied as draft plan version",
         integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
     ),
+    # Marketing Intelligence Phase 2 — Measurement
+    _def(
+        "publication.registered",
+        category="measurement",
+        description="External publication registered for metric tracking",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "publication.metrics_requested",
+        category="measurement",
+        description="Metric collection requested for a publication",
+        integrations=EventIntegrations(activity=True),
+    ),
+    _def(
+        "publication.metrics_ingested",
+        category="measurement",
+        description="Publication metric snapshot ingested",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "publication.metrics_failed",
+        category="measurement",
+        description="Publication metric collection failed",
+        integrations=EventIntegrations(activity=True, intelligence=True, notification=True),
+    ),
+    _def(
+        "publication.metrics_stale",
+        category="measurement",
+        description="Publication metrics classified as stale",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "publication.measurement_anomaly_detected",
+        category="measurement",
+        description="Measurement anomaly detected on a publication snapshot",
+        integrations=EventIntegrations(activity=True, intelligence=True, notification=True),
+    ),
+    _def(
+        "campaign.metrics_updated",
+        category="measurement",
+        description="Campaign-level metric aggregates recalculated",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "campaign.kpi_progress_updated",
+        category="measurement",
+        description="Campaign KPI progress re-evaluated from measured metrics",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "attribution.recorded",
+        category="measurement",
+        description="Attribution record created for a publication or entity",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "attribution.updated",
+        category="measurement",
+        description="Attribution record updated or superseded",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "tracked_link.created",
+        category="measurement",
+        description="Tracked link created for optional click measurement",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
 )
 
 

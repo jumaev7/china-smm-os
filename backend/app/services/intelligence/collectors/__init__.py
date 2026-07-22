@@ -9,6 +9,7 @@ from app.services.intelligence.collectors.content import ContentCollector
 from app.services.intelligence.collectors.crm import CrmCollector
 from app.services.intelligence.collectors.customer_success import CustomerSuccessCollector
 from app.services.intelligence.collectors.integration import IntegrationCollector
+from app.services.intelligence.collectors.measurement import MeasurementCollector
 from app.services.intelligence.collectors.notification import NotificationCollector
 from app.services.intelligence.collectors.publishing import PublishingCollector
 from app.services.intelligence.collectors.workflow import WorkflowCollector
@@ -19,6 +20,7 @@ def default_collectors() -> list[SignalCollector]:
     return [
         PublishingCollector(),
         CampaignCollector(),
+        MeasurementCollector(),
         CrmCollector(),
         WorkflowCollector(),
         AutomationCollector(),
