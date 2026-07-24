@@ -9,11 +9,13 @@ import {
   CalendarRange,
   ClipboardCheck,
   Copy,
+  Megaphone,
   Sparkles,
   Wand2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
+  advertisingApi,
   CAMPAIGN_PLANNER_QUERY_KEY,
   campaignPlannerApi,
   normalizeList,
@@ -44,6 +46,7 @@ import {
   titleCase,
   toastCampaignError,
 } from "@/lib/campaign-planner-ui";
+import { entityStatusVariant, formatMoneyMinor } from "@/lib/advertising-ui";
 
 type TabKey =
   | "overview"
@@ -122,6 +125,14 @@ export default function CampaignDetailPage() {
     queryKey: [...CAMPAIGN_PLANNER_QUERY_KEY, campaignId, "camp-pillars"],
     queryFn: () => campaignPlannerApi.listCampaignPillars(campaignId).then((r) => r.data),
     enabled: Boolean(campaignId) && (tab === "structure" || tab === "overview"),
+  });
+  const adCampaignsQ = useQuery({
+    queryKey: [...CAMPAIGN_PLANNER_QUERY_KEY, campaignId, "ad-campaigns"],
+    queryFn: () =>
+      advertisingApi
+        .listCampaigns({ marketing_campaign_id: campaignId, limit: 50 })
+        .then((r) => r.data),
+    enabled: Boolean(campaignId) && tab === "overview",
   });
   const pillarsQ = useQuery({
     queryKey: [...CAMPAIGN_PLANNER_QUERY_KEY, "pillars"],
@@ -384,6 +395,48 @@ export default function CampaignDetailPage() {
               Plan quality and Campaign Score are advisory. PublishSafety remains authoritative for publishing.
               Generating or assigning content does not schedule or publish posts.
             </p>
+          </PageSection>
+
+          <PageSection
+            title="Linked advertising"
+            description="Read-only provider campaigns linked to this campaign. No ad editing here."
+            action={
+              <Link href="/advertising/campaigns?linked=true" className="btn-secondary text-xs">
+                <Megaphone size={13} /> Advertising
+              </Link>
+            }
+          >
+            {adCampaignsQ.isLoading ? (
+              <LoadingState message="Loading linked advertising…" variant="inline" />
+            ) : (adCampaignsQ.data?.items ?? []).length === 0 ? (
+              <p className="text-sm text-gray-500">
+                No provider ad campaigns linked yet. Link one from the{" "}
+                <Link href="/advertising/campaigns" className="font-medium underline underline-offset-2">
+                  Advertising Intelligence
+                </Link>{" "}
+                campaign view.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {(adCampaignsQ.data?.items ?? []).map((adCampaign) => (
+                  <Link
+                    key={adCampaign.id}
+                    href={`/advertising/campaigns/${adCampaign.id}`}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm hover:border-brand-200 dark-tenant:border-slate-800"
+                  >
+                    <span className="min-w-0 truncate font-medium">{adCampaign.name}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="tabular-nums text-slate-500">
+                        {formatMoneyMinor(adCampaign.spend_minor, adCampaign.currency)}
+                      </span>
+                      <StatusBadge variant={entityStatusVariant(adCampaign.status)}>
+                        {titleCase(adCampaign.status)}
+                      </StatusBadge>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </PageSection>
 
           {review && (

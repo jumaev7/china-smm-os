@@ -9,6 +9,8 @@ import {
   Brain,
   CheckCircle2,
   Lightbulb,
+  Link2,
+  Megaphone,
   Radio,
   TrendingUp,
 } from "lucide-react";
@@ -238,7 +240,43 @@ export default function MarketingIntelligencePage() {
         title={t("marketingIntelligence.title")}
         subtitle={t("marketingIntelligence.subtitle")}
         icon={Brain}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Link href="/advertising" className="btn-secondary text-sm">
+              <Megaphone size={14} /> Advertising Intelligence
+            </Link>
+            <Link href="/analytics/performance" className="btn-secondary text-sm">
+              <TrendingUp size={14} /> Performance
+            </Link>
+          </div>
+        }
       />
+
+      <PageSection title="Paid media">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <KpiCard
+            label="Advertising Intelligence"
+            value="Read-only spend & pacing"
+            href="/advertising"
+            sub="Provider spend, pacing, fatigue & anomalies"
+            icon={Megaphone}
+          />
+          <KpiCard
+            label="Paid attribution"
+            value="Reported vs CRM-confirmed"
+            href="/advertising/attribution"
+            sub="Link provider campaigns to internal campaigns"
+            icon={Link2}
+          />
+          <KpiCard
+            label="Delivery anomalies"
+            value="Advisory signals"
+            href="/advertising/anomalies"
+            sub="Data-quality & delivery diagnostics"
+            icon={AlertTriangle}
+          />
+        </div>
+      </PageSection>
 
       {loading ? <LoadingState /> : null}
 

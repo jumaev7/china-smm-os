@@ -15342,3 +15342,445 @@ export const measurementApi = {
 };
 
 export const MEASUREMENT_QUERY_KEY = ["measurement"] as const;
+
+// ---------------------------------------------------------------------------
+// Advertising Intelligence (read-only toward ad providers)
+// Tenant is derived from auth; never send tenant_id. Money is integer MINOR
+// units + explicit currency and is never summed across currencies. Provider-
+// reported conversions are kept distinct from CRM-confirmed conversions.
+// ---------------------------------------------------------------------------
+
+export interface AdvertisingAccount {
+  id: string;
+  provider: string;
+  external_account_id?: string | null;
+  name: string;
+  currency?: string | null;
+  timezone?: string | null;
+  status: string;
+  is_mock?: boolean;
+  read_only?: boolean;
+  last_import_at?: string | null;
+  last_metric_refresh_at?: string | null;
+  freshness_status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AdvertisingAccountList {
+  items: AdvertisingAccount[];
+  total: number;
+  read_only?: boolean;
+}
+
+export interface AdvertisingCapability {
+  provider: string;
+  display_name?: string | null;
+  capability_status: string;
+  read_only?: boolean;
+  supports_campaign_metrics?: boolean;
+  supports_ad_level_metrics?: boolean;
+  supports_creative_metrics?: boolean;
+  supports_conversions?: boolean;
+  supported_metric_keys?: string[];
+  unsupported_reason?: string | null;
+  notes?: string | null;
+}
+
+export interface AdImportRun {
+  import_run_id: string;
+  account_id: string;
+  provider?: string | null;
+  kind: string;
+  status: string;
+  campaigns_imported?: number;
+  ad_groups_imported?: number;
+  ads_imported?: number;
+  creatives_imported?: number;
+  metrics_updated?: number;
+  failure_code?: string | null;
+  requested_at?: string | null;
+  completed_at?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdCampaign {
+  id: string;
+  account_id: string;
+  provider: string;
+  external_campaign_id?: string | null;
+  name: string;
+  status: string;
+  objective?: string | null;
+  currency?: string | null;
+  budget_amount_minor?: number | null;
+  budget_type?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  spend_minor?: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  conversions_reported?: number | null;
+  conversions_crm_confirmed?: number | null;
+  pacing_status?: string | null;
+  freshness_status?: string | null;
+  last_metric_at?: string | null;
+  linked_internal_campaign_id?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdCampaignList {
+  items: AdCampaign[];
+  total: number;
+  read_only?: boolean;
+}
+
+export interface AdGroup {
+  id: string;
+  account_id: string;
+  campaign_id?: string | null;
+  external_ad_group_id?: string | null;
+  name: string;
+  status: string;
+  currency?: string | null;
+  spend_minor?: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  conversions_reported?: number | null;
+  delivery_status?: string | null;
+  freshness_status?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdGroupList {
+  items: AdGroup[];
+  total: number;
+  read_only?: boolean;
+}
+
+export interface Ad {
+  id: string;
+  account_id: string;
+  campaign_id?: string | null;
+  ad_group_id?: string | null;
+  external_ad_id?: string | null;
+  name: string;
+  status: string;
+  creative_id?: string | null;
+  currency?: string | null;
+  spend_minor?: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  conversions_reported?: number | null;
+  freshness_status?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdList {
+  items: Ad[];
+  total: number;
+  read_only?: boolean;
+}
+
+export interface AdCreative {
+  id: string;
+  account_id: string;
+  external_creative_id?: string | null;
+  name: string;
+  format?: string | null;
+  preview_url?: string | null;
+  thumbnail_url?: string | null;
+  status?: string | null;
+  fatigue_status?: string | null;
+  currency?: string | null;
+  spend_minor?: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  frequency?: number | null;
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+  linked_content_id?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdCreativeList {
+  items: AdCreative[];
+  total: number;
+  read_only?: boolean;
+}
+
+export interface AdCreativeDiagnostics {
+  creative_id: string;
+  fatigue_status: string;
+  frequency?: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  ctr?: number | null;
+  ctr_trend?: string | null;
+  evidence?: Record<string, unknown>;
+  freshness_status?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdPacing {
+  campaign_id?: string | null;
+  status: string;
+  currency?: string | null;
+  budget_amount_minor?: number | null;
+  budget_type?: string | null;
+  spend_minor?: number | null;
+  expected_spend_minor?: number | null;
+  pace_ratio?: number | null;
+  days_elapsed?: number | null;
+  days_total?: number | null;
+  read_only?: boolean;
+}
+
+export interface AdCampaignPerformance {
+  campaign_id: string;
+  currency?: string | null;
+  spend_minor?: number | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  ctr?: number | null;
+  cpc_minor?: number | null;
+  cpm_minor?: number | null;
+  conversions_reported?: number | null;
+  conversions_crm_confirmed?: number | null;
+  cost_per_conversion_minor?: number | null;
+  pacing?: AdPacing | null;
+  time_series?: Array<{
+    date: string;
+    currency?: string | null;
+    spend_minor?: number | null;
+    impressions?: number | null;
+    clicks?: number | null;
+    conversions_reported?: number | null;
+  }>;
+  freshness_status?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdDeliveryDiagnostics {
+  ad_group_id: string;
+  delivery_status: string;
+  currency?: string | null;
+  spend_minor?: number | null;
+  impressions?: number | null;
+  reasons?: string[];
+  evidence?: Record<string, unknown>;
+  freshness_status?: string | null;
+  read_only?: boolean;
+}
+
+export interface AdCampaignAttribution {
+  campaign_id: string;
+  linked_internal_campaign_id?: string | null;
+  conversions_reported?: number | null;
+  conversions_crm_confirmed?: number | null;
+  coverage_ratio?: number | null;
+  currency?: string | null;
+  methods?: Array<Record<string, unknown>>;
+  evidence?: Record<string, unknown>;
+  read_only?: boolean;
+}
+
+export interface AdAttributionCoverage {
+  read_only?: boolean;
+  linked_campaign_count: number;
+  unlinked_campaign_count: number;
+  coverage_ratio?: number | null;
+  reported_conversions: number;
+  crm_confirmed_conversions: number;
+  by_campaign: Array<{
+    campaign_id: string;
+    campaign_name?: string | null;
+    provider?: string | null;
+    linked_internal_campaign_id?: string | null;
+    conversions_reported?: number | null;
+    conversions_crm_confirmed?: number | null;
+    currency?: string | null;
+  }>;
+  note?: string | null;
+}
+
+export interface AdLinkResult {
+  entity_type: string;
+  entity_id: string;
+  linked_internal_id?: string | null;
+  linked: boolean;
+  read_only?: boolean;
+}
+
+export interface AdvertisingOverview {
+  read_only?: boolean;
+  account_count: number;
+  connected_account_count: number;
+  mock_account_count: number;
+  active_campaign_count: number;
+  campaign_count: number;
+  spend_by_currency: Array<{ currency: string; spend_minor: number; campaign_count: number }>;
+  pacing_warnings: Array<{
+    campaign_id: string;
+    campaign_name?: string | null;
+    pacing_status?: string | null;
+    currency?: string | null;
+    spend_minor?: number | null;
+    budget_amount_minor?: number | null;
+  }>;
+  fatigue_warning_count: number;
+  attribution_coverage: {
+    linked_campaign_count: number;
+    unlinked_campaign_count: number;
+    coverage_ratio?: number | null;
+    reported_conversions: number;
+    crm_confirmed_conversions?: number | null;
+  };
+  open_anomaly_count: number;
+  freshness: {
+    fresh: number;
+    aging: number;
+    stale: number;
+    unavailable: number;
+    unsupported: number;
+  };
+  providers: string[];
+  catalog_version?: string | null;
+  notes?: string[];
+}
+
+export interface AdvertisingFreshness {
+  status: string;
+  last_import_at?: string | null;
+  last_metric_refresh_at?: string | null;
+  counts_by_status: Record<string, number>;
+  accounts: Array<{
+    account_id: string;
+    name?: string | null;
+    provider?: string | null;
+    freshness_status?: string | null;
+    last_import_at?: string | null;
+    last_metric_refresh_at?: string | null;
+  }>;
+  read_only?: boolean;
+}
+
+export interface AdvertisingAnomaly {
+  id: string;
+  account_id?: string | null;
+  campaign_id?: string | null;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  anomaly_key: string;
+  severity: string;
+  metric_key?: string | null;
+  currency?: string | null;
+  evidence?: Record<string, unknown>;
+  status: string;
+  created_at?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface AdvertisingAnomalyList {
+  items: AdvertisingAnomaly[];
+  total: number;
+}
+
+export interface AdvertisingConfiguration {
+  read_only?: boolean;
+  catalog_version: string;
+  service_version: string;
+  providers: AdvertisingCapability[];
+  metric_keys: string[];
+  objective_types: string[];
+  account_statuses: string[];
+  campaign_statuses: string[];
+  pacing_statuses: string[];
+  fatigue_statuses: string[];
+  delivery_statuses: string[];
+  freshness_statuses: string[];
+  creative_formats: string[];
+  limits: Record<string, number>;
+  notes?: string[];
+}
+
+export const advertisingApi = {
+  overview: () => api.get<AdvertisingOverview>("/advertising/overview"),
+  configuration: () => api.get<AdvertisingConfiguration>("/advertising/configuration"),
+  providers: () => api.get<AdvertisingCapability[]>("/advertising/providers"),
+  freshness: () => api.get<AdvertisingFreshness>("/advertising/freshness"),
+  anomalies: (params?: { status?: string; account_id?: string; limit?: number; offset?: number }) =>
+    api.get<AdvertisingAnomalyList>("/advertising/anomalies", { params }),
+  attribution: () => api.get<AdAttributionCoverage>("/advertising/attribution"),
+
+  listAccounts: (params?: { provider?: string; status?: string; limit?: number; offset?: number }) =>
+    api.get<AdvertisingAccountList>("/advertising/accounts", { params }),
+  getAccount: (accountId: string) =>
+    api.get<AdvertisingAccount>(`/advertising/accounts/${accountId}`),
+  accountCapabilities: (accountId: string) =>
+    api.get<AdvertisingCapability>(`/advertising/accounts/${accountId}/capabilities`),
+  registerMockAccount: (body: {
+    provider?: string;
+    name: string;
+    currency: string;
+    timezone?: string | null;
+    external_account_id?: string | null;
+  }) => api.post<AdvertisingAccount>("/advertising/accounts/register-mock", body),
+  importAccount: (accountId: string) =>
+    api.post<AdImportRun>(`/advertising/accounts/${accountId}/import`),
+  refreshAccountMetrics: (accountId: string) =>
+    api.post<AdImportRun>(`/advertising/accounts/${accountId}/refresh-metrics`),
+
+  listCampaigns: (params?: {
+    account_id?: string;
+    status?: string;
+    linked?: boolean;
+    marketing_campaign_id?: string;
+    limit?: number;
+    offset?: number;
+  }) => api.get<AdCampaignList>("/advertising/campaigns", { params }),
+  getCampaign: (campaignId: string) =>
+    api.get<AdCampaign>(`/advertising/campaigns/${campaignId}`),
+  campaignPerformance: (campaignId: string) =>
+    api.get<AdCampaignPerformance>(`/advertising/campaigns/${campaignId}/performance`),
+  campaignPacing: (campaignId: string) =>
+    api.get<AdPacing>(`/advertising/campaigns/${campaignId}/pacing`),
+  campaignAdGroups: (campaignId: string, params?: { limit?: number; offset?: number }) =>
+    api.get<AdGroupList>(`/advertising/campaigns/${campaignId}/ad-groups`, { params }),
+  campaignAttribution: (campaignId: string) =>
+    api.get<AdCampaignAttribution>(`/advertising/campaigns/${campaignId}/attribution`),
+  linkCampaign: (campaignId: string, internalCampaignId: string) =>
+    api.post<AdLinkResult>(`/advertising/campaigns/${campaignId}/link`, {
+      internal_campaign_id: internalCampaignId,
+    }),
+  unlinkCampaign: (campaignId: string) =>
+    api.post<AdLinkResult>(`/advertising/campaigns/${campaignId}/unlink`),
+
+  getAdGroup: (adGroupId: string) => api.get<AdGroup>(`/advertising/ad-groups/${adGroupId}`),
+  adGroupAds: (adGroupId: string, params?: { limit?: number; offset?: number }) =>
+    api.get<AdList>(`/advertising/ad-groups/${adGroupId}/ads`, { params }),
+  adGroupDelivery: (adGroupId: string) =>
+    api.get<AdDeliveryDiagnostics>(`/advertising/ad-groups/${adGroupId}/delivery`),
+
+  getAd: (adId: string) => api.get<Ad>(`/advertising/ads/${adId}`),
+  adCreative: (adId: string) => api.get<AdCreative>(`/advertising/ads/${adId}/creative`),
+
+  listCreatives: (params?: {
+    account_id?: string;
+    fatigue_status?: string;
+    limit?: number;
+    offset?: number;
+  }) => api.get<AdCreativeList>("/advertising/creatives", { params }),
+  getCreative: (creativeId: string) =>
+    api.get<AdCreative>(`/advertising/creatives/${creativeId}`),
+  creativeDiagnostics: (creativeId: string) =>
+    api.get<AdCreativeDiagnostics>(`/advertising/creatives/${creativeId}/diagnostics`),
+  linkCreativeContent: (creativeId: string, internalContentId: string) =>
+    api.post<AdLinkResult>(`/advertising/creatives/${creativeId}/link-content`, {
+      internal_content_id: internalContentId,
+    }),
+  unlinkCreativeContent: (creativeId: string) =>
+    api.post<AdLinkResult>(`/advertising/creatives/${creativeId}/unlink-content`),
+};
+
+export const ADVERTISING_QUERY_KEY = ["advertising"] as const;
