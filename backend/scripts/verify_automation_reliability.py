@@ -12,7 +12,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 PREV = "20260902_automation_center"
 RELIABILITY = "20260903_automation_reliability"
 SCHEDULER = "20260904_automation_scheduler"
-HEAD = "20260911_measurement_foundation"
+HEAD = "20260912_advertising_intelligence"
 
 
 def _alembic(*args: str) -> subprocess.CompletedProcess[str]:
