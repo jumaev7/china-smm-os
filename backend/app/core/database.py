@@ -551,6 +551,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
     _ensure_governed_ai_tables(connection)
     _ensure_campaign_planner_tables(connection)
     _ensure_measurement_tables(connection)
+    _ensure_advertising_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -2119,6 +2120,600 @@ async def ensure_measurement_schema() -> None:
     """Apply idempotent DDL for Marketing Intelligence Phase 2 measurement tables."""
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_measurement_tables)
+
+
+def _ensure_advertising_tables(connection) -> None:
+    """Advertising Intelligence Phase 1 — read-only advertising foundation.
+
+    Idempotent DDL mirroring the ``20260912_advertising_intelligence`` Alembic
+    migration. No table here stores provider tokens (those live on
+    ``publishing_accounts``); money is stored as integer minor units plus a
+    currency string.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables:
+        return
+
+    if "tenant_advertising_accounts" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_advertising_accounts ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "integration_id UUID REFERENCES publishing_accounts(id) ON DELETE SET NULL, "
+            "provider VARCHAR(40) NOT NULL, "
+            "platform VARCHAR(40), "
+            "provider_account_id VARCHAR(255) NOT NULL, "
+            "provider_business_id VARCHAR(255), "
+            "name VARCHAR(255), "
+            "currency VARCHAR(3), "
+            "timezone VARCHAR(64), "
+            "account_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "connection_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "capabilities JSONB, "
+            "permission_summary JSONB, "
+            "last_import_at TIMESTAMPTZ, "
+            "last_metrics_sync_at TIMESTAMPTZ, "
+            "last_successful_sync_at TIMESTAMPTZ, "
+            "is_mock BOOLEAN NOT NULL DEFAULT false, "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "disconnected_at TIMESTAMPTZ, "
+            "CONSTRAINT uq_tenant_advertising_accounts_provider_identity "
+            "UNIQUE (tenant_id, provider, provider_account_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_advertising_accounts_tenant_id ON tenant_advertising_accounts (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_advertising_accounts_tenant_provider ON tenant_advertising_accounts (tenant_id, provider)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_advertising_accounts_tenant_conn ON tenant_advertising_accounts (tenant_id, connection_status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_advertising_accounts_integration ON tenant_advertising_accounts (integration_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_creatives" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_creatives ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "provider VARCHAR(40) NOT NULL, "
+            "provider_creative_id VARCHAR(255) NOT NULL, "
+            "name VARCHAR(500), "
+            "title VARCHAR(500), "
+            "body TEXT, "
+            "call_to_action_type VARCHAR(80), "
+            "object_type VARCHAR(80), "
+            "thumbnail_url VARCHAR(2000), "
+            "permalink_url VARCHAR(2000), "
+            "object_story_id VARCHAR(255), "
+            "asset_summary JSONB, "
+            "source_fingerprint VARCHAR(128), "
+            "is_mock BOOLEAN NOT NULL DEFAULT false, "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_creatives_provider_identity "
+            "UNIQUE (tenant_id, advertising_account_id, provider_creative_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_creatives_tenant_id ON tenant_ad_creatives (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_creatives_account ON tenant_ad_creatives (tenant_id, advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_campaigns" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_campaigns ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "provider VARCHAR(40) NOT NULL, "
+            "provider_campaign_id VARCHAR(255) NOT NULL, "
+            "name VARCHAR(500), "
+            "objective VARCHAR(80), "
+            "buying_type VARCHAR(40), "
+            "config_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "effective_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "bid_strategy VARCHAR(80), "
+            "daily_budget_minor INTEGER, "
+            "lifetime_budget_minor INTEGER, "
+            "budget_currency VARCHAR(3), "
+            "spend_cap_minor INTEGER, "
+            "special_ad_categories JSONB, "
+            "attribution_spec JSONB, "
+            "provider_start_time TIMESTAMPTZ, "
+            "provider_stop_time TIMESTAMPTZ, "
+            "provider_created_time TIMESTAMPTZ, "
+            "provider_updated_time TIMESTAMPTZ, "
+            "source_fingerprint VARCHAR(128), "
+            "is_mock BOOLEAN NOT NULL DEFAULT false, "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_campaigns_provider_identity "
+            "UNIQUE (tenant_id, advertising_account_id, provider_campaign_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_campaigns_tenant_id ON tenant_ad_campaigns (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_campaigns_account ON tenant_ad_campaigns (tenant_id, advertising_account_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_campaigns_tenant_status ON tenant_ad_campaigns (tenant_id, effective_status)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_groups" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_groups ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "campaign_id UUID REFERENCES tenant_ad_campaigns(id) ON DELETE CASCADE, "
+            "provider VARCHAR(40) NOT NULL, "
+            "provider_ad_group_id VARCHAR(255) NOT NULL, "
+            "provider_campaign_id VARCHAR(255), "
+            "name VARCHAR(500), "
+            "config_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "effective_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "optimization_goal VARCHAR(80), "
+            "billing_event VARCHAR(80), "
+            "bid_amount_minor INTEGER, "
+            "bid_currency VARCHAR(3), "
+            "daily_budget_minor INTEGER, "
+            "lifetime_budget_minor INTEGER, "
+            "budget_currency VARCHAR(3), "
+            "targeting_summary JSONB, "
+            "provider_start_time TIMESTAMPTZ, "
+            "provider_stop_time TIMESTAMPTZ, "
+            "provider_created_time TIMESTAMPTZ, "
+            "provider_updated_time TIMESTAMPTZ, "
+            "source_fingerprint VARCHAR(128), "
+            "is_mock BOOLEAN NOT NULL DEFAULT false, "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_groups_provider_identity "
+            "UNIQUE (tenant_id, advertising_account_id, provider_ad_group_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_groups_tenant_id ON tenant_ad_groups (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_groups_account ON tenant_ad_groups (tenant_id, advertising_account_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_groups_campaign ON tenant_ad_groups (tenant_id, campaign_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_groups_tenant_status ON tenant_ad_groups (tenant_id, effective_status)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ads" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ads ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "campaign_id UUID REFERENCES tenant_ad_campaigns(id) ON DELETE CASCADE, "
+            "ad_group_id UUID REFERENCES tenant_ad_groups(id) ON DELETE CASCADE, "
+            "creative_id UUID REFERENCES tenant_ad_creatives(id) ON DELETE SET NULL, "
+            "provider VARCHAR(40) NOT NULL, "
+            "provider_ad_id VARCHAR(255) NOT NULL, "
+            "provider_ad_group_id VARCHAR(255), "
+            "provider_creative_id VARCHAR(255), "
+            "name VARCHAR(500), "
+            "config_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "effective_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "tracking_specs JSONB, "
+            "provider_created_time TIMESTAMPTZ, "
+            "provider_updated_time TIMESTAMPTZ, "
+            "source_fingerprint VARCHAR(128), "
+            "is_mock BOOLEAN NOT NULL DEFAULT false, "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ads_provider_identity "
+            "UNIQUE (tenant_id, advertising_account_id, provider_ad_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ads_tenant_id ON tenant_ads (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ads_account ON tenant_ads (tenant_id, advertising_account_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ads_ad_group ON tenant_ads (tenant_id, ad_group_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ads_campaign ON tenant_ads (tenant_id, campaign_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ads_tenant_status ON tenant_ads (tenant_id, effective_status)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_import_runs" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_import_runs ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "provider VARCHAR(40) NOT NULL, "
+            "scope VARCHAR(40) NOT NULL DEFAULT 'full', "
+            "status VARCHAR(40) NOT NULL DEFAULT 'pending', "
+            "requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "started_at TIMESTAMPTZ, "
+            "completed_at TIMESTAMPTZ, "
+            "cursor_before VARCHAR(255), "
+            "cursor_after VARCHAR(255), "
+            "entities_requested INTEGER NOT NULL DEFAULT 0, "
+            "entities_created INTEGER NOT NULL DEFAULT 0, "
+            "entities_updated INTEGER NOT NULL DEFAULT 0, "
+            "entities_unchanged INTEGER NOT NULL DEFAULT 0, "
+            "entities_failed INTEGER NOT NULL DEFAULT 0, "
+            "provider_request_count INTEGER NOT NULL DEFAULT 0, "
+            "failure_code VARCHAR(80), "
+            "failure_metadata JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_import_runs_tenant_id ON tenant_ad_import_runs (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_import_runs_tenant_created ON tenant_ad_import_runs (tenant_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_import_runs_tenant_status ON tenant_ad_import_runs (tenant_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_import_runs_account ON tenant_ad_import_runs (advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_entity_history" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_entity_history ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "entity_type VARCHAR(40) NOT NULL, "
+            "entity_id UUID, "
+            "provider_entity_id VARCHAR(255) NOT NULL, "
+            "change_type VARCHAR(40) NOT NULL DEFAULT 'observed', "
+            "field_changes JSONB, "
+            "previous_fingerprint VARCHAR(128), "
+            "fingerprint VARCHAR(128), "
+            "observed_at TIMESTAMPTZ NOT NULL, "
+            "import_run_id UUID REFERENCES tenant_ad_import_runs(id) ON DELETE SET NULL, "
+            "source VARCHAR(40) NOT NULL DEFAULT 'provider', "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_entity_history_tenant_id ON tenant_ad_entity_history (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_entity_history_entity ON tenant_ad_entity_history (tenant_id, entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_entity_history_account ON tenant_ad_entity_history (tenant_id, advertising_account_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_entity_history_observed ON tenant_ad_entity_history (tenant_id, observed_at)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_metric_ingestion_runs" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_metric_ingestion_runs ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "provider VARCHAR(40) NOT NULL, "
+            "level VARCHAR(40) NOT NULL DEFAULT 'account', "
+            "status VARCHAR(40) NOT NULL DEFAULT 'pending', "
+            "date_start VARCHAR(10), "
+            "date_stop VARCHAR(10), "
+            "requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "started_at TIMESTAMPTZ, "
+            "completed_at TIMESTAMPTZ, "
+            "cursor_before VARCHAR(255), "
+            "cursor_after VARCHAR(255), "
+            "entities_requested INTEGER NOT NULL DEFAULT 0, "
+            "entities_succeeded INTEGER NOT NULL DEFAULT 0, "
+            "entities_failed INTEGER NOT NULL DEFAULT 0, "
+            "snapshots_created INTEGER NOT NULL DEFAULT 0, "
+            "provider_request_count INTEGER NOT NULL DEFAULT 0, "
+            "failure_code VARCHAR(80), "
+            "failure_metadata JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_ingestion_runs_tenant_id ON tenant_ad_metric_ingestion_runs (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_ingestion_runs_tenant_created ON tenant_ad_metric_ingestion_runs (tenant_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_ingestion_runs_tenant_status ON tenant_ad_metric_ingestion_runs (tenant_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_ingestion_runs_account ON tenant_ad_metric_ingestion_runs (advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_metric_snapshots" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_metric_snapshots ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "entity_type VARCHAR(40) NOT NULL, "
+            "entity_id UUID NOT NULL, "
+            "provider_entity_id VARCHAR(255) NOT NULL, "
+            "level VARCHAR(40) NOT NULL DEFAULT 'account', "
+            "observed_at TIMESTAMPTZ NOT NULL, "
+            "provider_data_timestamp TIMESTAMPTZ, "
+            "date_start VARCHAR(10), "
+            "date_stop VARCHAR(10), "
+            "snapshot_fingerprint VARCHAR(128) NOT NULL, "
+            "ingestion_run_id UUID REFERENCES tenant_ad_metric_ingestion_runs(id) ON DELETE SET NULL, "
+            "status VARCHAR(40) NOT NULL DEFAULT 'complete', "
+            "source VARCHAR(40) NOT NULL DEFAULT 'provider', "
+            "currency VARCHAR(3), "
+            "raw_metric_summary JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_metric_snapshots_fingerprint "
+            "UNIQUE (tenant_id, entity_type, entity_id, snapshot_fingerprint)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_snapshots_tenant_id ON tenant_ad_metric_snapshots (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_snapshots_entity_observed ON tenant_ad_metric_snapshots (entity_type, entity_id, observed_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_snapshots_tenant_observed ON tenant_ad_metric_snapshots (tenant_id, observed_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_snapshots_account ON tenant_ad_metric_snapshots (tenant_id, advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_metric_values" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_metric_values ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "metric_snapshot_id UUID NOT NULL REFERENCES tenant_ad_metric_snapshots(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "entity_type VARCHAR(40) NOT NULL, "
+            "entity_id UUID NOT NULL, "
+            "metric_key VARCHAR(120) NOT NULL, "
+            "provider_metric_key VARCHAR(120), "
+            "metric_value NUMERIC(24,6) NOT NULL, "
+            "value_type VARCHAR(40) NOT NULL DEFAULT 'count', "
+            "aggregation_type VARCHAR(40) NOT NULL DEFAULT 'interval', "
+            "currency VARCHAR(3), "
+            "metric_semantics_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "normalization_status VARCHAR(40) NOT NULL DEFAULT 'normalized', "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_values_tenant_id ON tenant_ad_metric_values (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_values_snapshot ON tenant_ad_metric_values (metric_snapshot_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_values_entity_key ON tenant_ad_metric_values (entity_type, entity_id, metric_key)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_values_tenant_key ON tenant_ad_metric_values (tenant_id, metric_key)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_metric_aggregates" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_metric_aggregates ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "entity_type VARCHAR(40) NOT NULL, "
+            "entity_id UUID NOT NULL, "
+            "window_key VARCHAR(20) NOT NULL, "
+            "window_start TIMESTAMPTZ, "
+            "window_end TIMESTAMPTZ, "
+            "metric_key VARCHAR(120) NOT NULL, "
+            "metric_value NUMERIC(24,6) NOT NULL, "
+            "value_type VARCHAR(40) NOT NULL DEFAULT 'count', "
+            "currency VARCHAR(3), "
+            "calculation_method VARCHAR(80) NOT NULL DEFAULT 'sum_interval', "
+            "calculation_version VARCHAR(20) NOT NULL DEFAULT '1.0.0', "
+            "freshness_status VARCHAR(40) NOT NULL DEFAULT 'unavailable', "
+            "confidence NUMERIC(4,3) NOT NULL DEFAULT 1.000, "
+            "source_snapshot_ids JSONB, "
+            "calculated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_metric_aggregates_window "
+            "UNIQUE (tenant_id, entity_type, entity_id, window_key, metric_key, calculation_version)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_aggregates_tenant_id ON tenant_ad_metric_aggregates (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_aggregates_entity ON tenant_ad_metric_aggregates (entity_type, entity_id, window_key)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_metric_aggregates_account ON tenant_ad_metric_aggregates (tenant_id, advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_conversion_breakdowns" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_conversion_breakdowns ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "metric_snapshot_id UUID REFERENCES tenant_ad_metric_snapshots(id) ON DELETE CASCADE, "
+            "entity_type VARCHAR(40) NOT NULL, "
+            "entity_id UUID NOT NULL, "
+            "action_type VARCHAR(120) NOT NULL, "
+            "action_destination VARCHAR(120), "
+            "attribution_setting VARCHAR(80), "
+            "conversion_window VARCHAR(40), "
+            "value NUMERIC(24,6) NOT NULL, "
+            "value_type VARCHAR(40) NOT NULL DEFAULT 'count', "
+            "currency VARCHAR(3), "
+            "date_start VARCHAR(10), "
+            "date_stop VARCHAR(10), "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_conversion_breakdowns_tenant_id ON tenant_ad_conversion_breakdowns (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_conversion_breakdowns_entity ON tenant_ad_conversion_breakdowns (tenant_id, entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_conversion_breakdowns_snapshot ON tenant_ad_conversion_breakdowns (metric_snapshot_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_conversion_breakdowns_action ON tenant_ad_conversion_breakdowns (tenant_id, action_type)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_budget_snapshots" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_budget_snapshots ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID NOT NULL REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "entity_type VARCHAR(40) NOT NULL, "
+            "entity_id UUID NOT NULL, "
+            "budget_type VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "budget_minor INTEGER, "
+            "spend_minor INTEGER, "
+            "remaining_minor INTEGER, "
+            "currency VARCHAR(3), "
+            "utilization_ratio NUMERIC(9,6), "
+            "pacing_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "observed_at TIMESTAMPTZ NOT NULL, "
+            "source VARCHAR(40) NOT NULL DEFAULT 'provider', "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_budget_snapshots_tenant_id ON tenant_ad_budget_snapshots (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_budget_snapshots_entity ON tenant_ad_budget_snapshots (tenant_id, entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_budget_snapshots_observed ON tenant_ad_budget_snapshots (tenant_id, observed_at)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_budget_snapshots_account ON tenant_ad_budget_snapshots (tenant_id, advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_delivery_anomalies" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_delivery_anomalies ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "metric_snapshot_id UUID REFERENCES tenant_ad_metric_snapshots(id) ON DELETE SET NULL, "
+            "entity_type VARCHAR(40), "
+            "entity_id UUID, "
+            "anomaly_key VARCHAR(80) NOT NULL, "
+            "severity VARCHAR(20) NOT NULL DEFAULT 'warning', "
+            "metric_key VARCHAR(120), "
+            "evidence JSONB, "
+            "status VARCHAR(40) NOT NULL DEFAULT 'open', "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "resolved_at TIMESTAMPTZ"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_delivery_anomalies_tenant_id ON tenant_ad_delivery_anomalies (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_delivery_anomalies_tenant_status ON tenant_ad_delivery_anomalies (tenant_id, status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_delivery_anomalies_entity ON tenant_ad_delivery_anomalies (tenant_id, entity_type, entity_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_delivery_anomalies_account ON tenant_ad_delivery_anomalies (advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_creative_links" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_creative_links ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "creative_id UUID NOT NULL REFERENCES tenant_ad_creatives(id) ON DELETE CASCADE, "
+            "target_type VARCHAR(40) NOT NULL DEFAULT 'content_item', "
+            "target_id VARCHAR(80) NOT NULL, "
+            "content_id UUID REFERENCES content_items(id) ON DELETE SET NULL, "
+            "content_variant_id UUID, "
+            "external_publication_id UUID REFERENCES tenant_external_publications(id) ON DELETE SET NULL, "
+            "link_method VARCHAR(40) NOT NULL DEFAULT 'manual_link', "
+            "confidence NUMERIC(4,3) NOT NULL DEFAULT 1.000, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'active', "
+            "evidence JSONB, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_creative_links_target "
+            "UNIQUE (tenant_id, creative_id, target_type, target_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_creative_links_tenant_id ON tenant_ad_creative_links (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_creative_links_creative ON tenant_ad_creative_links (tenant_id, creative_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_creative_links_target ON tenant_ad_creative_links (tenant_id, target_type, target_id)",
+        ):
+            connection.execute(text(sql))
+
+    if "tenant_ad_campaign_links" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_ad_campaign_links ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "advertising_account_id UUID REFERENCES tenant_advertising_accounts(id) ON DELETE CASCADE, "
+            "ad_campaign_id UUID NOT NULL REFERENCES tenant_ad_campaigns(id) ON DELETE CASCADE, "
+            "marketing_campaign_id UUID NOT NULL REFERENCES tenant_marketing_campaigns(id) ON DELETE CASCADE, "
+            "campaign_plan_version_id UUID REFERENCES tenant_campaign_plan_versions(id) ON DELETE SET NULL, "
+            "link_method VARCHAR(40) NOT NULL DEFAULT 'manual_link', "
+            "confidence NUMERIC(4,3) NOT NULL DEFAULT 1.000, "
+            "status VARCHAR(20) NOT NULL DEFAULT 'active', "
+            "evidence JSONB, "
+            "created_by UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), "
+            "CONSTRAINT uq_tenant_ad_campaign_links_pair "
+            "UNIQUE (tenant_id, ad_campaign_id, marketing_campaign_id)"
+            ")"
+        ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_campaign_links_tenant_id ON tenant_ad_campaign_links (tenant_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_campaign_links_ad_campaign ON tenant_ad_campaign_links (tenant_id, ad_campaign_id)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_ad_campaign_links_marketing ON tenant_ad_campaign_links (tenant_id, marketing_campaign_id)",
+        ):
+            connection.execute(text(sql))
+
+    # Extend the shared durable job table with an advertising discriminator.
+    if "tenant_measurement_jobs" in tables:
+        job_columns = {c["name"] for c in inspect(connection).get_columns("tenant_measurement_jobs")}
+        if "job_domain" not in job_columns:
+            connection.execute(text(
+                "ALTER TABLE tenant_measurement_jobs "
+                "ADD COLUMN IF NOT EXISTS job_domain VARCHAR(40) NOT NULL DEFAULT 'measurement'"
+            ))
+        if "advertising_account_id" not in job_columns:
+            connection.execute(text(
+                "ALTER TABLE tenant_measurement_jobs "
+                "ADD COLUMN IF NOT EXISTS advertising_account_id UUID "
+                "REFERENCES tenant_advertising_accounts(id) ON DELETE SET NULL"
+            ))
+        for sql in (
+            "CREATE INDEX IF NOT EXISTS ix_tenant_measurement_jobs_domain "
+            "ON tenant_measurement_jobs (tenant_id, job_domain, status)",
+            "CREATE INDEX IF NOT EXISTS ix_tenant_measurement_jobs_advertising_account "
+            "ON tenant_measurement_jobs (advertising_account_id)",
+        ):
+            connection.execute(text(sql))
+
+
+async def ensure_advertising_schema() -> None:
+    """Apply idempotent DDL for Advertising Intelligence Phase 1 tables."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_advertising_tables)
+
+
+def _drop_advertising_tables(connection) -> None:
+    """Drop every advertising table (current + any legacy drift).
+
+    Disposable lifecycle helper for local/dev verification only. The advertising
+    tables are a read-only *mirror* of provider structure/metrics — they hold no
+    source-of-truth data and no provider tokens — so recreating them from
+    scratch is safe. Uses ``CASCADE`` to also clear legacy tables from earlier
+    schema iterations (e.g. ``tenant_ad_entities``) whose column layout no longer
+    matches the current models.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    names = [
+        name
+        for name in inspector.get_table_names()
+        if name == "tenant_advertising_accounts" or name.startswith("tenant_ad")
+    ]
+    for name in names:
+        connection.execute(text(f'DROP TABLE IF EXISTS "{name}" CASCADE'))
+
+
+async def reset_advertising_schema() -> None:
+    """Drop and recreate the Advertising Intelligence tables (dev/verify only).
+
+    Guarantees the physical schema matches the current models even when a local
+    database still carries tables from an earlier, incompatible design. Never
+    call this against production data.
+    """
+    async with engine.begin() as conn:
+        await conn.run_sync(_drop_advertising_tables)
+        await conn.run_sync(_ensure_advertising_tables)
 
 
 def _ensure_customer_success_journey_columns(connection) -> None:
