@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from app.core.events.types import PlatformEvent
+from app.services.intelligence.collectors.advertising import AdvertisingCollector
 from app.services.intelligence.collectors.automation import AutomationCollector
 from app.services.intelligence.collectors.base import SignalCollector
 from app.services.intelligence.collectors.campaign import CampaignCollector
@@ -21,6 +22,7 @@ def default_collectors() -> list[SignalCollector]:
         PublishingCollector(),
         CampaignCollector(),
         MeasurementCollector(),
+        AdvertisingCollector(),
         CrmCollector(),
         WorkflowCollector(),
         AutomationCollector(),

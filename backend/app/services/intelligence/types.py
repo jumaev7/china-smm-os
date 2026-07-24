@@ -92,6 +92,21 @@ SIGNAL_TYPES = frozenset({
     "integration.metrics_collection_blocked",
     "publication.registered",
     "attribution.recorded",
+    # Advertising Intelligence signals
+    "advertising.account_connected",
+    "advertising.account_disconnected",
+    "advertising.entities_imported",
+    "advertising.import_failed",
+    "advertising.insights_ingested",
+    "advertising.insights_failed",
+    "advertising.metrics_stale",
+    "advertising.budget_underspending",
+    "advertising.budget_overspending",
+    "advertising.budget_exhausted",
+    "advertising.delivery_issue",
+    "advertising.creative_fatigue",
+    "advertising.attribution_recorded",
+    "advertising.conversion_discrepant",
 })
 
 # Map platform event types → collector domain.
@@ -154,6 +169,18 @@ PLATFORM_EVENT_TO_SOURCE: dict[str, str] = {
     "attribution.recorded": "content",
     "attribution.updated": "content",
     "tracked_link.created": "content",
+    "advertising.account_connected": "advertising",
+    "advertising.account_disconnected": "advertising",
+    "advertising.entities_imported": "advertising",
+    "advertising.import_failed": "advertising",
+    "advertising.insights_ingested": "advertising",
+    "advertising.insights_failed": "advertising",
+    "advertising.metrics_stale": "advertising",
+    "advertising.budget_pacing_alert": "advertising",
+    "advertising.delivery_issue_detected": "advertising",
+    "advertising.creative_fatigue_detected": "advertising",
+    "advertising.attribution_recorded": "advertising",
+    "advertising.conversion_reconciled": "advertising",
 }
 
 

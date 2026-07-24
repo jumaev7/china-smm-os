@@ -28,6 +28,7 @@ from app.core.database import Base
 SIGNAL_SEVERITIES = frozenset({"info", "success", "warning", "error", "critical"})
 SIGNAL_SOURCES = frozenset({
     "publishing",
+    "advertising",
     "crm",
     "workflow",
     "automation",

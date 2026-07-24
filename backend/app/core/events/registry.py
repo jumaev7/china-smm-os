@@ -482,6 +482,91 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         description="Tracked link created for optional click measurement",
         integrations=EventIntegrations(activity=True, intelligence=True),
     ),
+    # Advertising Intelligence — read-only paid-media measurement
+    _def(
+        "advertising.account_connected",
+        category="advertising",
+        description="Advertising provider account connected (read-only mirror)",
+        integrations=EventIntegrations(audit=True, activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.account_disconnected",
+        category="advertising",
+        description="Advertising provider account disconnected",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, intelligence=True,
+        ),
+    ),
+    _def(
+        "advertising.import_requested",
+        category="advertising",
+        description="Advertising entity import requested",
+        integrations=EventIntegrations(activity=True),
+    ),
+    _def(
+        "advertising.entities_imported",
+        category="advertising",
+        description="Advertising entities imported/mirrored from provider",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.import_failed",
+        category="advertising",
+        description="Advertising entity import failed",
+        integrations=EventIntegrations(
+            activity=True, intelligence=True, notification=True,
+        ),
+    ),
+    _def(
+        "advertising.insights_ingested",
+        category="advertising",
+        description="Advertising insight snapshot ingested",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.insights_failed",
+        category="advertising",
+        description="Advertising insight collection failed",
+        integrations=EventIntegrations(
+            activity=True, intelligence=True, notification=True,
+        ),
+    ),
+    _def(
+        "advertising.metrics_stale",
+        category="advertising",
+        description="Advertising metrics classified as stale",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.budget_pacing_alert",
+        category="advertising",
+        description="Advertising budget pacing crossed a deterministic threshold",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.delivery_issue_detected",
+        category="advertising",
+        description="Advertising delivery diagnostic finding detected",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.creative_fatigue_detected",
+        category="advertising",
+        description="Advertising creative fatigue signal detected",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.attribution_recorded",
+        category="advertising",
+        description="Advertising attribution record created",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.conversion_reconciled",
+        category="advertising",
+        description="Advertising conversion reconciliation completed",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
 )
 
 
