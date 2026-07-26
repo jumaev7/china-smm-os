@@ -25,6 +25,13 @@ _EVENT_MAP: dict[str, tuple[str, str, Decimal]] = {
     "advertising.delivery_issue_detected": ("advertising.delivery_issue", "warning", Decimal("1.000")),
     "advertising.creative_fatigue_detected": ("advertising.creative_fatigue", "warning", Decimal("1.000")),
     "advertising.attribution_recorded": ("advertising.attribution_recorded", "info", Decimal("1.000")),
+    # Phase 2 decision support — advisory signals (no provider mutation)
+    "advertising.simulation_created": ("advertising.simulation_created", "info", Decimal("1.000")),
+    "advertising.experiment_created": ("advertising.experiment_created", "info", Decimal("1.000")),
+    "advertising.experiment_reviewed": ("advertising.experiment_reviewed", "info", Decimal("1.000")),
+    "advertising.concentration_detected": ("advertising.concentration", "warning", Decimal("0.900")),
+    "advertising.possible_fatigue_detected": ("advertising.possible_fatigue", "warning", Decimal("0.850")),
+    "advertising.change_plan_created": ("advertising.change_plan_created", "info", Decimal("1.000")),
 }
 
 # Budget pacing alerts carry a ``pacing_status`` in the payload that determines
@@ -68,6 +75,20 @@ _SAFE_KEYS = frozenset({
     "reconciliation_status",
     "confidence",
     "campaign_id",
+    # Phase 2 decision support (safe identifiers only)
+    "simulation_id",
+    "experiment_id",
+    "experiment_type",
+    "variant_count",
+    "primary_metric_key",
+    "review_id",
+    "result_status",
+    "change_plan_id",
+    "item_count",
+    "source",
+    "classification",
+    "concentration_status",
+    "rotation_status",
 })
 
 
@@ -93,6 +114,12 @@ class AdvertisingCollector(SignalCollector):
         "advertising.creative_fatigue_detected",
         "advertising.attribution_recorded",
         "advertising.conversion_reconciled",
+        "advertising.simulation_created",
+        "advertising.experiment_created",
+        "advertising.experiment_reviewed",
+        "advertising.concentration_detected",
+        "advertising.possible_fatigue_detected",
+        "advertising.change_plan_created",
     })
 
     def collect(self, event: PlatformEvent) -> list[NormalizedSignal]:

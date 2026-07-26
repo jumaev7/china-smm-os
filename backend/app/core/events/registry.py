@@ -567,6 +567,43 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         description="Advertising conversion reconciliation completed",
         integrations=EventIntegrations(activity=True, intelligence=True),
     ),
+    # Advertising Decision Support — advisory / simulation / experiment planning
+    _def(
+        "advertising.simulation_created",
+        category="advertising",
+        description="Hypothetical advertising budget simulation created (does not modify provider budgets)",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.experiment_created",
+        category="advertising",
+        description="Internal advertising experiment plan created (does not launch on providers)",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.experiment_reviewed",
+        category="advertising",
+        description="Advertising experiment observation reviewed (directional, non-causal)",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.concentration_detected",
+        category="advertising",
+        description="Advertising spend concentration diagnostic crossed a deterministic threshold",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.possible_fatigue_detected",
+        category="advertising",
+        description="Advertising creative rotation analysis surfaced a possible fatigue signal",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
+    _def(
+        "advertising.change_plan_created",
+        category="advertising",
+        description="Advisory advertising change plan created (not executable)",
+        integrations=EventIntegrations(activity=True, intelligence=True),
+    ),
 )
 
 

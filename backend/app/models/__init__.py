@@ -173,6 +173,16 @@ from app.models.advertising import (
     TenantAdCreativeLink,
     TenantAdCampaignLink,
 )
+from app.models.advertising_decision_support import (
+    TenantAdBudgetSimulation,
+    TenantAdBudgetSimulationItem,
+    TenantAdExperiment,
+    TenantAdExperimentVariant,
+    TenantAdExperimentMeasurement,
+    TenantAdExperimentReview,
+    TenantAdChangePlan,
+    TenantAdChangePlanItem,
+)
 
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
@@ -345,4 +355,12 @@ __all__ = [
     "TenantAdDeliveryAnomaly",
     "TenantAdCreativeLink",
     "TenantAdCampaignLink",
+    "TenantAdBudgetSimulation",
+    "TenantAdBudgetSimulationItem",
+    "TenantAdExperiment",
+    "TenantAdExperimentVariant",
+    "TenantAdExperimentMeasurement",
+    "TenantAdExperimentReview",
+    "TenantAdChangePlan",
+    "TenantAdChangePlanItem",
 ]
