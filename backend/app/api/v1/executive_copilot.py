@@ -95,12 +95,17 @@ async def executive_copilot_recommendations(
 @router.get("/summary-widget", response_model=ExecutiveCopilotSummaryWidget)
 async def executive_copilot_summary_widget(
     client_id: UUID | None = None,
+    tenant_id: UUID | None = Query(None, description="Tenant scope for business health domains"),
     actor: ExecutiveCopilotActor = Depends(get_executive_copilot_actor),
     db: AsyncSession = Depends(get_db),
 ):
     resolved_client_id = await _resolve_executive_client_id(db, actor, client_id)
     return await run_guarded(
-        ExecutiveCopilotService.summary_widget(db, client_id=resolved_client_id),
+        ExecutiveCopilotService.summary_widget(
+            db,
+            client_id=resolved_client_id,
+            tenant_id=_scoped_tenant_id(actor, tenant_id),
+        ),
         label="executive_copilot.summary_widget",
         timeout=SUMMARY_WIDGET_TIMEOUT_SEC,
     )
@@ -109,13 +114,18 @@ async def executive_copilot_summary_widget(
 @router.post("/generate-briefing", response_model=ExecutiveCopilotBriefingResponse)
 async def executive_copilot_generate_briefing(
     body: ExecutiveCopilotBriefingRequest | None = None,
+    tenant_id: UUID | None = Query(None, description="Tenant scope for business health domains"),
     actor: ExecutiveCopilotActor = Depends(get_executive_copilot_actor),
     db: AsyncSession = Depends(get_db),
 ):
     client_id = body.client_id if body else None
     resolved_client_id = await _resolve_executive_client_id(db, actor, client_id)
     return await run_guarded(
-        ExecutiveCopilotService.generate_briefing(db, client_id=resolved_client_id),
+        ExecutiveCopilotService.generate_briefing(
+            db,
+            client_id=resolved_client_id,
+            tenant_id=_scoped_tenant_id(actor, tenant_id),
+        ),
         label="executive_copilot.generate_briefing",
         timeout=SCAN_TIMEOUT_SEC,
     )

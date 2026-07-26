@@ -194,11 +194,25 @@ Convert to content + operator tasks
 | Dashboard assistant | `assistant_service` | `/assistant/chat`, `/assistant/apply` |
 | Context AI | `context_ai_service` | Used in generation + workflow |
 | Client brief plans | `client_brief_service` | `/client-briefs/{id}/generate-plan` |
-| Executive Copilot | `executive_copilot_service` | `/executive-copilot/*` (heuristic, read-only) |
+| Executive Copilot | `executive_copilot_service` + `business_health` | `/executive-copilot/*` (heuristic, read-only; Business Health v2) |
 | Sales / operator AI | `sales_assistant_service`, `operator_task_engine_service` | Various |
 | Lead / comm intelligence | `lead_classification_service`, `communication_intelligence_service` | Classification endpoints |
 
-**Safety:** `DEMO_MODE` returns placeholders without API key. Assistant `suggested_patch` limited to caption/hashtag/notes fields. Executive Copilot and pilot validation modules are read-only aggregators.
+**Safety:** `DEMO_MODE` returns placeholders without API key. Assistant `suggested_patch` limited to caption/hashtag/notes fields. Executive Copilot, Business Health v2, and pilot validation modules are read-only aggregators.
+
+### Business Health Score v2
+
+- **Purpose:** Explainable, cross-domain executive health for the CEO Dashboard / Executive Copilot. Decision support only — not forecasting.
+- **Policy version:** `business_health_v2` (`backend/app/services/business_health/policy.py`)
+- **Pipeline:** domain observations → evaluators → normalized domain assessments → weighted aggregate → executive explanation → API read model → UI
+- **Domains & base weights:** sales 20, publishing 15, campaign_planning 12, organic_measurement 10, advertising 15, integration 10, automation 8, customer_success 5, revenue_billing 5
+- **Normalization:** only available domains participate; effective weights re-normalize to 1.0. Unused/optional modules are `not_configured` / unavailable and do **not** count as zero.
+- **Bands:** 85–100 excellent, 70–84 healthy, 50–69 needs_attention, 30–49 at_risk, 0–29 critical
+- **History:** no snapshot table yet — `previous_score` / `change` are null (`history_available=false`)
+- **Mutations:** none — does not call advertising provider writes, publish, automation execution, CRM mutation, billing changes, or integration reconnect
+- **Extend:** add observation collector + evaluator + weight entry in `policy.py`; keep deterministic and free of provider I/O in evaluators
+- **API:** `business_health_score` (scalar, backward compatible) + structured `business_health` on overview / summary-widget / briefing
+
 
 ---
 

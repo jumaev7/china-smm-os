@@ -991,7 +991,7 @@
     "sectionOpportunities": "4. 优质商机",
     "sectionRecommendations": "5. 推荐操作",
     "sectionBriefing": "6. 生成简报",
-    "healthSubtitle": "基于逾期任务、风险、忽视线索和收件箱积压的启发式评分。",
+    "healthSubtitle": "可解释的跨域评分（business_health_v2）。缺失模块降低覆盖率，而非直接压低分数。",
     "pipeline": "漏斗",
     "dealsWon": "已成交",
     "openTasks": "待办任务",

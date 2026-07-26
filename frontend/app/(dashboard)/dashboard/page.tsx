@@ -101,6 +101,7 @@ import { isOverviewLoading } from "@/lib/overview-query-options";
 import { useDashboardAuthGates } from "@/lib/useDashboardAuthGates";
 import { useDashboardOverlayCleanup } from "@/lib/useDashboardOverlayCleanup";
 import { DashboardWidgetUnavailable } from "@/components/dashboard/DashboardWidgetUnavailable";
+import { BusinessHealthBreakdown } from "@/components/executive/BusinessHealthBreakdown";
 
 function formatPipeline(val: number | string): string {
   const n = typeof val === "string" ? parseFloat(val) : val;
@@ -913,6 +914,13 @@ export default function DashboardPage() {
                 <li key={i}>→ {rec.title}</li>
               ))}
             </ul>
+          )}
+          {executiveSummary.business_health && (
+            <BusinessHealthBreakdown
+              health={executiveSummary.business_health}
+              title={t("dashboard.businessHealth")}
+              className="!shadow-none border border-indigo-100/80 bg-indigo-50/20"
+            />
           )}
           <p className="text-[10px] text-gray-400">
             {t("dashboard.heuristicExecutive")}

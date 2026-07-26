@@ -80,6 +80,7 @@ import {
   StatTile,
   StatusBadge,
 } from "@/components/ui/design-system";
+import { BusinessHealthBreakdown } from "@/components/executive/BusinessHealthBreakdown";
 import type { StatusVariant } from "@/lib/design-system";
 import { useTranslation } from "@/lib/I18nProvider";
 import {
@@ -397,6 +398,7 @@ function ExecutiveCopilotPageContent() {
 
   const effectiveOverview = overview ?? {
     business_health_score: summaryWidget.business_health_score,
+    business_health: summaryWidget.business_health ?? null,
     hot_leads: summaryWidget.hot_leads,
     opportunities: summaryWidget.opportunities,
     overdue_tasks: summaryWidget.overdue_tasks,
@@ -485,6 +487,15 @@ function ExecutiveCopilotPageContent() {
           { label: t("executive.conversations"), value: effectiveOverview.active_conversations },
           { label: t("executive.risks"), value: effectiveOverview.risk_count },
         ]}
+      />
+
+      <BusinessHealthBreakdown
+        health={
+          effectiveOverview.business_health
+          ?? summaryWidget.business_health
+          ?? null
+        }
+        title={t("executive.businessHealthScore")}
       />
 
       {!showAdvancedSections && (

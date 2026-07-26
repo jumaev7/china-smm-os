@@ -2040,6 +2040,57 @@ export interface ExecutiveCopilotRevenueSummary {
   currency: string;
 }
 
+export interface BusinessHealthSignal {
+  code: string;
+  domain: string;
+  severity: "critical" | "high" | "medium" | "low" | "positive";
+  title: string;
+  explanation: string;
+  score_impact: number;
+  observed_value?: unknown;
+  threshold?: unknown;
+  entity_ref?: Record<string, unknown> | null;
+  observed_at?: string | null;
+  source?: string | null;
+}
+
+export interface DomainHealthAssessment {
+  domain: string;
+  label: string;
+  weight: number;
+  effective_weight: number;
+  availability: "available" | "unavailable" | "not_configured" | "error";
+  unavailable_reason?: string | null;
+  score?: number | null;
+  status?: string | null;
+  summary: string;
+  observed_metrics?: Record<string, unknown>;
+  deductions: BusinessHealthSignal[];
+  positive_signals: BusinessHealthSignal[];
+  freshness: string;
+  confidence: number;
+}
+
+export interface BusinessHealthAssessment {
+  score: number;
+  status: string;
+  calculated_at?: string | null;
+  methodology_version: string;
+  data_confidence: number;
+  domains_evaluated: number;
+  domains_unavailable: number;
+  domains: DomainHealthAssessment[];
+  deductions: BusinessHealthSignal[];
+  positive_signals: BusinessHealthSignal[];
+  executive_summary: string;
+  previous_score?: number | null;
+  change?: number | null;
+  history_available: boolean;
+  disclaimer?: string;
+  duration_ms?: number | null;
+  collection_errors?: string[];
+}
+
 export interface ExecutiveCopilotOverview {
   revenue: ExecutiveCopilotRevenueSummary;
   opportunities: number;
@@ -2049,6 +2100,7 @@ export interface ExecutiveCopilotOverview {
   proposals_pending: number;
   risk_count: number;
   business_health_score: number;
+  business_health?: BusinessHealthAssessment | null;
   leads_count: number;
   open_tasks: number;
   workflow_recommendations: number;
@@ -2088,6 +2140,7 @@ export interface ExecutiveCopilotRecommendation {
 export interface ExecutiveCopilotBriefing {
   summary: string;
   business_health_score: number;
+  business_health?: BusinessHealthAssessment | null;
   opportunities: string[];
   risks: string[];
   recommendations: string[];
@@ -2099,6 +2152,7 @@ export interface ExecutiveCopilotBriefing {
 
 export interface ExecutiveCopilotSummaryWidget {
   business_health_score: number;
+  business_health?: BusinessHealthAssessment | null;
   hot_leads: number;
   opportunities: number;
   risk_count: number;

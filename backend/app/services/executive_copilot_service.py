@@ -45,6 +45,11 @@ from app.services.real_factory_pilot_service import RealFactoryPilotService
 from app.services.revenue_engine_service import RevenueEngineService
 from app.services.tenant_service import TenantService
 from app.services.subscription_service import SubscriptionService
+from app.services.business_health.engine import assess_business_health
+from app.services.business_health.observations import sales_obs_from_executive_snapshot
+from app.services.business_health.evaluators import evaluate_sales
+from app.services.business_health.aggregator import assemble_assessment
+from app.services.business_health.policy import BUSINESS_HEALTH_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +120,7 @@ class ExecutiveCopilotService:
             "proposals_pending": int(ov.get("active_proposals") or 0),
             "risk_count": len(snap.risks),
             "business_health_score": ExecutiveCopilotService._health_score(snap),
+            "business_health": None,
             "leads_count": int(ov.get("leads_count") or 0),
             "open_tasks": int(workload.get("open_tasks") or 0),
             "workflow_recommendations": int(ov.get("workflow_recommendations") or 0),
@@ -140,7 +146,13 @@ class ExecutiveCopilotService:
                 db, tenant_id=tenant_id, client_id=client_id,
             )
         snap = await ExecutiveCopilotService._build_overview_snapshot(db, client_id=client_id)
-        return ExecutiveCopilotService._overview_from_snapshot(snap)
+        result = ExecutiveCopilotService._overview_from_snapshot(snap)
+        health = await ExecutiveCopilotService._assess_business_health(
+            db, snap=snap, tenant_id=tenant_id, client_id=client_id,
+        )
+        result["business_health"] = health
+        result["business_health_score"] = int(health.get("score") or result["business_health_score"])
+        return result
 
     @staticmethod
     async def alerts(
@@ -170,22 +182,28 @@ class ExecutiveCopilotService:
         db: AsyncSession,
         *,
         client_id: UUID | None = None,
+        tenant_id: UUID | None = None,
     ) -> dict[str, Any]:
         snap = await ExecutiveCopilotService._build_snapshot(db, client_id=client_id)
         ExecutiveCopilotService._build_executive_recommendations(snap)
         now = snap.now
         ov = snap.sales_overview
         rev = snap.revenue
-        health = ExecutiveCopilotService._health_score(snap)
+        health_payload = await ExecutiveCopilotService._assess_business_health(
+            db, snap=snap, tenant_id=tenant_id, client_id=client_id,
+        )
+        health = int(health_payload.get("score") or ExecutiveCopilotService._health_score(snap))
+        health_summary = health_payload.get("executive_summary") or ""
 
         summary = (
-            f"Executive business snapshot (health {health}/100): "
+            f"Executive business snapshot (health {health}/100, {BUSINESS_HEALTH_VERSION}): "
             f"{int(ov.get('leads_count') or 0)} active leads ({int(ov.get('hot_leads') or 0)} hot). "
             f"Revenue closed {_decimal_to_float(rev.get('closed_revenue')):,.0f} UZS, "
             f"pipeline {_decimal_to_float(rev.get('pipeline_value')):,.0f} UZS. "
             f"{len(snap.opportunities)} opportunities, {len(snap.risks)} risks, "
             f"{int(ov.get('overdue_tasks') or 0)} overdue operator tasks, "
             f"{int(ov.get('active_proposals') or 0)} pending proposals. "
+            f"{health_summary} "
             "All actions require manual operator approval."
         )
 
@@ -226,10 +244,11 @@ class ExecutiveCopilotService:
         if rev_attr.get("summary"):
             recs = [f"Revenue attribution: {rev_attr['summary']}"] + recs
 
-        logger.info("%s briefing generated client=%s health=%s", MARKER, client_id, health)
+        logger.info("%s briefing generated client=%s health=%s version=%s", MARKER, client_id, health, BUSINESS_HEALTH_VERSION)
         return {
             "summary": summary,
             "business_health_score": health,
+            "business_health": health_payload,
             "opportunities": opportunities,
             "risks": risks,
             "recommendations": recs,
@@ -441,13 +460,18 @@ class ExecutiveCopilotService:
         db: AsyncSession,
         *,
         client_id: UUID | None = None,
+        tenant_id: UUID | None = None,
     ) -> dict[str, Any]:
         snap = await ExecutiveCopilotService._build_widget_snapshot(db, client_id=client_id)
         ExecutiveCopilotService._build_executive_recommendations(snap)
         ov = ExecutiveCopilotService._overview_from_snapshot(snap)
         alerts = ExecutiveCopilotService._build_alerts(snap)[:3]
+        health = await ExecutiveCopilotService._assess_business_health(
+            db, snap=snap, tenant_id=tenant_id, client_id=client_id,
+        )
         return {
-            "business_health_score": ov["business_health_score"],
+            "business_health_score": int(health.get("score") or ov["business_health_score"]),
+            "business_health": health,
             "hot_leads": ov["hot_leads"],
             "opportunities": ov["opportunities"],
             "risk_count": ov["risk_count"],
@@ -827,35 +851,36 @@ class ExecutiveCopilotService:
         return snap
 
     @staticmethod
+    async def _assess_business_health(
+        db: AsyncSession,
+        *,
+        snap: _ExecutiveSnapshot,
+        tenant_id: UUID | None = None,
+        client_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Business Health v2 — cross-domain explainable assessment (read-only)."""
+        try:
+            return await assess_business_health(
+                db,
+                tenant_id=tenant_id,
+                client_id=client_id or snap.client_id,
+                executive_snapshot=snap,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s business_health_v2_failed err=%s", MARKER, type(exc).__name__)
+            # Sales-only fallback keeps the CEO Dashboard available.
+            sales_domain = evaluate_sales(sales_obs_from_executive_snapshot(snap))
+            fallback = assemble_assessment([sales_domain]).to_dict()
+            fallback["collection_errors"] = [f"business_health_v2_failed:{type(exc).__name__}"]
+            return fallback
+
+    @staticmethod
     def _health_score(snap: _ExecutiveSnapshot) -> int:
-        """Heuristic 0–100 score — higher is healthier."""
-        ov = snap.sales_overview
-        score = 100
-
-        overdue = int(ov.get("overdue_tasks") or 0)
-        score -= min(30, overdue * 4)
-
-        risks = len(snap.risks)
-        score -= min(25, risks * 3)
-
-        neglected = int(snap.lead_metrics.get("neglected_leads") or ov.get("neglected_leads") or 0)
-        score -= min(15, neglected * 2)
-
-        inactive = int(snap.lead_metrics.get("inactive_leads") or 0)
-        score -= min(10, inactive)
-
-        unanswered = int((ov.get("inbox_activity") or {}).get("unanswered") or 0)
-        score -= min(15, unanswered * 3)
-
-        unassigned = int((ov.get("operator_workload") or {}).get("unassigned_tasks") or 0)
-        score -= min(10, unassigned * 2)
-
-        hot = int(ov.get("hot_leads") or 0)
-        if hot > 0 and snap.opportunities:
-            hot_followups = sum(1 for o in snap.opportunities if o.get("type") == "hot_lead_no_followup")
-            score -= min(10, hot_followups * 5)
-
-        return max(0, min(100, score))
+        """Sales-domain fallback score (0–100). Prefer `_assess_business_health`."""
+        sales_domain = evaluate_sales(sales_obs_from_executive_snapshot(snap))
+        if sales_domain.score is None:
+            return 50
+        return int(sales_domain.score)
 
     @staticmethod
     def _build_alerts(snap: _ExecutiveSnapshot) -> list[dict[str, Any]]:

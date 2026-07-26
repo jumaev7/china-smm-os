@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -16,6 +16,58 @@ class ExecutiveCopilotRevenueSummary(BaseModel):
     currency: str = "UZS"
 
 
+class BusinessHealthSignal(BaseModel):
+    code: str
+    domain: str
+    severity: Literal["critical", "high", "medium", "low", "positive"]
+    title: str
+    explanation: str
+    score_impact: int = 0
+    observed_value: Any = None
+    threshold: Any = None
+    entity_ref: Optional[dict] = None
+    observed_at: Optional[str] = None
+    source: Optional[str] = None
+
+
+class DomainHealthAssessmentResponse(BaseModel):
+    domain: str
+    label: str
+    weight: float = 0.0
+    effective_weight: float = 0.0
+    availability: Literal["available", "unavailable", "not_configured", "error"] = "unavailable"
+    unavailable_reason: Optional[str] = None
+    score: Optional[int] = None
+    status: Optional[str] = None
+    summary: str = ""
+    observed_metrics: dict = Field(default_factory=dict)
+    deductions: List[BusinessHealthSignal] = Field(default_factory=list)
+    positive_signals: List[BusinessHealthSignal] = Field(default_factory=list)
+    freshness: str = "unknown"
+    confidence: float = 0.0
+
+
+class BusinessHealthAssessmentResponse(BaseModel):
+    """Business Health Score v2 — explainable cross-domain assessment."""
+    score: int = 0
+    status: str = "needs_attention"
+    calculated_at: Optional[datetime] = None
+    methodology_version: str = "business_health_v2"
+    data_confidence: float = 0.0
+    domains_evaluated: int = 0
+    domains_unavailable: int = 0
+    domains: List[DomainHealthAssessmentResponse] = Field(default_factory=list)
+    deductions: List[BusinessHealthSignal] = Field(default_factory=list)
+    positive_signals: List[BusinessHealthSignal] = Field(default_factory=list)
+    executive_summary: str = ""
+    previous_score: Optional[int] = None
+    change: Optional[int] = None
+    history_available: bool = False
+    disclaimer: str = ""
+    duration_ms: Optional[float] = None
+    collection_errors: List[str] = Field(default_factory=list)
+
+
 class ExecutiveCopilotOverviewResponse(BaseModel):
     revenue: ExecutiveCopilotRevenueSummary = Field(default_factory=ExecutiveCopilotRevenueSummary)
     opportunities: int = 0
@@ -25,6 +77,7 @@ class ExecutiveCopilotOverviewResponse(BaseModel):
     proposals_pending: int = 0
     risk_count: int = 0
     business_health_score: int = 0
+    business_health: Optional[BusinessHealthAssessmentResponse] = None
     leads_count: int = 0
     open_tasks: int = 0
     workflow_recommendations: int = 0
@@ -80,6 +133,7 @@ class ExecutiveCopilotBriefingRequest(BaseModel):
 class ExecutiveCopilotBriefingResponse(BaseModel):
     summary: str
     business_health_score: int = 0
+    business_health: Optional[BusinessHealthAssessmentResponse] = None
     opportunities: List[str] = Field(default_factory=list)
     risks: List[str] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
@@ -91,6 +145,7 @@ class ExecutiveCopilotBriefingResponse(BaseModel):
 
 class ExecutiveCopilotSummaryWidget(BaseModel):
     business_health_score: int = 0
+    business_health: Optional[BusinessHealthAssessmentResponse] = None
     hot_leads: int = 0
     opportunities: int = 0
     risk_count: int = 0
