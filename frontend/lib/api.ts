@@ -15704,6 +15704,240 @@ export interface AdvertisingConfiguration {
   notes?: string[];
 }
 
+// --- Decision Support / Simulation / Experiments (Phase 2 — advisory only) ---
+
+export interface AdComparisonRequest {
+  entity_type: string;
+  entity_ids: string[];
+  metric_keys?: string[] | null;
+}
+
+export interface AdComparison {
+  entity_type: string;
+  engine_version?: string | null;
+  measurement_period?: Record<string, unknown>;
+  currency?: string | null;
+  provider?: string | null;
+  entities?: Array<Record<string, unknown>>;
+  metrics?: Array<Record<string, unknown>>;
+  sample_coverage?: Record<string, unknown>;
+  data_quality_warnings?: string[];
+  attribution_method?: string | null;
+  read_only?: boolean;
+  kind?: string;
+  generated_at?: string | null;
+}
+
+export interface AdSimulationAllocationInput {
+  campaign_id: string;
+  /** Fraction 0–1; must sum to ~1.0 across allocations. */
+  allocation_pct: number;
+}
+
+export interface AdSimulationCreateRequest {
+  currency: string;
+  total_budget_minor: number;
+  allocations: AdSimulationAllocationInput[];
+  measurement_window_key?: string;
+  assumptions?: Record<string, unknown> | null;
+}
+
+export interface AdSimulationItem {
+  id?: string;
+  campaign_id: string;
+  campaign_name?: string | null;
+  observed_spend_minor?: number | null;
+  observed_share?: number | string | null;
+  allocation_pct?: number | string | null;
+  simulated_budget_minor?: number | null;
+  simulated_share?: number | string | null;
+  historical_reference_metrics?: Record<
+    string,
+    { value?: string | number | null; currency?: string | null; kind?: string | null }
+  > | null;
+  freshness_status?: string | null;
+  warnings_json?: Record<string, unknown> | null;
+}
+
+export interface AdSimulation {
+  id: string;
+  currency: string;
+  total_budget_minor: number;
+  measurement_window_key?: string | null;
+  engine_version?: string | null;
+  input_fingerprint?: string | null;
+  assumptions_json?: Record<string, unknown> | null;
+  summary_json?: Record<string, unknown> | null;
+  warnings_json?: Record<string, unknown> | null;
+  disclaimer?: string | null;
+  items?: AdSimulationItem[];
+  kind?: string;
+  read_only?: boolean;
+  created_at?: string | null;
+}
+
+export interface AdSimulationList {
+  items: AdSimulation[];
+  total: number;
+  read_only?: boolean;
+}
+
+export interface AdDiagnostic {
+  status?: string | null;
+  classification?: string | null;
+  kind?: string | null;
+  engine_version?: string | null;
+  observation?: string | null;
+  evidence?: Record<string, unknown>;
+  interpretation?: string | null;
+  possible_consideration?: string | null;
+  label?: string | null;
+  formula?: string | null;
+  disclaimer?: string | null;
+  read_only?: boolean;
+  details?: Record<string, unknown>;
+}
+
+export interface AdExperimentVariantInput {
+  variant_key: string;
+  label: string;
+  entity_type: string;
+  entity_id: string;
+  notes?: string | null;
+}
+
+export interface AdExperimentCreateRequest {
+  name: string;
+  experiment_type: string;
+  hypothesis: string;
+  primary_metric_key: string;
+  variants: AdExperimentVariantInput[];
+  secondary_metric_keys?: string[] | null;
+  observation_start?: string | null;
+  observation_end?: string | null;
+  minimum_observations?: number;
+  minimum_spend_minor?: number | null;
+  minimum_conversions?: number | null;
+  currency?: string | null;
+  attribution_method?: string | null;
+  notes?: string | null;
+}
+
+export interface AdExperimentPatchRequest {
+  name?: string | null;
+  hypothesis?: string | null;
+  primary_metric_key?: string | null;
+  secondary_metric_keys?: string[] | null;
+  observation_start?: string | null;
+  observation_end?: string | null;
+  minimum_observations?: number | null;
+  minimum_spend_minor?: number | null;
+  minimum_conversions?: number | null;
+  currency?: string | null;
+  attribution_method?: string | null;
+  notes?: string | null;
+  status?: string | null;
+}
+
+export interface AdExperiment {
+  id: string;
+  name: string;
+  experiment_type: string;
+  status: string;
+  hypothesis: string;
+  primary_metric_key: string;
+  secondary_metric_keys?: string[] | Record<string, unknown> | null;
+  observation_start?: string | null;
+  observation_end?: string | null;
+  minimum_observations?: number | null;
+  minimum_spend_minor?: number | null;
+  minimum_conversions?: number | null;
+  currency?: string | null;
+  attribution_method?: string | null;
+  notes?: string | null;
+  result_status?: string | null;
+  engine_version?: string | null;
+  variants?: Array<Record<string, unknown>>;
+  observation_started_at?: string | null;
+  completed_at?: string | null;
+  cancelled_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  kind?: string;
+  read_only_toward_provider?: boolean;
+  launches_on_provider?: boolean;
+}
+
+export interface AdExperimentList {
+  items: AdExperiment[];
+  total: number;
+  read_only_toward_provider?: boolean;
+}
+
+export interface AdExperimentReview {
+  experiment_id?: string | null;
+  result_status: string;
+  conclusion: string;
+  evidence?: Record<string, unknown> | unknown[];
+  variants?: Array<Record<string, unknown>>;
+  comparison?: Record<string, unknown> | unknown[];
+  limitations?: string[];
+  kind?: string;
+  claims_statistical_significance?: boolean;
+  review_id?: string | null;
+  engine_version?: string | null;
+}
+
+export interface AdChangePlan {
+  id: string;
+  title: string;
+  status: string;
+  source?: string | null;
+  summary?: string | null;
+  engine_version?: string | null;
+  evidence_json?: Record<string, unknown> | null;
+  items?: Array<Record<string, unknown>>;
+  executable?: boolean;
+  has_provider_payload?: boolean;
+  created_at?: string | null;
+  updated_at?: string | null;
+  reviewed_at?: string | null;
+  dismissed_at?: string | null;
+}
+
+export interface AdChangePlanList {
+  items: AdChangePlan[];
+  total: number;
+  executable?: boolean;
+}
+
+export interface AdDecisionRecommendation {
+  recommendation_key?: string;
+  observation?: string;
+  evidence?: Record<string, unknown>;
+  reasoning?: string;
+  recommendation?: string;
+  confidence?: number | string | null;
+  limitations?: string[];
+  item_type?: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  risk?: string | null;
+  engine_version?: string | null;
+  read_only?: boolean;
+  kind?: string;
+  title?: string;
+  priority?: string;
+  id?: string;
+}
+
+export interface AdDecisionRecommendationList {
+  items: AdDecisionRecommendation[];
+  total: number;
+  read_only?: boolean;
+  advisory?: boolean;
+}
+
 export const advertisingApi = {
   overview: () => api.get<AdvertisingOverview>("/advertising/overview"),
   configuration: () => api.get<AdvertisingConfiguration>("/advertising/configuration"),
@@ -15781,6 +16015,66 @@ export const advertisingApi = {
     }),
   unlinkCreativeContent: (creativeId: string) =>
     api.post<AdLinkResult>(`/advertising/creatives/${creativeId}/unlink-content`),
+
+  // Decision support / simulations / experiments (advisory — never mutates providers)
+  createComparison: (body: AdComparisonRequest) =>
+    api.post<AdComparison>("/advertising/comparisons", body),
+  getComparison: (params: {
+    entity_type: string;
+    entity_ids: string[];
+    metric_keys?: string[];
+  }) => api.get<AdComparison>("/advertising/comparisons", { params }),
+
+  createSimulation: (body: AdSimulationCreateRequest) =>
+    api.post<AdSimulation>("/advertising/simulations", body),
+  listSimulations: (params?: { limit?: number; offset?: number }) =>
+    api.get<AdSimulationList>("/advertising/simulations", { params }),
+  getSimulation: (simulationId: string) =>
+    api.get<AdSimulation>(`/advertising/simulations/${simulationId}`),
+
+  diagnosticsConcentration: (params?: { account_id?: string; level?: "campaign" | "creative" }) =>
+    api.get<AdDiagnostic>("/advertising/diagnostics/concentration", { params }),
+  diagnosticsPacing: (params: { campaign_id: string }) =>
+    api.get<AdDiagnostic>("/advertising/diagnostics/pacing", { params }),
+  diagnosticsCreativeRotation: (params?: { account_id?: string }) =>
+    api.get<AdDiagnostic>("/advertising/diagnostics/creative-rotation", { params }),
+  diagnosticsDiminishingReturns: (params: { campaign_id: string }) =>
+    api.get<AdDiagnostic>("/advertising/diagnostics/diminishing-returns", { params }),
+
+  createExperiment: (body: AdExperimentCreateRequest) =>
+    api.post<AdExperiment>("/advertising/experiments", body),
+  listExperiments: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get<AdExperimentList>("/advertising/experiments", { params }),
+  getExperiment: (experimentId: string) =>
+    api.get<AdExperiment>(`/advertising/experiments/${experimentId}`),
+  patchExperiment: (experimentId: string, body: AdExperimentPatchRequest) =>
+    api.patch<AdExperiment>(`/advertising/experiments/${experimentId}`, body),
+  startExperimentObservation: (experimentId: string) =>
+    api.post<AdExperiment>(`/advertising/experiments/${experimentId}/start-observation`),
+  completeExperiment: (experimentId: string) =>
+    api.post<AdExperiment>(`/advertising/experiments/${experimentId}/complete`),
+  cancelExperiment: (experimentId: string) =>
+    api.post<AdExperiment>(`/advertising/experiments/${experimentId}/cancel`),
+  getExperimentReview: (experimentId: string) =>
+    api.get<AdExperimentReview>(`/advertising/experiments/${experimentId}/review`),
+  buildExperimentReview: (experimentId: string) =>
+    api.post<AdExperimentReview>(`/advertising/experiments/${experimentId}/review`),
+
+  listChangePlans: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get<AdChangePlanList>("/advertising/change-plans", { params }),
+  getChangePlan: (planId: string) =>
+    api.get<AdChangePlan>(`/advertising/change-plans/${planId}`),
+  reviewChangePlan: (planId: string) =>
+    api.post<AdChangePlan>(`/advertising/change-plans/${planId}/review`),
+  dismissChangePlan: (planId: string) =>
+    api.post<AdChangePlan>(`/advertising/change-plans/${planId}/dismiss`),
+  generateChangePlan: () =>
+    api.post<AdChangePlan>("/advertising/change-plans/generate"),
+
+  decisionSupportRecommendations: (params?: { limit?: number }) =>
+    api.get<AdDecisionRecommendationList>("/advertising/decision-support/recommendations", {
+      params,
+    }),
 };
 
 export const ADVERTISING_QUERY_KEY = ["advertising"] as const;

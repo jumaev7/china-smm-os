@@ -7,12 +7,16 @@ import {
   ArrowRight,
   BadgeDollarSign,
   Building2,
+  Calculator,
+  Compass,
+  FlaskConical,
   Layers,
   Link2,
   Megaphone,
   Radio,
 } from "lucide-react";
 
+import { AdvertisingSubNav } from "@/components/advertising/AdvertisingSubNav";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/PageStates";
 import {
   KpiCard,
@@ -52,18 +56,19 @@ export default function AdvertisingOverviewPage() {
         badge={<StatusBadge variant="neutral">Read-only</StatusBadge>}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link href="/advertising/accounts" className="btn-secondary text-sm">
-              Accounts
+            <Link href="/advertising/decision-support" className="btn-secondary text-sm">
+              Decision Support
             </Link>
-            <Link href="/advertising/campaigns" className="btn-secondary text-sm">
-              Campaigns
+            <Link href="/advertising/simulator" className="btn-secondary text-sm">
+              Simulator
             </Link>
-            <Link href="/advertising/creatives" className="btn-secondary text-sm">
-              Creatives
+            <Link href="/advertising/experiments" className="btn-secondary text-sm">
+              Experiments
             </Link>
           </div>
         }
       />
+      <AdvertisingSubNav />
 
       {overviewQuery.isLoading ? <LoadingState message="Loading advertising overview…" /> : null}
 
@@ -261,6 +266,24 @@ export default function AdvertisingOverviewPage() {
           ) : null}
 
           <div className="flex flex-wrap gap-3">
+            <Link
+              href="/advertising/decision-support"
+              className="inline-flex items-center gap-1 text-sm font-medium text-slate-900 underline-offset-2 hover:underline dark-tenant:text-slate-100"
+            >
+              <Compass className="h-3.5 w-3.5" /> Decision support <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href="/advertising/simulator"
+              className="inline-flex items-center gap-1 text-sm font-medium text-slate-900 underline-offset-2 hover:underline dark-tenant:text-slate-100"
+            >
+              <Calculator className="h-3.5 w-3.5" /> Budget simulator <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href="/advertising/experiments"
+              className="inline-flex items-center gap-1 text-sm font-medium text-slate-900 underline-offset-2 hover:underline dark-tenant:text-slate-100"
+            >
+              <FlaskConical className="h-3.5 w-3.5" /> Experiments <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
             <Link
               href="/advertising/attribution"
               className="inline-flex items-center gap-1 text-sm font-medium text-slate-900 underline-offset-2 hover:underline dark-tenant:text-slate-100"

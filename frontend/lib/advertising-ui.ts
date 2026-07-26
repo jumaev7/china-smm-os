@@ -270,3 +270,58 @@ export function severityVariant(severity?: string | null): StatusVariant {
       return "info";
   }
 }
+
+/** Normalize decision-support kind labels for display badges. */
+export function kindLabel(kind?: string | null): string {
+  if (!kind) return "—";
+  const key = kind.trim().toUpperCase().replace(/_/g, " ");
+  switch (key) {
+    case "OBSERVED":
+      return "OBSERVED";
+    case "SIMULATED":
+      return "SIMULATED";
+    case "DIRECTIONAL":
+    case "ADVISORY":
+      return "DIRECTIONAL";
+    case "INSUFFICIENT DATA":
+    case "INSUFFICIENT":
+      return "INSUFFICIENT DATA";
+    case "MECHANICAL PROJECTION":
+      return "MECHANICAL PROJECTION";
+    case "OBSERVATION PLAN":
+      return "OBSERVATION PLAN";
+    default:
+      return key;
+  }
+}
+
+export function kindVariant(kind?: string | null): StatusVariant {
+  const key = (kind ?? "").trim().toUpperCase().replace(/_/g, " ");
+  switch (key) {
+    case "OBSERVED":
+      return "success";
+    case "SIMULATED":
+      return "info";
+    case "DIRECTIONAL":
+    case "ADVISORY":
+      return "warning";
+    case "INSUFFICIENT DATA":
+    case "INSUFFICIENT":
+      return "neutral";
+    default:
+      return "neutral";
+  }
+}
+
+/** Convert a major-unit money string/number to integer minor units for the given currency. */
+export function majorToMinor(major: number, currency: string): number {
+  const digits = currencyFractionDigits(currency.toUpperCase());
+  return Math.round(major * 10 ** digits);
+}
+
+export function parseShareFraction(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const num = typeof value === "string" ? Number(value) : value;
+  if (Number.isNaN(num)) return null;
+  return num;
+}
