@@ -16132,3 +16132,313 @@ export const advertisingApi = {
 };
 
 export const ADVERTISING_QUERY_KEY = ["advertising"] as const;
+
+// ---------------------------------------------------------------------------
+// Social Listening Phase 1 — Observed Mentions Foundation
+// ---------------------------------------------------------------------------
+
+export type ListeningProjectStatus = "active" | "paused" | "archived";
+export type ListeningReviewState =
+  | "unreviewed"
+  | "relevant"
+  | "irrelevant"
+  | "needs_follow_up"
+  | "resolved";
+
+export interface ListeningProject {
+  id: string;
+  client_id?: string | null;
+  name: string;
+  description?: string | null;
+  status: ListeningProjectStatus;
+  default_locale?: string | null;
+  created_by_user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+}
+
+export interface ListeningSubject {
+  id: string;
+  project_id: string;
+  subject_type: string;
+  canonical_name: string;
+  aliases: string[];
+  handle?: string | null;
+  domain?: string | null;
+  is_active: boolean;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListeningQuery {
+  id: string;
+  project_id: string;
+  subject_id?: string | null;
+  name: string;
+  include_terms: string[];
+  exclude_terms: string[];
+  source_filters: string[];
+  language_filters: string[];
+  is_enabled: boolean;
+  created_by_user_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListeningSource {
+  id: string;
+  project_id: string;
+  source_type: string;
+  source_key: string;
+  display_name: string;
+  is_enabled: boolean;
+  capability_status: string;
+  freshness_status: string;
+  freshness_watermark?: string | null;
+  last_success_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListeningMatch {
+  id: string;
+  mention_id: string;
+  query_id?: string | null;
+  subject_id?: string | null;
+  match_type: string;
+  matched_term: string;
+  evidence_excerpt?: string | null;
+  evidence_start?: number | null;
+  evidence_end?: number | null;
+  matcher_version: string;
+  created_at: string;
+}
+
+export interface ObservedMention {
+  id: string;
+  project_id?: string | null;
+  source_id?: string | null;
+  source_type: string;
+  observation_origin: string;
+  provider_account_ref?: string | null;
+  provider_external_id?: string | null;
+  canonical_url?: string | null;
+  author_display?: string | null;
+  content_excerpt?: string | null;
+  content_text?: string | null;
+  content_type: string;
+  language?: string | null;
+  published_at?: string | null;
+  observed_at: string;
+  first_observed_at: string;
+  last_observed_at: string;
+  source_updated_at?: string | null;
+  engagement?: Record<string, unknown> | null;
+  review_state: ListeningReviewState | string;
+  dedupe_version?: string | null;
+  normalization_version?: string | null;
+  ingestion_run_id?: string | null;
+  provenance?: Record<string, unknown> | null;
+  matches?: ListeningMatch[];
+  author_external_id?: string | null;
+  content_fingerprint?: string | null;
+  dedupe_key?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListeningIngestionRun {
+  id: string;
+  project_id?: string | null;
+  source_id?: string | null;
+  source_type: string;
+  trigger_type: string;
+  status: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  fetched_count: number;
+  created_count: number;
+  updated_count: number;
+  duplicate_count: number;
+  rejected_count: number;
+  error_count: number;
+  match_count: number;
+  error_summary?: string | null;
+  cursor_before?: string | null;
+  cursor_after?: string | null;
+  freshness_watermark?: string | null;
+  provider_request_id?: string | null;
+  created_by_user_id?: string | null;
+  created_at: string;
+}
+
+export interface ListeningOverview {
+  schema_version: string;
+  coverage_notice: string;
+  live_provider_available: boolean;
+  project_count: number;
+  projects: ListeningProject[];
+  mention_total: number;
+  unreviewed_count: number;
+  recent_mentions: ObservedMention[];
+  sources: ListeningSource[];
+  recent_ingestion_runs: ListeningIngestionRun[];
+  source_capabilities: Array<{
+    source_type: string;
+    capability_status: string;
+    supports_keyword_search: boolean;
+    supports_account_feed: boolean;
+    supports_historical_window: boolean;
+    pagination_type: string;
+    engagement_fields_available: boolean;
+    author_fields_available: boolean;
+    deletion_signals_available: boolean;
+    notes?: string;
+    unsupported_reason?: string | null;
+  }>;
+}
+
+export interface ListeningListResponse<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export const LISTENING_QUERY_KEY = ["listening"] as const;
+
+export const listeningApi = {
+  overview: () => api.get<ListeningOverview>("/listening/overview"),
+  capabilities: () =>
+    api.get<{
+      live_provider_available: boolean;
+      coverage_notice: string;
+      provider_writes_supported: boolean;
+      items: ListeningOverview["source_capabilities"];
+    }>("/listening/capabilities"),
+
+  listProjects: (params?: { status?: string; limit?: number; offset?: number }) =>
+    api.get<ListeningListResponse<ListeningProject>>("/listening/projects", { params }),
+  getProject: (projectId: string) =>
+    api.get<ListeningProject>(`/listening/projects/${projectId}`),
+  createProject: (body: {
+    name: string;
+    description?: string | null;
+    client_id?: string | null;
+    default_locale?: string | null;
+  }) => api.post<ListeningProject>("/listening/projects", body),
+  updateProject: (
+    projectId: string,
+    body: {
+      name?: string;
+      description?: string | null;
+      status?: ListeningProjectStatus;
+      default_locale?: string | null;
+    },
+  ) => api.patch<ListeningProject>(`/listening/projects/${projectId}`, body),
+
+  listSubjects: (projectId: string) =>
+    api.get<ListeningSubject[]>(`/listening/projects/${projectId}/subjects`),
+  createSubject: (
+    projectId: string,
+    body: {
+      subject_type: string;
+      canonical_name: string;
+      aliases?: string[];
+      handle?: string | null;
+      domain?: string | null;
+    },
+  ) => api.post<ListeningSubject>(`/listening/projects/${projectId}/subjects`, body),
+  updateSubject: (
+    subjectId: string,
+    body: {
+      canonical_name?: string;
+      aliases?: string[];
+      handle?: string | null;
+      domain?: string | null;
+      is_active?: boolean;
+    },
+  ) => api.patch<ListeningSubject>(`/listening/subjects/${subjectId}`, body),
+
+  listQueries: (projectId: string) =>
+    api.get<ListeningQuery[]>(`/listening/projects/${projectId}/queries`),
+  createQuery: (
+    projectId: string,
+    body: {
+      name: string;
+      include_terms?: string[];
+      exclude_terms?: string[];
+      source_filters?: string[];
+      language_filters?: string[];
+      subject_id?: string | null;
+    },
+  ) => api.post<ListeningQuery>(`/listening/projects/${projectId}/queries`, body),
+  updateQuery: (
+    queryId: string,
+    body: {
+      name?: string;
+      include_terms?: string[];
+      exclude_terms?: string[];
+      source_filters?: string[];
+      language_filters?: string[];
+      is_enabled?: boolean;
+      subject_id?: string | null;
+    },
+  ) => api.patch<ListeningQuery>(`/listening/queries/${queryId}`, body),
+
+  listSources: (projectId: string) =>
+    api.get<ListeningSource[]>(`/listening/projects/${projectId}/sources`),
+  updateSource: (
+    sourceId: string,
+    body: { is_enabled?: boolean; display_name?: string },
+  ) => api.patch<ListeningSource>(`/listening/sources/${sourceId}`, body),
+
+  listMentions: (params?: {
+    project_id?: string;
+    subject_id?: string;
+    query_id?: string;
+    source_type?: string;
+    review_state?: string;
+    language?: string;
+    search?: string;
+    matched_term?: string;
+    published_from?: string;
+    published_to?: string;
+    limit?: number;
+    offset?: number;
+  }) => api.get<ListeningListResponse<ObservedMention>>("/listening/mentions", { params }),
+  getMention: (mentionId: string) =>
+    api.get<ObservedMention>(`/listening/mentions/${mentionId}`),
+  reviewMention: (
+    mentionId: string,
+    body: { review_state: ListeningReviewState; note?: string | null },
+  ) =>
+    api.post<{
+      id: string;
+      mention_id: string;
+      actor_user_id?: string | null;
+      previous_state: string;
+      new_state: string;
+      note?: string | null;
+      created_at: string;
+    }>(`/listening/mentions/${mentionId}/review`, body),
+
+  listRuns: (params?: { project_id?: string; limit?: number; offset?: number }) =>
+    api.get<ListeningListResponse<ListeningIngestionRun>>("/listening/ingestion-runs", {
+      params,
+    }),
+  getRun: (runId: string) =>
+    api.get<ListeningIngestionRun>(`/listening/ingestion-runs/${runId}`),
+  importMentions: (
+    projectId: string,
+    body: { items: Record<string, unknown>[]; source_id?: string | null },
+  ) =>
+    api.post<ListeningIngestionRun>(`/listening/projects/${projectId}/import`, body),
+  fixtureIngest: (projectId: string, body?: { source_id?: string | null }) =>
+    api.post<ListeningIngestionRun>(
+      `/listening/projects/${projectId}/fixture-ingest`,
+      body ?? {},
+    ),
+};

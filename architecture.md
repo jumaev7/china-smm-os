@@ -214,6 +214,20 @@ Convert to content + operator tasks
 - **API:** `business_health_score` (scalar, backward compatible) + structured `business_health` on overview / summary-widget / briefing
 
 
+### Social Listening Phase 1 — Observed Mentions Foundation
+
+- **Purpose:** Tenant-scoped foundation for observing and exploring external market mentions (configuration → read-only ingest → normalize → dedupe → match → review).
+- **Boundary:** Observe only. No publish, reply, DM, like, follow, block, report, CRM mutation, or advertising writes. Review state is internal workflow only.
+- **Sources (honest):** `manual_import` and `fixture` only. No live keyword/market listening provider is connected. Coverage is limited to configured supported sources — not whole-market claims.
+- **Entities:** `TenantListeningProject`, `TenantListeningSubject`, `TenantListeningQuery`, `TenantListeningSource`, `TenantObservedMention`, `TenantMentionMatch`, `TenantMentionReview`, `TenantListeningIngestionRun`
+- **Dedupe version:** `listening_dedupe_v1` — priority: provider identity → canonical URL → versioned fingerprint (`hashlib.sha256`). Preserves `first_observed_at`; advances `last_observed_at`; updates mutable content/engagement on edit.
+- **Matching version:** `listening_matcher_v1` — deterministic phrase/alias/handle/domain matching with exclude terms, source/language filters, boundary awareness, and retained evidence. No AI matching in Phase 1.
+- **Sentiment / Business Health:** Deferred. Does not add a scored Social Listening domain or change Business Health v2 weights.
+- **API:** `/api/v1/listening/*` — overview, projects, subjects, queries, sources, mentions, review, ingestion runs, manual import, fixture ingest.
+- **UI:** `/listening` (overview, mention explorer, detail, configuration, ingestion runs).
+- **Extend later:** live provider adapters behind the same read-only contract; trend/SOV analytics; optional executive synthesis via a clean read interface (not raw table coupling).
+
+
 ---
 
 ## External Integrations

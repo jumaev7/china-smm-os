@@ -435,6 +435,8 @@ const NAV_SECTIONS: NavSection[] = [
 
       { href: "/advertising", icon: Megaphone, labelKey: "nav.advertisingIntelligence" },
 
+      { href: "/listening", icon: Radio, labelKey: "nav.socialListening" },
+
       { href: "/audit", icon: ClipboardCheck, labelKey: "nav.audit" },
 
       { href: "/system", icon: Activity, labelKey: "nav.system" },
@@ -494,6 +496,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
       { href: "/customer-success", icon: Sparkles, labelKey: "nav.customerSuccess" },
       { href: "/marketing-intelligence", icon: Brain, labelKey: "nav.marketingIntelligence" },
       { href: "/advertising", icon: Megaphone, labelKey: "nav.advertisingIntelligence" },
+      { href: "/listening", icon: Radio, labelKey: "nav.socialListening" },
     ],
   },
   {

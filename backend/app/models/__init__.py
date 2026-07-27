@@ -173,6 +173,16 @@ from app.models.advertising import (
     TenantAdCreativeLink,
     TenantAdCampaignLink,
 )
+from app.models.listening import (
+    TenantListeningProject,
+    TenantListeningSubject,
+    TenantListeningQuery,
+    TenantListeningSource,
+    TenantObservedMention,
+    TenantMentionMatch,
+    TenantMentionReview,
+    TenantListeningIngestionRun,
+)
 from app.models.advertising_decision_support import (
     TenantAdBudgetSimulation,
     TenantAdBudgetSimulationItem,
@@ -363,4 +373,12 @@ __all__ = [
     "TenantAdExperimentReview",
     "TenantAdChangePlan",
     "TenantAdChangePlanItem",
+    "TenantListeningProject",
+    "TenantListeningSubject",
+    "TenantListeningQuery",
+    "TenantListeningSource",
+    "TenantObservedMention",
+    "TenantMentionMatch",
+    "TenantMentionReview",
+    "TenantListeningIngestionRun",
 ]

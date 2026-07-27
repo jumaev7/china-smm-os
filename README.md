@@ -16,6 +16,7 @@
 | Content status workflow (Draft → Ready → Approved) | ✅ |
 | Content calendar (monthly view + scheduling) | ✅ |
 | Approve button | ✅ |
+| Social Listening (observed mentions foundation) | ✅ Phase 1 — import/fixture only |
 | Auto-posting | 🔜 Phase 2 |
 
 ---

@@ -552,6 +552,7 @@ def _ensure_platform_event_bus_tables(connection) -> None:
     _ensure_campaign_planner_tables(connection)
     _ensure_measurement_tables(connection)
     _ensure_advertising_tables(connection)
+    _ensure_listening_tables(connection)
 
 
 def _ensure_workflow_tables(connection) -> None:
@@ -2680,6 +2681,261 @@ async def ensure_advertising_schema() -> None:
     """Apply idempotent DDL for Advertising Intelligence Phase 1 tables."""
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_advertising_tables)
+
+
+def _ensure_listening_tables(connection) -> None:
+    """Social Listening Phase 1 — observed mentions foundation (idempotent)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(connection)
+    tables = set(inspector.get_table_names())
+    if "tenants" not in tables:
+        return
+
+    if "tenant_listening_projects" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_projects ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "client_id UUID REFERENCES clients(id) ON DELETE SET NULL, "
+            "name VARCHAR(200) NOT NULL, "
+            "description TEXT, "
+            "status VARCHAR(40) NOT NULL DEFAULT 'active', "
+            "default_locale VARCHAR(10), "
+            "created_by_user_id UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "archived_at TIMESTAMPTZ"
+            ")"
+        ))
+        tables.add("tenant_listening_projects")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_projects_tenant_id ON tenant_listening_projects (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_projects_tenant_status ON tenant_listening_projects (tenant_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_projects_tenant_created ON tenant_listening_projects (tenant_id, created_at)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_listening_subjects" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_subjects ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "project_id UUID NOT NULL REFERENCES tenant_listening_projects(id) ON DELETE CASCADE, "
+            "subject_type VARCHAR(40) NOT NULL, "
+            "canonical_name VARCHAR(200) NOT NULL, "
+            "aliases_json JSONB, "
+            "handle VARCHAR(200), "
+            "domain VARCHAR(255), "
+            "is_active BOOLEAN NOT NULL DEFAULT true, "
+            "metadata_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+            ")"
+        ))
+        tables.add("tenant_listening_subjects")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_subjects_tenant_id ON tenant_listening_subjects (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_subjects_project ON tenant_listening_subjects (tenant_id, project_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_subjects_type ON tenant_listening_subjects (tenant_id, subject_type)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_listening_queries" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_queries ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "project_id UUID NOT NULL REFERENCES tenant_listening_projects(id) ON DELETE CASCADE, "
+            "subject_id UUID REFERENCES tenant_listening_subjects(id) ON DELETE SET NULL, "
+            "name VARCHAR(200) NOT NULL, "
+            "include_terms_json JSONB, "
+            "exclude_terms_json JSONB, "
+            "source_filters_json JSONB, "
+            "language_filters_json JSONB, "
+            "is_enabled BOOLEAN NOT NULL DEFAULT true, "
+            "created_by_user_id UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+            ")"
+        ))
+        tables.add("tenant_listening_queries")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_queries_tenant_id ON tenant_listening_queries (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_queries_project ON tenant_listening_queries (tenant_id, project_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_queries_enabled ON tenant_listening_queries (tenant_id, is_enabled)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_listening_sources" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_sources ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "project_id UUID NOT NULL REFERENCES tenant_listening_projects(id) ON DELETE CASCADE, "
+            "source_type VARCHAR(40) NOT NULL, "
+            "source_key VARCHAR(80) NOT NULL DEFAULT 'default', "
+            "display_name VARCHAR(200) NOT NULL, "
+            "is_enabled BOOLEAN NOT NULL DEFAULT true, "
+            "capability_status VARCHAR(40) NOT NULL DEFAULT 'import_only', "
+            "config_json JSONB, "
+            "last_success_at TIMESTAMPTZ, "
+            "freshness_status VARCHAR(40) NOT NULL DEFAULT 'unavailable', "
+            "freshness_watermark TIMESTAMPTZ, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_tenant_listening_sources_identity "
+            "UNIQUE (tenant_id, project_id, source_type, source_key)"
+            ")"
+        ))
+        tables.add("tenant_listening_sources")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_sources_tenant_id ON tenant_listening_sources (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_sources_project ON tenant_listening_sources (tenant_id, project_id)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_listening_ingestion_runs" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_ingestion_runs ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "project_id UUID REFERENCES tenant_listening_projects(id) ON DELETE SET NULL, "
+            "source_id UUID REFERENCES tenant_listening_sources(id) ON DELETE SET NULL, "
+            "source_type VARCHAR(40) NOT NULL, "
+            "trigger_type VARCHAR(40) NOT NULL DEFAULT 'manual', "
+            "status VARCHAR(40) NOT NULL DEFAULT 'pending', "
+            "started_at TIMESTAMPTZ, "
+            "completed_at TIMESTAMPTZ, "
+            "fetched_count INTEGER NOT NULL DEFAULT 0, "
+            "created_count INTEGER NOT NULL DEFAULT 0, "
+            "updated_count INTEGER NOT NULL DEFAULT 0, "
+            "duplicate_count INTEGER NOT NULL DEFAULT 0, "
+            "rejected_count INTEGER NOT NULL DEFAULT 0, "
+            "error_count INTEGER NOT NULL DEFAULT 0, "
+            "match_count INTEGER NOT NULL DEFAULT 0, "
+            "error_summary VARCHAR(1000), "
+            "cursor_before VARCHAR(255), "
+            "cursor_after VARCHAR(255), "
+            "checkpoint_json JSONB, "
+            "provider_request_id VARCHAR(255), "
+            "freshness_watermark TIMESTAMPTZ, "
+            "created_by_user_id UUID, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+            ")"
+        ))
+        tables.add("tenant_listening_ingestion_runs")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_ingestion_runs_tenant_id ON tenant_listening_ingestion_runs (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_ingestion_runs_tenant_created ON tenant_listening_ingestion_runs (tenant_id, created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_ingestion_runs_tenant_status ON tenant_listening_ingestion_runs (tenant_id, status)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_ingestion_runs_project ON tenant_listening_ingestion_runs (tenant_id, project_id)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_observed_mentions" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_observed_mentions ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "project_id UUID REFERENCES tenant_listening_projects(id) ON DELETE SET NULL, "
+            "source_id UUID REFERENCES tenant_listening_sources(id) ON DELETE SET NULL, "
+            "source_type VARCHAR(40) NOT NULL, "
+            "observation_origin VARCHAR(40) NOT NULL, "
+            "provider_account_ref VARCHAR(255) NOT NULL DEFAULT '', "
+            "provider_external_id VARCHAR(255), "
+            "canonical_url VARCHAR(2000), "
+            "author_display VARCHAR(255), "
+            "author_external_id VARCHAR(255), "
+            "content_text TEXT, "
+            "content_excerpt VARCHAR(1000), "
+            "content_type VARCHAR(40) NOT NULL DEFAULT 'post', "
+            "language VARCHAR(16), "
+            "published_at TIMESTAMPTZ, "
+            "source_updated_at TIMESTAMPTZ, "
+            "observed_at TIMESTAMPTZ NOT NULL, "
+            "first_observed_at TIMESTAMPTZ NOT NULL, "
+            "last_observed_at TIMESTAMPTZ NOT NULL, "
+            "engagement_json JSONB, "
+            "content_fingerprint VARCHAR(128) NOT NULL, "
+            "dedupe_key VARCHAR(255) NOT NULL, "
+            "dedupe_version VARCHAR(40) NOT NULL DEFAULT 'listening_dedupe_v1', "
+            "normalization_version VARCHAR(40) NOT NULL DEFAULT 'listening_norm_v1', "
+            "review_state VARCHAR(40) NOT NULL DEFAULT 'unreviewed', "
+            "ingestion_run_id UUID REFERENCES tenant_listening_ingestion_runs(id) ON DELETE SET NULL, "
+            "provenance_json JSONB, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_tenant_observed_mentions_provider_identity "
+            "UNIQUE (tenant_id, source_type, provider_account_ref, provider_external_id), "
+            "CONSTRAINT uq_tenant_observed_mentions_dedupe_key UNIQUE (tenant_id, dedupe_key)"
+            ")"
+        ))
+        tables.add("tenant_observed_mentions")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_tenant_id ON tenant_observed_mentions (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_tenant_published ON tenant_observed_mentions (tenant_id, published_at)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_tenant_observed ON tenant_observed_mentions (tenant_id, observed_at)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_tenant_review ON tenant_observed_mentions (tenant_id, review_state)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_tenant_project ON tenant_observed_mentions (tenant_id, project_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_tenant_source ON tenant_observed_mentions (tenant_id, source_type)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_fingerprint ON tenant_observed_mentions (tenant_id, content_fingerprint)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_observed_mentions_canonical_url ON tenant_observed_mentions (tenant_id, canonical_url)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_mention_matches" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_mention_matches ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "mention_id UUID NOT NULL REFERENCES tenant_observed_mentions(id) ON DELETE CASCADE, "
+            "query_id UUID REFERENCES tenant_listening_queries(id) ON DELETE SET NULL, "
+            "subject_id UUID REFERENCES tenant_listening_subjects(id) ON DELETE SET NULL, "
+            "match_type VARCHAR(40) NOT NULL, "
+            "matched_term VARCHAR(255) NOT NULL, "
+            "evidence_excerpt VARCHAR(500), "
+            "evidence_start INTEGER, "
+            "evidence_end INTEGER, "
+            "matcher_version VARCHAR(40) NOT NULL DEFAULT 'listening_matcher_v1', "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_tenant_mention_matches_identity "
+            "UNIQUE (tenant_id, mention_id, query_id, matched_term, match_type)"
+            ")"
+        ))
+        tables.add("tenant_mention_matches")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_mention_matches_tenant_id ON tenant_mention_matches (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_mention_matches_mention ON tenant_mention_matches (tenant_id, mention_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_mention_matches_query ON tenant_mention_matches (tenant_id, query_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_mention_matches_subject ON tenant_mention_matches (tenant_id, subject_id)",
+    ):
+        connection.execute(text(sql))
+
+    if "tenant_mention_reviews" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_mention_reviews ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "mention_id UUID NOT NULL REFERENCES tenant_observed_mentions(id) ON DELETE CASCADE, "
+            "actor_user_id UUID, "
+            "previous_state VARCHAR(40) NOT NULL, "
+            "new_state VARCHAR(40) NOT NULL, "
+            "note TEXT, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+            ")"
+        ))
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_mention_reviews_tenant_id ON tenant_mention_reviews (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_mention_reviews_mention ON tenant_mention_reviews (tenant_id, mention_id, created_at)",
+    ):
+        connection.execute(text(sql))
+
+
+async def ensure_listening_schema() -> None:
+    """Apply idempotent DDL for Social Listening Phase 1 tables."""
+    async with engine.begin() as conn:
+        await conn.run_sync(_ensure_listening_tables)
 
 
 def _drop_advertising_tables(connection) -> None:
