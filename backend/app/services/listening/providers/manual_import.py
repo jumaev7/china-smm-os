@@ -49,34 +49,40 @@ def _row_to_observation(row: Any, index: int) -> RawObservation:
     if not isinstance(row, dict):
         return RawObservation(malformed=True, reject_reason=f"item[{index}] is not an object")
 
-    content = row.get("content_text")
-    url = row.get("canonical_url")
-    external_id = row.get("provider_external_id")
+    # Ignore unknown keys so operators cannot smuggle credentials/tokens into provenance.
+    known = {k: row[k] for k in row.keys() if k in _ALLOWED_KEYS}
+
+    content = known.get("content_text")
+    url = known.get("canonical_url")
+    external_id = known.get("provider_external_id")
     if not content and not url and not external_id:
         return RawObservation(
             malformed=True,
             reject_reason=f"item[{index}] requires content_text, canonical_url, or provider_external_id",
         )
 
-    engagement = row.get("engagement")
+    engagement = known.get("engagement")
     if engagement is not None and not isinstance(engagement, dict):
         return RawObservation(malformed=True, reject_reason=f"item[{index}].engagement must be an object")
 
     return RawObservation(
         provider_external_id=str(external_id).strip() if external_id else None,
         canonical_url=str(url).strip() if url else None,
-        author_display=str(row["author_display"]).strip() if row.get("author_display") else None,
+        author_display=str(known["author_display"]).strip() if known.get("author_display") else None,
         author_external_id=(
-            str(row["author_external_id"]).strip() if row.get("author_external_id") else None
+            str(known["author_external_id"]).strip() if known.get("author_external_id") else None
         ),
         content_text=str(content) if content is not None else None,
-        content_type=str(row.get("content_type") or "post"),
-        language=str(row["language"]).strip().lower() if row.get("language") else None,
-        published_at=_parse_dt(row.get("published_at")),
-        source_updated_at=_parse_dt(row.get("source_updated_at")),
+        content_type=str(known.get("content_type") or "post"),
+        language=str(known["language"]).strip().lower() if known.get("language") else None,
+        published_at=_parse_dt(known.get("published_at")),
+        source_updated_at=_parse_dt(known.get("source_updated_at")),
         engagement=engagement if isinstance(engagement, dict) else None,
-        provider_account_ref=str(row.get("provider_account_ref") or "manual").strip(),
-        raw_safe_summary={"import_index": index, "keys": sorted(str(k) for k in row.keys())[:32]},
+        provider_account_ref=str(known.get("provider_account_ref") or "manual").strip(),
+        raw_safe_summary={
+            "import_index": index,
+            "keys": sorted(str(k) for k in known.keys())[:32],
+        },
     )
 
 

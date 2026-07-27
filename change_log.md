@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-07-27 — Social Listening Phase 1 hardening (DoD)
+
+**Fix:** Harden Observed Mentions Foundation after Definition-of-Done audit.
+
+**Changes:** Concurrent ingest IntegrityError savepoints; fixture prod gate; URL scheme allowlist; import payload byte + rate limits; cross-project subject attach guard; review audit idempotency; unknown timestamps + i18n; adapter write-boundary tests.
+
+**Verification:** `test_listening_foundation.py`, `verify_listening_migration.py`, `verify_listening_foundation.py` (incl. concurrency), full `scripts/test_*.py`, `tsc --noEmit`, `next lint`, `next build` — all pass.
+
+---
+
 ## 2026-06-14 — Communication Hub MVP
 
 **Feature:** Centralized Communication Hub integrated into existing platform — dashboard, unified inbox, follow-ups, message templates, AI-ready service layer.

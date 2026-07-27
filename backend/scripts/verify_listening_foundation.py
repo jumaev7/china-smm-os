@@ -42,7 +42,17 @@ async def _run() -> int:
     )
     from app.models.tenant import Tenant, TenantUser
     from app.services.listening.dedupe import build_content_fingerprint, build_dedupe_key
+    from app.core.config import settings
+    from app.services.listening.dedupe import canonicalize_url
+    from app.services.listening.errors import (
+        FixtureUnavailableError,
+        ProjectNotFoundError,
+        ProjectPausedError,
+        SubjectNotFoundError,
+    )
     from app.services.listening.ingestion_service import (
+        fixture_ingest_allowed,
+        ingest_observations,
         projects_eligible_for_scheduled_ingestion,
         run_fixture_ingest,
         run_manual_import,
@@ -53,11 +63,11 @@ async def _run() -> int:
         create_query,
         create_subject,
         update_project,
+        update_query,
     )
     from app.services.listening.providers import get_adapter, list_source_capabilities
     from app.services.listening.providers.base import ListeningSourceAdapter
     from app.services.listening.review_service import set_review_state
-    from app.services.listening.errors import ProjectPausedError, ProjectNotFoundError
 
     await ensure_listening_schema()
 
@@ -129,6 +139,23 @@ async def _run() -> int:
 
     record("paused_not_scheduled", projects_eligible_for_scheduled_ingestion("paused") is False)
     record("active_scheduled", projects_eligible_for_scheduled_ingestion("active") is True)
+
+    record(
+        "canonicalize_rejects_javascript",
+        canonicalize_url("javascript:alert(1)") is None,
+    )
+    record(
+        "canonicalize_rejects_data",
+        canonicalize_url("data:text/html;base64,xx") is None,
+    )
+    record(
+        "canonicalize_accepts_https",
+        canonicalize_url("https://Example.com/a?utm_source=x") == "https://example.com/a",
+    )
+    record(
+        "fixture_gate_matches_env",
+        fixture_ingest_allowed() == ((settings.APP_ENV or "").strip().lower() not in {"production", "prod"}),
+    )
 
     # Adapter surface must not expose mutation methods.
     adapter = get_adapter("manual_import")
@@ -366,7 +393,6 @@ async def _run() -> int:
             # fixture uses allow_paused=True — so pause check is for scheduled path.
             paused_ok = False
         # Explicit scheduled-style call:
-        from app.services.listening.ingestion_service import ingest_observations
         try:
             await ingest_observations(
                 db,
@@ -403,6 +429,55 @@ async def _run() -> int:
         except ProjectNotFoundError:
             cross = True
         record("cross_tenant_project_rejected", cross)
+
+        # Nested subject attach must not cross projects (same tenant).
+        project2 = await create_project(db, tenant_id=tenant_a.id, name="Brand Watch 2")
+        subject2 = await create_subject(
+            db,
+            tenant_id=tenant_a.id,
+            project_id=project2.id,
+            subject_type="competitor",
+            canonical_name="OtherCo",
+        )
+        q_rows = await create_query(
+            db,
+            tenant_id=tenant_a.id,
+            project_id=project.id,
+            name="Attach guard",
+            include_terms=["Acme"],
+            created_by_user_id=user_a.id,
+        )
+        cross_project_attach = False
+        try:
+            await update_query(
+                db,
+                tenant_a.id,
+                q_rows.id,
+                subject_id=subject2.id,
+            )
+        except SubjectNotFoundError:
+            cross_project_attach = True
+        record("cross_project_subject_attach_rejected", cross_project_attach)
+
+        # Cross-tenant subject attach also 404s (same safe not-found).
+        other_subject = await create_subject(
+            db,
+            tenant_id=tenant_b.id,
+            project_id=other.id,
+            subject_type="topic",
+            canonical_name="Isolated",
+        )
+        cross_tenant_attach = False
+        try:
+            await update_query(
+                db,
+                tenant_a.id,
+                q_rows.id,
+                subject_id=other_subject.id,
+            )
+        except SubjectNotFoundError:
+            cross_tenant_attach = True
+        record("cross_tenant_subject_attach_rejected", cross_tenant_attach)
 
         # Mentions for tenant B must not see tenant A
         b_count = (
@@ -442,8 +517,211 @@ async def _run() -> int:
             all(m.observation_origin != "live_provider" for m in fixture_rows),
         )
 
-        # Cleanup
+        # Fatal failure must not advance checkpoint (cursor_after stays cursor_before).
+        class _BoomAdapter:
+            source_type = "manual_import"
+
+            def capabilities(self):
+                from app.services.listening.schemas import SourceCapabilities
+                return SourceCapabilities(
+                    source_type="manual_import",
+                    capability_status="import_only",
+                    supports_keyword_search=False,
+                    supports_account_feed=False,
+                    supports_historical_window=True,
+                    notes="boom",
+                )
+
+            async def validate_configuration(self, config):
+                return []
+
+            async def fetch_observations(self, **kwargs):
+                raise RuntimeError("provider_fetch_boom")
+
+        import app.services.listening.ingestion_service as ingest_mod
+        from app.services.listening.providers import get_adapter as _real_get
+
+        original_get = ingest_mod.get_adapter
+        ingest_mod.get_adapter = lambda _st: _BoomAdapter()  # type: ignore[assignment]
+        try:
+            fatal_run = await ingest_observations(
+                db,
+                tenant_id=tenant_a.id,
+                project_id=project.id,
+                source_type="manual_import",
+                trigger_type="manual",
+                cursor="cursor-keep",
+                allow_paused=True,
+            )
+        finally:
+            ingest_mod.get_adapter = original_get
+        record("fatal_status_failed", fatal_run.status == "failed", fatal_run.status)
+        record(
+            "fatal_does_not_advance_checkpoint",
+            fatal_run.cursor_after == fatal_run.cursor_before == "cursor-keep"
+            and (fatal_run.checkpoint_json or {}).get("advanced") is False,
+            str(fatal_run.checkpoint_json),
+        )
+
+        # Empty successful import is not a failure (zero mentions != error).
+        empty_run = await run_manual_import(
+            db, tenant_id=tenant_a.id, project_id=project.id, items=[], created_by_user_id=user_a.id,
+        )
+        record(
+            "zero_mentions_not_failure",
+            empty_run.status == "succeeded" and empty_run.error_count == 0,
+            empty_run.status,
+        )
+
+        # Cleanup primary session work before concurrent sessions.
         await db.rollback()
+
+    # Concurrent dual-session ingest must not create duplicate provider identities.
+    concurrent_ext = f"ext-concurrent-{uuid4().hex[:10]}"
+    async with AsyncSessionLocal() as setup_db:
+        tenant_c = Tenant(id=uuid4(), company_name=f"Listening C {uuid4().hex[:8]}", status="active", plan="trial")
+        setup_db.add(tenant_c)
+        await setup_db.flush()
+        project_c = await create_project(setup_db, tenant_id=tenant_c.id, name="Concurrent")
+        await setup_db.commit()
+        tenant_c_id = tenant_c.id
+        project_c_id = project_c.id
+
+    item = {
+        "provider_external_id": concurrent_ext,
+        "content_text": "Acme concurrent race",
+        "author_display": "racer",
+        "language": "en",
+        "canonical_url": f"https://example.com/race/{concurrent_ext}",
+    }
+
+    async def _race_import() -> None:
+        async with AsyncSessionLocal() as race_db:
+            await run_manual_import(
+                race_db,
+                tenant_id=tenant_c_id,
+                project_id=project_c_id,
+                items=[item],
+            )
+            await race_db.commit()
+
+    results = await asyncio.gather(_race_import(), _race_import(), return_exceptions=True)
+    race_errors = [r for r in results if isinstance(r, BaseException)]
+    record("concurrent_import_no_exception", race_errors == [], str(race_errors))
+
+    async with AsyncSessionLocal() as check_db:
+        race_count = (
+            await check_db.execute(
+                select(func.count()).select_from(TenantObservedMention).where(
+                    TenantObservedMention.tenant_id == tenant_c_id,
+                    TenantObservedMention.provider_external_id == concurrent_ext,
+                )
+            )
+        ).scalar_one()
+        record("concurrent_import_single_row", int(race_count) == 1, str(race_count))
+        await check_db.rollback()
+
+    # Production fixture gate (behavioral).
+    previous_env = settings.APP_ENV
+    settings.APP_ENV = "production"
+    try:
+        gated = False
+        async with AsyncSessionLocal() as gate_db:
+            try:
+                await run_fixture_ingest(gate_db, tenant_id=tenant_c_id, project_id=project_c_id)
+            except FixtureUnavailableError:
+                gated = True
+        record("fixture_blocked_in_production", gated)
+    finally:
+        settings.APP_ENV = previous_env
+
+    # Behavioral: review + import must not invoke provider mutation capabilities.
+    mutation_calls: list[str] = []
+
+    class _SpyAdapter:
+        source_type = "manual_import"
+
+        def capabilities(self):
+            from app.services.listening.schemas import SourceCapabilities
+            return SourceCapabilities(
+                source_type="manual_import",
+                capability_status="import_only",
+                supports_keyword_search=False,
+                supports_account_feed=False,
+                supports_historical_window=True,
+                notes="spy",
+            )
+
+        async def validate_configuration(self, config):
+            return []
+
+        async def fetch_observations(self, **kwargs):
+            from app.services.listening.schemas import ObservationPage, RawObservation
+            return ObservationPage(
+                items=[
+                    RawObservation(
+                        provider_external_id=f"spy-{uuid4().hex[:8]}",
+                        content_text="Acme spy observe",
+                        language="en",
+                    )
+                ],
+                fetched_count=1,
+            )
+
+        async def publish(self, *args, **kwargs):
+            mutation_calls.append("publish")
+
+        async def reply(self, *args, **kwargs):
+            mutation_calls.append("reply")
+
+        async def comment(self, *args, **kwargs):
+            mutation_calls.append("comment")
+
+        async def react(self, *args, **kwargs):
+            mutation_calls.append("react")
+
+        async def message(self, *args, **kwargs):
+            mutation_calls.append("message")
+
+        async def follow(self, *args, **kwargs):
+            mutation_calls.append("follow")
+
+        async def delete_content(self, *args, **kwargs):
+            mutation_calls.append("delete_content")
+
+    import app.services.listening.ingestion_service as ingest_mod2
+    original_get2 = ingest_mod2.get_adapter
+    ingest_mod2.get_adapter = lambda _st: _SpyAdapter()  # type: ignore[assignment]
+    try:
+        async with AsyncSessionLocal() as spy_db:
+            await run_manual_import(
+                spy_db,
+                tenant_id=tenant_c_id,
+                project_id=project_c_id,
+                items=[{
+                    "provider_external_id": f"spy-import-{uuid4().hex[:8]}",
+                    "content_text": "Acme via import path",
+                    "language": "en",
+                }],
+            )
+            mention_for_review = (
+                await spy_db.execute(
+                    select(TenantObservedMention).where(
+                        TenantObservedMention.tenant_id == tenant_c_id,
+                    ).limit(1)
+                )
+            ).scalar_one()
+            await set_review_state(
+                spy_db,
+                tenant_id=tenant_c_id,
+                mention_id=mention_for_review.id,
+                new_state="relevant",
+                actor_user_id=None,
+            )
+            await spy_db.rollback()
+    finally:
+        ingest_mod2.get_adapter = original_get2
+    record("review_import_no_provider_mutation", mutation_calls == [], str(mutation_calls))
 
     # Static guarantee: listening package has no publish/reply symbols in ingestion
     from pathlib import Path as P

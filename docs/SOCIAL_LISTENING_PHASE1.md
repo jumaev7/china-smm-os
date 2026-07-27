@@ -102,9 +102,20 @@ Route group under `/listening`:
 
 - Tenant isolation at query and persistence boundaries
 - Minimize author data; no raw provider payload dumps
-- Safe external links (`http`/`https` only)
+- Safe external links (`http`/`https` only; `javascript:` / `data:` rejected)
 - No tokens in logs or API responses
+- Manual import payloads are size-bounded (`MAX_IMPORT_PAYLOAD_BYTES`) and
+  rate-limited per tenant (`MAX_IMPORT_REQUESTS_PER_TENANT_PER_HOUR`)
+- Fixture/demo ingest is gated off when `APP_ENV` is `production` / `prod`
 - Use existing tenant deletion/cascade conventions
+
+## Schema ownership
+
+Production schema changes use Alembic (`20260914_social_listening_foundation`).
+`ensure_listening_schema()` is the established idempotent local/dev DDL helper
+(same pattern as advertising/measurement). It must remain structurally aligned
+with the Alembic revision and must not silently mutate columns on existing tables.
+Production startup does **not** call ensure helpers — only `alembic upgrade head`.
 
 ## Phase 2 extension points (deferred)
 

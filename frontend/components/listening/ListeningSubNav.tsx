@@ -4,23 +4,25 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-
-const LINKS = [
-  { href: "/listening", label: "Overview", exact: true },
-  { href: "/listening/mentions", label: "Mentions" },
-  { href: "/listening/projects", label: "Configuration" },
-  { href: "/listening/runs", label: "Ingestion runs" },
-];
+import { useTranslation } from "@/lib/I18nProvider";
 
 export function ListeningSubNav() {
   const pathname = usePathname();
+  const { t } = useTranslation();
+
+  const links = [
+    { href: "/listening", label: t("listening.navOverview"), exact: true },
+    { href: "/listening/mentions", label: t("listening.navMentions") },
+    { href: "/listening/projects", label: t("listening.navConfiguration") },
+    { href: "/listening/runs", label: t("listening.navRuns") },
+  ];
 
   return (
     <nav
-      aria-label="Social Listening sections"
+      aria-label={t("listening.navAria")}
       className="mb-6 flex flex-wrap gap-2 border-b border-slate-200 pb-3 dark-tenant:border-slate-800"
     >
-      {LINKS.map((link) => {
+      {links.map((link) => {
         const active = link.exact
           ? pathname === link.href
           : pathname === link.href || pathname.startsWith(`${link.href}/`);

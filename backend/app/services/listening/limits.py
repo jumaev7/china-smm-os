@@ -1,6 +1,11 @@
 """Deterministic limits for Social Listening Phase 1."""
 from __future__ import annotations
 
+import json
+from typing import Any
+
+from app.services.listening.errors import ImportValidationError, ListeningRateLimitedError
+
 MAX_PROJECTS_PER_TENANT = 50
 MAX_SUBJECTS_PER_PROJECT = 100
 MAX_QUERIES_PER_PROJECT = 100
@@ -20,6 +25,37 @@ MAX_IMPORT_REQUESTS_PER_TENANT_PER_HOUR = 30
 FRESH_MAX_AGE_SECONDS = 6 * 3600
 AGING_MAX_AGE_SECONDS = 24 * 3600
 
+
+def import_payload_byte_size(items: list[Any]) -> int:
+    """UTF-8 JSON size of an import payload (stable across dict key order)."""
+    return len(json.dumps(items, default=str, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def enforce_import_payload_bytes(items: list[Any]) -> None:
+    size = import_payload_byte_size(items)
+    if size > MAX_IMPORT_PAYLOAD_BYTES:
+        raise ImportValidationError(
+            f"import payload exceeds {MAX_IMPORT_PAYLOAD_BYTES} bytes",
+            details={
+                "limit_key": "MAX_IMPORT_PAYLOAD_BYTES",
+                "max": MAX_IMPORT_PAYLOAD_BYTES,
+                "size": size,
+            },
+        )
+
+
+def enforce_import_rate_limit(count_in_window: int) -> None:
+    if count_in_window >= MAX_IMPORT_REQUESTS_PER_TENANT_PER_HOUR:
+        raise ListeningRateLimitedError(
+            "manual/fixture import rate limit exceeded",
+            details={
+                "limit_key": "MAX_IMPORT_REQUESTS_PER_TENANT_PER_HOUR",
+                "max": MAX_IMPORT_REQUESTS_PER_TENANT_PER_HOUR,
+                "count_in_window": count_in_window,
+            },
+        )
+
+
 __all__ = [
     "MAX_PROJECTS_PER_TENANT",
     "MAX_SUBJECTS_PER_PROJECT",
@@ -37,4 +73,7 @@ __all__ = [
     "MAX_IMPORT_REQUESTS_PER_TENANT_PER_HOUR",
     "FRESH_MAX_AGE_SECONDS",
     "AGING_MAX_AGE_SECONDS",
+    "import_payload_byte_size",
+    "enforce_import_payload_bytes",
+    "enforce_import_rate_limit",
 ]

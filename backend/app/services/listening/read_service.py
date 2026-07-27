@@ -333,14 +333,21 @@ async def overview(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     )
     runs, _ = await list_ingestion_runs(db, tenant_id, limit=5, offset=0)
 
+    from app.services.listening.ingestion_service import fixture_ingest_allowed
+
+    fixture_ok = fixture_ingest_allowed()
+    coverage = (
+        "Coverage is limited to configured supported sources "
+        "(manual import"
+        + (" and fixture/demo" if fixture_ok else "")
+        + " in Phase 1). "
+        "This is not whole-market social listening."
+    )
     return {
         "schema_version": LISTENING_SCHEMA_VERSION,
-        "coverage_notice": (
-            "Coverage is limited to configured supported sources "
-            "(manual import and fixture/demo in Phase 1). "
-            "This is not whole-market social listening."
-        ),
+        "coverage_notice": coverage,
         "live_provider_available": False,
+        "fixture_ingest_available": fixture_ok,
         "project_count": project_total,
         "projects": [project_to_dict(p) for p in projects],
         "mention_total": mention_total,

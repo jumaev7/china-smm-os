@@ -29,6 +29,11 @@ def normalize_whitespace(text: str) -> str:
 
 
 def canonicalize_url(url: str | None) -> str | None:
+    """Return a normalized http(s) URL, or None for unsafe/unsupported schemes.
+
+    Only ``http`` and ``https`` are retained. ``javascript:``, ``data:``, and
+    other schemes are rejected so API consumers never receive executable links.
+    """
     if not url:
         return None
     raw = url.strip()
@@ -37,9 +42,18 @@ def canonicalize_url(url: str | None) -> str | None:
     try:
         parts = urlsplit(raw)
     except ValueError:
-        return raw.lower().rstrip("/")
-    scheme = (parts.scheme or "https").lower()
+        return None
+    scheme = (parts.scheme or "").lower()
+    if not scheme:
+        # Scheme-relative URLs with a host become https; bare paths are rejected.
+        if not parts.netloc:
+            return None
+        scheme = "https"
+    if scheme not in {"http", "https"}:
+        return None
     netloc = parts.netloc.lower()
+    if not netloc:
+        return None
     if netloc.startswith("www."):
         netloc = netloc[4:]
     path = parts.path.rstrip("/") or ""

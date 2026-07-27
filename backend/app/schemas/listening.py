@@ -82,6 +82,15 @@ class ManualImportRequest(BaseModel):
     def validate_items_size(cls, value: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if len(value) > 500:
             raise ValueError("at most 500 items")
+        # Bound serialized payload size (mirrors service MAX_IMPORT_PAYLOAD_BYTES).
+        from app.services.listening.limits import (
+            MAX_IMPORT_PAYLOAD_BYTES,
+            import_payload_byte_size,
+        )
+
+        size = import_payload_byte_size(value)
+        if size > MAX_IMPORT_PAYLOAD_BYTES:
+            raise ValueError(f"import payload exceeds {MAX_IMPORT_PAYLOAD_BYTES} bytes")
         return value
 
 
@@ -253,6 +262,7 @@ class OverviewResponse(BaseModel):
     schema_version: str
     coverage_notice: str
     live_provider_available: bool
+    fixture_ingest_available: bool = True
     project_count: int
     projects: list[dict[str, Any]]
     mention_total: int

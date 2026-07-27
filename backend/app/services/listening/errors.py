@@ -86,6 +86,13 @@ class ImportValidationError(ListeningError):
     http_status = 400
 
 
+class FixtureUnavailableError(ListeningError):
+    """Fixture/demo ingest is gated off in production environments."""
+
+    code = "listening_fixture_unavailable"
+    http_status = 403
+
+
 class ListeningForbiddenError(ListeningError):
     code = "listening_forbidden"
     http_status = 403
@@ -110,6 +117,7 @@ __all__ = [
     "ProjectArchivedError",
     "SourceUnsupportedError",
     "ImportValidationError",
+    "FixtureUnavailableError",
     "ListeningForbiddenError",
     "ListeningRateLimitedError",
 ]

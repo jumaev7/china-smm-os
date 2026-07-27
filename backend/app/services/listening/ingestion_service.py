@@ -6,13 +6,15 @@ and ingestion-run observability. Never calls provider mutation APIs.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.listening import (
     DEDUPE_VERSION,
     FRESHNESS_STATUSES,
@@ -25,6 +27,7 @@ from app.models.listening import (
     TenantObservedMention,
 )
 from app.services.listening.errors import (
+    FixtureUnavailableError,
     ImportValidationError,
     ProjectArchivedError,
     ProjectNotFoundError,
@@ -36,6 +39,8 @@ from app.services.listening.limits import (
     AGING_MAX_AGE_SECONDS,
     FRESH_MAX_AGE_SECONDS,
     MAX_ITEMS_PER_INGESTION_RUN,
+    enforce_import_payload_bytes,
+    enforce_import_rate_limit,
 )
 from app.services.listening.matching import match_mention_against_queries
 from app.services.listening.normalize import normalize_observation, utcnow
@@ -43,6 +48,13 @@ from app.services.listening.providers import get_adapter
 from app.services.listening.schemas import NormalizedMentionDraft
 
 logger = logging.getLogger(__name__)
+
+_PRODUCTION_ENVS = frozenset({"production", "prod"})
+
+
+def fixture_ingest_allowed() -> bool:
+    """Fixture/demo ingest is available outside production only."""
+    return (settings.APP_ENV or "").strip().lower() not in _PRODUCTION_ENVS
 
 
 def _freshness_status(last_success_at: datetime | None) -> str:
@@ -134,9 +146,11 @@ def _apply_mutable_updates(mention: TenantObservedMention, draft: NormalizedMent
     """Update mutable observation fields. Preserve first_observed_at.
 
     Returns True when any field changed (counts as update, not pure duplicate).
+    ``last_observed_at`` only advances forward.
     """
     changed = False
-    mention.last_observed_at = draft.observed_at
+    if draft.observed_at >= mention.last_observed_at:
+        mention.last_observed_at = draft.observed_at
 
     # Content edits: update text/fingerprint when provider content changed.
     if draft.content_fingerprint != mention.content_fingerprint:
@@ -180,6 +194,61 @@ def _apply_mutable_updates(mention: TenantObservedMention, draft: NormalizedMent
     return changed
 
 
+async def _create_or_get_mention(
+    db: AsyncSession,
+    *,
+    tenant_id: UUID,
+    project_id: UUID,
+    source_id: UUID | None,
+    draft: NormalizedMentionDraft,
+    run_id: UUID,
+) -> tuple[TenantObservedMention, bool]:
+    """Insert a mention, or return the canonical row on unique-constraint conflict.
+
+    Uses a savepoint so IntegrityError leaves the outer session usable.
+    """
+    mention = TenantObservedMention(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        project_id=project_id,
+        source_id=source_id,
+        source_type=draft.source_type,
+        observation_origin=draft.observation_origin,
+        provider_account_ref=draft.provider_account_ref,
+        provider_external_id=draft.provider_external_id,
+        canonical_url=draft.canonical_url,
+        author_display=draft.author_display,
+        author_external_id=draft.author_external_id,
+        content_text=draft.content_text,
+        content_excerpt=draft.content_excerpt,
+        content_type=draft.content_type,
+        language=draft.language,
+        published_at=draft.published_at,
+        source_updated_at=draft.source_updated_at,
+        observed_at=draft.observed_at,
+        first_observed_at=draft.observed_at,
+        last_observed_at=draft.observed_at,
+        engagement_json=draft.engagement_json,
+        content_fingerprint=draft.content_fingerprint,
+        dedupe_key=draft.dedupe_key,
+        dedupe_version=draft.dedupe_version,
+        normalization_version=draft.normalization_version,
+        review_state="unreviewed",
+        ingestion_run_id=run_id,
+        provenance_json=draft.provenance_json,
+    )
+    try:
+        async with db.begin_nested():
+            db.add(mention)
+            await db.flush()
+        return mention, True
+    except IntegrityError:
+        existing = await _find_existing_mention(db, tenant_id, draft)
+        if existing is None:
+            raise
+        return existing, False
+
+
 async def _upsert_matches(
     db: AsyncSession,
     *,
@@ -202,22 +271,28 @@ async def _upsert_matches(
         ).scalar_one_or_none()
         if existing is not None:
             continue
-        db.add(
-            TenantMentionMatch(
-                id=uuid4(),
-                tenant_id=tenant_id,
-                mention_id=mention_id,
-                query_id=evidence.query_id,
-                subject_id=evidence.subject_id,
-                match_type=evidence.match_type,
-                matched_term=evidence.matched_term[:255],
-                evidence_excerpt=(evidence.evidence_excerpt or "")[:500] or None,
-                evidence_start=evidence.evidence_start,
-                evidence_end=evidence.evidence_end,
-                matcher_version=evidence.matcher_version,
-            )
-        )
-        created += 1
+        try:
+            async with db.begin_nested():
+                db.add(
+                    TenantMentionMatch(
+                        id=uuid4(),
+                        tenant_id=tenant_id,
+                        mention_id=mention_id,
+                        query_id=evidence.query_id,
+                        subject_id=evidence.subject_id,
+                        match_type=evidence.match_type,
+                        matched_term=evidence.matched_term[:255],
+                        evidence_excerpt=(evidence.evidence_excerpt or "")[:500] or None,
+                        evidence_start=evidence.evidence_start,
+                        evidence_end=evidence.evidence_end,
+                        matcher_version=evidence.matcher_version,
+                    )
+                )
+                await db.flush()
+            created += 1
+        except IntegrityError:
+            # Concurrent match insert lost the race — identity uniqueness holds.
+            continue
     return created
 
 
@@ -324,40 +399,26 @@ async def ingest_observations(
 
                 existing = await _find_existing_mention(db, tenant_id, draft)
                 if existing is None:
-                    mention = TenantObservedMention(
-                        id=uuid4(),
+                    target, was_created = await _create_or_get_mention(
+                        db,
                         tenant_id=tenant_id,
                         project_id=project_id,
                         source_id=source.id if source else None,
-                        source_type=draft.source_type,
-                        observation_origin=draft.observation_origin,
-                        provider_account_ref=draft.provider_account_ref,
-                        provider_external_id=draft.provider_external_id,
-                        canonical_url=draft.canonical_url,
-                        author_display=draft.author_display,
-                        author_external_id=draft.author_external_id,
-                        content_text=draft.content_text,
-                        content_excerpt=draft.content_excerpt,
-                        content_type=draft.content_type,
-                        language=draft.language,
-                        published_at=draft.published_at,
-                        source_updated_at=draft.source_updated_at,
-                        observed_at=draft.observed_at,
-                        first_observed_at=draft.observed_at,
-                        last_observed_at=draft.observed_at,
-                        engagement_json=draft.engagement_json,
-                        content_fingerprint=draft.content_fingerprint,
-                        dedupe_key=draft.dedupe_key,
-                        dedupe_version=draft.dedupe_version,
-                        normalization_version=draft.normalization_version,
-                        review_state="unreviewed",
-                        ingestion_run_id=run.id,
-                        provenance_json=draft.provenance_json,
+                        draft=draft,
+                        run_id=run.id,
                     )
-                    db.add(mention)
-                    await db.flush()
-                    created += 1
-                    target = mention
+                    if was_created:
+                        created += 1
+                    else:
+                        # Concurrent loser: apply mutable updates to canonical row.
+                        changed = _apply_mutable_updates(target, draft)
+                        target.ingestion_run_id = run.id
+                        if target.project_id is None:
+                            target.project_id = project_id
+                        if changed:
+                            updated += 1
+                        else:
+                            duplicates += 1
                 else:
                     changed = _apply_mutable_updates(existing, draft)
                     existing.ingestion_run_id = run.id
@@ -468,6 +529,20 @@ async def ingest_observations(
     return run
 
 
+async def _import_count_last_hour(db: AsyncSession, tenant_id: UUID) -> int:
+    since = utcnow() - timedelta(hours=1)
+    count = (
+        await db.execute(
+            select(func.count()).select_from(TenantListeningIngestionRun).where(
+                TenantListeningIngestionRun.tenant_id == tenant_id,
+                TenantListeningIngestionRun.trigger_type.in_(("import", "fixture")),
+                TenantListeningIngestionRun.created_at >= since,
+            )
+        )
+    ).scalar_one()
+    return int(count)
+
+
 async def run_fixture_ingest(
     db: AsyncSession,
     *,
@@ -476,6 +551,11 @@ async def run_fixture_ingest(
     source_id: UUID | None = None,
     created_by_user_id: UUID | None = None,
 ) -> TenantListeningIngestionRun:
+    if not fixture_ingest_allowed():
+        raise FixtureUnavailableError(
+            "fixture ingest is unavailable in production",
+        )
+    enforce_import_rate_limit(await _import_count_last_hour(db, tenant_id))
     return await ingest_observations(
         db,
         tenant_id=tenant_id,
@@ -504,6 +584,8 @@ async def run_manual_import(
             f"at most {MAX_ITEMS_PER_INGESTION_RUN} items per import",
             details={"limit_key": "MAX_ITEMS_PER_INGESTION_RUN"},
         )
+    enforce_import_payload_bytes(items)
+    enforce_import_rate_limit(await _import_count_last_hour(db, tenant_id))
     return await ingest_observations(
         db,
         tenant_id=tenant_id,
@@ -523,6 +605,7 @@ def projects_eligible_for_scheduled_ingestion(status: str) -> bool:
 
 
 __all__ = [
+    "fixture_ingest_allowed",
     "ingest_observations",
     "run_fixture_ingest",
     "run_manual_import",

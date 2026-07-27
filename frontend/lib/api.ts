@@ -16278,6 +16278,7 @@ export interface ListeningOverview {
   schema_version: string;
   coverage_notice: string;
   live_provider_available: boolean;
+  fixture_ingest_available?: boolean;
   project_count: number;
   projects: ListeningProject[];
   mention_total: number;
@@ -16314,6 +16315,7 @@ export const listeningApi = {
   capabilities: () =>
     api.get<{
       live_provider_available: boolean;
+      fixture_ingest_available: boolean;
       coverage_notice: string;
       provider_writes_supported: boolean;
       items: ListeningOverview["source_capabilities"];

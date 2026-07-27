@@ -34,6 +34,24 @@ async def set_review_state(
         raise MentionNotFoundError("observed mention not found")
 
     previous = mention.review_state
+    cleaned_note = (note or "").strip()[:4000] or None
+
+    # Idempotent same-state updates must not pollute the audit trail.
+    if previous == new_state:
+        latest = (
+            await db.execute(
+                select(TenantMentionReview)
+                .where(
+                    TenantMentionReview.tenant_id == tenant_id,
+                    TenantMentionReview.mention_id == mention.id,
+                )
+                .order_by(TenantMentionReview.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if latest is not None and cleaned_note is None:
+            return mention, latest
+
     mention.review_state = new_state
     review = TenantMentionReview(
         id=uuid4(),
@@ -42,7 +60,7 @@ async def set_review_state(
         actor_user_id=actor_user_id,
         previous_state=previous,
         new_state=new_state,
-        note=(note or "").strip()[:4000] or None,
+        note=cleaned_note,
     )
     db.add(review)
     await db.flush()

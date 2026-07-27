@@ -22,12 +22,14 @@ import { useTranslation } from "@/lib/I18nProvider";
 
 const QUERY_OPTS = { staleTime: 30_000, refetchOnWindowFocus: false } as const;
 
-function formatWhen(iso?: string | null): string {
-  if (!iso) return "—";
+function formatWhen(iso: string | null | undefined, unknownLabel: string): string {
+  if (!iso) return unknownLabel;
   try {
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return unknownLabel;
+    return d.toLocaleString();
   } catch {
-    return iso;
+    return unknownLabel;
   }
 }
 
@@ -104,7 +106,7 @@ export default function ListeningOverviewPage() {
                       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                         <StatusBadge variant="neutral">{m.source_type}</StatusBadge>
                         <StatusBadge variant="neutral">{m.observation_origin}</StatusBadge>
-                        <span>{formatWhen(m.published_at ?? m.observed_at)}</span>
+                        <span>{formatWhen(m.published_at ?? m.observed_at, t("listening.unknownTime"))}</span>
                         <span>{m.review_state}</span>
                       </div>
                       <p className="mt-1 line-clamp-2 text-sm text-slate-800 dark-tenant:text-slate-100">
@@ -137,7 +139,7 @@ export default function ListeningOverviewPage() {
                       {s.source_type} · {s.capability_status}
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {t("listening.lastSuccess")}: {formatWhen(s.last_success_at)}
+                      {t("listening.lastSuccess")}: {formatWhen(s.last_success_at, t("listening.unknownTime"))}
                     </p>
                   </li>
                 ))}
@@ -162,7 +164,7 @@ export default function ListeningOverviewPage() {
                     </div>
                     <span className="text-xs text-slate-500">
                       +{run.created_count} / dup {run.duplicate_count} / rej {run.rejected_count} ·{" "}
-                      {formatWhen(run.completed_at ?? run.started_at)}
+                      {formatWhen(run.completed_at ?? run.started_at, t("listening.unknownTime"))}
                     </span>
                   </li>
                 ))}

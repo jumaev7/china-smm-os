@@ -421,6 +421,18 @@ async def update_query(
     if is_enabled is not None:
         query.is_enabled = bool(is_enabled)
     if subject_id is not None:
+        # Nested resources must stay within the same tenant + project.
+        subject = (
+            await db.execute(
+                select(TenantListeningSubject).where(
+                    TenantListeningSubject.id == subject_id,
+                    TenantListeningSubject.tenant_id == tenant_id,
+                    TenantListeningSubject.project_id == query.project_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if subject is None:
+            raise SubjectNotFoundError("listening subject not found")
         query.subject_id = subject_id
     await db.flush()
     return query

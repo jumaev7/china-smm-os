@@ -47,6 +47,11 @@ export default function ListeningProjectDetailPage() {
     enabled: Boolean(projectId),
     ...QUERY_OPTS,
   });
+  const capabilitiesQuery = useQuery({
+    queryKey: [...LISTENING_QUERY_KEY, "capabilities"],
+    queryFn: () => listeningApi.capabilities().then((r) => r.data),
+    ...QUERY_OPTS,
+  });
   const subjectsQuery = useQuery({
     queryKey: [...LISTENING_QUERY_KEY, "subjects", projectId],
     queryFn: () => listeningApi.listSubjects(projectId).then((r) => r.data),
@@ -65,6 +70,7 @@ export default function ListeningProjectDetailPage() {
     enabled: Boolean(projectId),
     ...QUERY_OPTS,
   });
+  const fixtureAvailable = capabilitiesQuery.data?.fixture_ingest_available !== false;
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: LISTENING_QUERY_KEY });
 
@@ -204,14 +210,16 @@ export default function ListeningProjectDetailPage() {
                   {status}
                 </button>
               ))}
-              <button
-                type="button"
-                className="btn-secondary text-xs"
-                disabled={fixtureMutation.isPending}
-                onClick={() => fixtureMutation.mutate()}
-              >
-                {t("listening.runFixture")}
-              </button>
+              {fixtureAvailable ? (
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  disabled={fixtureMutation.isPending}
+                  onClick={() => fixtureMutation.mutate()}
+                >
+                  {t("listening.runFixture")}
+                </button>
+              ) : null}
             </div>
           </ActionBar>
 

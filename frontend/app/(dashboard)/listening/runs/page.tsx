@@ -25,12 +25,14 @@ import { useTranslation } from "@/lib/I18nProvider";
 
 const QUERY_OPTS = { staleTime: 30_000, refetchOnWindowFocus: false } as const;
 
-function formatWhen(iso?: string | null): string {
-  if (!iso) return "—";
+function formatWhen(iso: string | null | undefined, unknownLabel: string): string {
+  if (!iso) return unknownLabel;
   try {
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return unknownLabel;
+    return d.toLocaleString();
   } catch {
-    return iso;
+    return unknownLabel;
   }
 }
 
@@ -94,13 +96,13 @@ export default function ListeningRunsPage() {
                     match {run.match_count}
                   </DataTableTd>
                   <DataTableTd className="whitespace-nowrap text-xs text-slate-500">
-                    {formatWhen(run.freshness_watermark)}
+                    {formatWhen(run.freshness_watermark, t("listening.unknownTime"))}
                   </DataTableTd>
                   <DataTableTd className="max-w-[240px] text-xs text-slate-500">
                     <span className="line-clamp-3">{run.error_summary || "—"}</span>
                   </DataTableTd>
                   <DataTableTd className="whitespace-nowrap text-xs text-slate-500">
-                    {formatWhen(run.completed_at ?? run.started_at)}
+                    {formatWhen(run.completed_at ?? run.started_at, t("listening.unknownTime"))}
                   </DataTableTd>
                 </DataTableRow>
               ))}

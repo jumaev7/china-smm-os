@@ -44,7 +44,11 @@ from app.schemas.listening import (
     SubjectUpdateRequest,
 )
 from app.services.listening.errors import ListeningError
-from app.services.listening.ingestion_service import run_fixture_ingest, run_manual_import
+from app.services.listening.ingestion_service import (
+    fixture_ingest_allowed,
+    run_fixture_ingest,
+    run_manual_import,
+)
 from app.services.listening.limits import DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT
 from app.services.listening import project_service, read_service, review_service
 from app.services.listening.providers import list_source_capabilities
@@ -131,11 +135,15 @@ async def get_capabilities(
     user: CurrentTenantUser = Depends(get_current_tenant_user),
 ):
     _ = user
+    fixture_ok = fixture_ingest_allowed()
     return {
         "live_provider_available": False,
+        "fixture_ingest_available": fixture_ok,
         "coverage_notice": (
             "Coverage is limited to configured supported sources "
-            "(manual_import and fixture). No live social listening provider is connected."
+            "(manual_import"
+            + (" and fixture" if fixture_ok else "")
+            + "). No live social listening provider is connected."
         ),
         "provider_writes_supported": False,
         "items": [

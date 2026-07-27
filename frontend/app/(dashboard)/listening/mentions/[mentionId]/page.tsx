@@ -32,12 +32,14 @@ const REVIEW_STATES: ListeningReviewState[] = [
   "resolved",
 ];
 
-function formatWhen(iso?: string | null): string {
-  if (!iso) return "—";
+function formatWhen(iso: string | null | undefined, unknownLabel: string): string {
+  if (!iso) return unknownLabel;
   try {
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return unknownLabel;
+    return d.toLocaleString();
   } catch {
-    return iso;
+    return unknownLabel;
   }
 }
 
@@ -51,6 +53,14 @@ function safeExternalHref(url?: string | null): string | null {
   }
   return null;
 }
+
+const REVIEW_STATE_KEYS: Record<ListeningReviewState, string> = {
+  unreviewed: "listening.filterUnreviewed",
+  relevant: "listening.filterRelevant",
+  irrelevant: "listening.filterIrrelevant",
+  needs_follow_up: "listening.filterNeedsFollowUp",
+  resolved: "listening.filterResolved",
+};
 
 export default function ListeningMentionDetailPage() {
   const { t } = useTranslation();
@@ -173,7 +183,7 @@ export default function ListeningMentionDetailPage() {
                     onClick={() => reviewMutation.mutate(state)}
                     aria-pressed={m.review_state === state}
                   >
-                    {state}
+                    {t(REVIEW_STATE_KEYS[state])}
                     {m.review_state === state ? ` · ${t("listening.current")}` : ""}
                   </button>
                 ))}
@@ -188,15 +198,15 @@ export default function ListeningMentionDetailPage() {
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">{t("listening.publishedAt")}</dt>
-                  <dd>{formatWhen(m.published_at)}</dd>
+                  <dd>{formatWhen(m.published_at, t("listening.unknownTime"))}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">{t("listening.firstObserved")}</dt>
-                  <dd>{formatWhen(m.first_observed_at)}</dd>
+                  <dd>{formatWhen(m.first_observed_at, t("listening.unknownTime"))}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">{t("listening.lastObserved")}</dt>
-                  <dd>{formatWhen(m.last_observed_at)}</dd>
+                  <dd>{formatWhen(m.last_observed_at, t("listening.unknownTime"))}</dd>
                 </div>
                 <div className="flex justify-between gap-3">
                   <dt className="text-slate-500">{t("listening.externalId")}</dt>

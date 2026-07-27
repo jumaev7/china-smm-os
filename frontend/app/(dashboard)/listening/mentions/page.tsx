@@ -29,27 +29,14 @@ import { useTranslation } from "@/lib/I18nProvider";
 
 const QUERY_OPTS = { staleTime: 30_000, refetchOnWindowFocus: false } as const;
 
-const REVIEW_OPTIONS = [
-  { label: "Unreviewed", value: "unreviewed" },
-  { label: "Relevant", value: "relevant" },
-  { label: "Irrelevant", value: "irrelevant" },
-  { label: "Needs follow-up", value: "needs_follow_up" },
-  { label: "Resolved", value: "resolved" },
-  { label: "All", value: "" },
-];
-
-const SOURCE_OPTIONS = [
-  { label: "All sources", value: "" },
-  { label: "Manual import", value: "manual_import" },
-  { label: "Fixture", value: "fixture" },
-];
-
-function formatWhen(iso?: string | null): string {
-  if (!iso) return "—";
+function formatWhen(iso: string | null | undefined, unknownLabel: string): string {
+  if (!iso) return unknownLabel;
   try {
-    return new Date(iso).toLocaleString();
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return unknownLabel;
+    return d.toLocaleString();
   } catch {
-    return iso;
+    return unknownLabel;
   }
 }
 
@@ -60,6 +47,27 @@ export default function ListeningMentionsPage() {
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
   const limit = 25;
+
+  const REVIEW_OPTIONS = useMemo(
+    () => [
+      { label: t("listening.filterUnreviewed"), value: "unreviewed" },
+      { label: t("listening.filterRelevant"), value: "relevant" },
+      { label: t("listening.filterIrrelevant"), value: "irrelevant" },
+      { label: t("listening.filterNeedsFollowUp"), value: "needs_follow_up" },
+      { label: t("listening.filterResolved"), value: "resolved" },
+      { label: t("listening.filterAll"), value: "" },
+    ],
+    [t],
+  );
+
+  const SOURCE_OPTIONS = useMemo(
+    () => [
+      { label: t("listening.filterAllSources"), value: "" },
+      { label: t("listening.filterManualImport"), value: "manual_import" },
+      { label: t("listening.filterFixture"), value: "fixture" },
+    ],
+    [t],
+  );
 
   const mentionsQuery = useQuery({
     queryKey: [...LISTENING_QUERY_KEY, "mentions", reviewState, sourceType, search, offset],
@@ -163,8 +171,8 @@ export default function ListeningMentionsPage() {
                       </div>
                     </DataTableTd>
                     <DataTableTd className="whitespace-nowrap text-xs text-slate-500">
-                      <div>{formatWhen(m.published_at)}</div>
-                      <div>obs {formatWhen(m.observed_at)}</div>
+                      <div>{formatWhen(m.published_at, t("listening.unknownTime"))}</div>
+                      <div>obs {formatWhen(m.observed_at, t("listening.unknownTime"))}</div>
                     </DataTableTd>
                     <DataTableTd className="text-xs text-slate-600 dark-tenant:text-slate-300">
                       {(m.matches ?? []).slice(0, 3).map((match) => match.matched_term).join(", ") || "—"}
