@@ -1,0 +1,8 @@
+{
+  "description": "Comment missing published/created_time — published_at stays null",
+  "comment": {
+    "id": "comment_no_ts",
+    "message": "No timestamp",
+    "from": {"id": "user9", "name": "NoTime"}
+  }
+}

@@ -1,8 +1,9 @@
-"""Social Listening Phase 1 — service package.
+"""Social Listening — service package.
 
-Read-only observed-mentions foundation. No provider mutation methods exist
-in this package. Live social listening providers are not wired in Phase 1;
-only ``manual_import`` and ``fixture`` source adapters are supported.
+Read-only observed mentions. No provider mutation methods exist in this package.
+Phase 3 adds governed Facebook Page live read-only adapters
+(``facebook_page_comments``, ``facebook_page_mentions``) that reuse publishing
+account tokens without copying them into listening tables.
 """
 from __future__ import annotations
 

@@ -1,0 +1,24 @@
+{
+  "description": "Partial page failure — one post comments fail; keep prior observations and retry checkpoint",
+  "posts": {
+    "data": [
+      {"id": "111_post_ok", "message": "OK post"},
+      {"id": "111_post_fail", "message": "Fail post"}
+    ]
+  },
+  "comments_ok": {
+    "data": [
+      {
+        "id": "c_ok",
+        "message": "Collected before failure",
+        "created_time": "2026-07-01T11:00:00+0000",
+        "from": {"id": "u1", "name": "Ada"}
+      }
+    ]
+  },
+  "comments_fail": {
+    "http_status": 500,
+    "payload": {"error": {"message": "Service temporarily unavailable", "code": 2}}
+  },
+  "expected_behavior": "retain_collected_observations_and_checkpoint_at_failed_post"
+}

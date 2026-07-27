@@ -21,6 +21,13 @@ REQUIRED_CONNECTION_PERMISSIONS = frozenset({
     "business_management",
 })
 
+# Listening Phase 3 read scopes (not required for publish connection health).
+LISTENING_FACEBOOK_READ_PERMISSIONS = frozenset({
+    "pages_show_list",
+    "pages_read_engagement",
+    "pages_read_user_content",
+})
+
 FUTURE_PUBLISH_PERMISSIONS = frozenset({
     "pages_manage_posts",
     "instagram_content_publish",

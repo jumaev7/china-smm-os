@@ -1,0 +1,15 @@
+{
+  "description": "Edited comment — content_text changes; first_observed_at preserved by ingestion",
+  "first_fetch": {
+    "id": "comment_edit_1",
+    "message": "Original text",
+    "created_time": "2026-07-01T11:00:00+0000",
+    "from": {"id": "user1", "name": "Ada"}
+  },
+  "second_fetch": {
+    "id": "comment_edit_1",
+    "message": "Edited text after update",
+    "created_time": "2026-07-01T11:00:00+0000",
+    "from": {"id": "user1", "name": "Ada"}
+  }
+}

@@ -1,7 +1,8 @@
-"""Verify Social Listening Phase 1 migration revision and schema ensure.
+"""Verify Social Listening migration revisions and schema ensure.
 
-Confirms Alembic revision chain, upgrade/downgrade of the listening revision,
-and that ensure_listening_schema is idempotent and create-only (no ALTER drift).
+Confirms Alembic revision chain for Phase 1–3 listening, upgrade of live-source
+columns, and that ensure_listening_schema is idempotent and create-only
+(no ALTER drift). Production ALTERs remain in Alembic.
 
 Run from backend/:  python scripts/verify_listening_migration.py
 """
@@ -22,7 +23,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 EXPECTED_REVISION = "20260914_social_listening_foundation"
 EXPECTED_DOWN_REVISION = "20260913_advertising_decision_support"
+LIVE_REVISION = "20260916_listening_live_sources"
 MIGRATION_FILE = "migrations/versions/20260914_social_listening_foundation.py"
+LIVE_MIGRATION_FILE = "migrations/versions/20260916_listening_live_sources.py"
 
 EXPECTED_TABLES = (
     "tenant_listening_projects",
@@ -40,6 +43,21 @@ EXPECTED_UNIQUES = (
     "uq_tenant_observed_mentions_dedupe_key",
     "uq_tenant_mention_matches_identity",
     "uq_tenant_listening_sources_identity",
+)
+
+LIVE_SOURCE_COLUMNS = (
+    "integration_id",
+    "provider_resource_ref",
+    "health_status",
+    "last_failure_at",
+    "last_failure_code",
+    "last_failure_summary",
+    "last_checkpoint",
+    "poll_interval_seconds",
+    "provider_capability_version",
+    "enabled_capabilities_json",
+    "lock_owner",
+    "lock_expires_at",
 )
 
 
@@ -85,12 +103,22 @@ async def _run() -> int:
     record("no_secrets_columns", "access_token" not in text and "password" not in text.lower())
     record("no_provider_write_tables", "reply_payload" not in text and "publish_payload" not in text)
 
+    live_path = Path(__file__).resolve().parents[1] / LIVE_MIGRATION_FILE
+    live_text = live_path.read_text(encoding="utf-8") if live_path.is_file() else ""
+    record("live_migration_file_exists", live_path.is_file())
+    record(
+        "live_migration_retains_alter",
+        "op.add_column" in live_text and "op.alter_column" in live_text,
+        "upgrade ALTERs must remain for production schema evolution",
+    )
+    for col in LIVE_SOURCE_COLUMNS:
+        record(f"live_migration_mentions_{col}", col in live_text)
+
     for table in EXPECTED_TABLES:
         record(f"migration_mentions_{table}", f'"{table}"' in text or f"'{table}'" in text)
     for uq in EXPECTED_UNIQUES:
         record(f"migration_mentions_{uq}", uq in text)
 
-    # ensure_* must be create-only (no silent ALTER column drift on existing tables).
     from app.core import database as db_mod
 
     ensure_src = inspect.getsource(db_mod._ensure_listening_tables)
@@ -99,30 +127,40 @@ async def _run() -> int:
         "ALTER TABLE" not in ensure_src.upper(),
         "ensure_listening must not mutate existing columns",
     )
+    record(
+        "ensure_fresh_includes_live_columns",
+        all(col in ensure_src for col in ("integration_id", "lock_owner", "last_checkpoint")),
+    )
+    record(
+        "ensure_fresh_cursor_width_1000",
+        "cursor_before VARCHAR(1000)" in ensure_src and "cursor_after VARCHAR(1000)" in ensure_src,
+    )
 
     heads = _alembic("heads")
     history = _alembic("history", "-v")
     history_text = (history.stdout or "") + (heads.stdout or "")
     record(
         "alembic_heads_ok",
-        heads.returncode == 0 and EXPECTED_REVISION in history_text,
+        heads.returncode == 0 and (
+            EXPECTED_REVISION in history_text or LIVE_REVISION in history_text
+        ),
         (heads.stdout or heads.stderr or "")[:240],
     )
 
-    # Upgrade to listening revision (idempotent if already applied).
-    up = _alembic("upgrade", EXPECTED_REVISION)
+    up = _alembic("upgrade", LIVE_REVISION)
     record(
-        "alembic_upgrade_listening",
+        "alembic_upgrade_listening_live",
         up.returncode == 0,
         (up.stdout or up.stderr or "")[:300],
     )
     cur = _alembic("current")
     cur_text = cur.stdout or ""
     record(
-        "alembic_current_at_or_past_listening",
+        "alembic_current_at_or_past_live",
         cur.returncode == 0
         and (
-            EXPECTED_REVISION in cur_text
+            LIVE_REVISION in cur_text
+            or EXPECTED_REVISION in cur_text
             or "20260915_listening_market_intelligence" in cur_text
         ),
         cur_text[:240],
@@ -137,6 +175,9 @@ async def _run() -> int:
     async with engine.connect() as conn:
         def _tables(sync_conn):
             return set(sa_inspect(sync_conn).get_table_names())
+
+        def _columns(sync_conn, table: str) -> set[str]:
+            return {c["name"] for c in sa_inspect(sync_conn).get_columns(table)}
 
         def _unique_names(sync_conn, table: str) -> set[str]:
             insp = sa_inspect(sync_conn)
@@ -165,6 +206,13 @@ async def _run() -> int:
 
         for table in EXPECTED_TABLES:
             record(f"table_present_after_upgrade_{table}", table in tables_after_upgrade)
+
+        if "tenant_listening_sources" in tables_after_upgrade:
+            cols = await conn.run_sync(
+                lambda c: _columns(c, "tenant_listening_sources")
+            )
+            for col in LIVE_SOURCE_COLUMNS:
+                record(f"live_column_present_{col}", col in cols, str(sorted(cols)))
 
         if "tenant_observed_mentions" in tables_after_upgrade:
             uniques = await conn.run_sync(
@@ -203,7 +251,6 @@ async def _run() -> int:
                 str(sorted(uniques)),
             )
 
-    # Downgrade listening revision then re-upgrade; schemas must converge again.
     down = _alembic("downgrade", EXPECTED_DOWN_REVISION)
     record(
         "alembic_downgrade_listening",
@@ -236,17 +283,28 @@ async def _run() -> int:
         tables_final = await conn.run_sync(
             lambda c: set(sa_inspect(c).get_table_names())
         )
+
+        def _columns(sync_conn, table: str) -> set[str]:
+            return {c["name"] for c in sa_inspect(sync_conn).get_columns(table)}
+
+        if "tenant_listening_sources" in tables_final:
+            cols_final = await conn.run_sync(
+                lambda c: _columns(c, "tenant_listening_sources")
+            )
+            for col in LIVE_SOURCE_COLUMNS:
+                record(f"parity_live_column_{col}", col in cols_final)
+
     for table in EXPECTED_TABLES:
         record(f"table_present_final_{table}", table in tables_final)
 
-    # Fresh ensure path vs alembic-upgraded path: same table set for listening.
     record(
         "ensure_and_alembic_table_parity",
         all(t in tables_final for t in EXPECTED_TABLES),
     )
 
     print()
-    print(f"Expected Alembic revision: {EXPECTED_REVISION}")
+    print(f"Expected Alembic foundation revision: {EXPECTED_REVISION}")
+    print(f"Live sources revision: {LIVE_REVISION}")
     print(f"Down revision: {EXPECTED_DOWN_REVISION}")
     print()
     if failures:

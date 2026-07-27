@@ -104,9 +104,12 @@ class Settings(BaseSettings):
     META_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/publishing/meta/oauth/callback"
     META_GRAPH_API_VERSION: str = "v21.0"
     META_OAUTH_SCOPES: str = (
-        "pages_show_list,pages_read_engagement,instagram_basic,business_management,"
+        "pages_show_list,pages_read_engagement,pages_read_user_content,"
+        "instagram_basic,business_management,"
         "pages_manage_posts,instagram_content_publish"
     )
+    # pages_read_user_content is required for Page UGC comments and /tagged mentions
+    # (Social Listening Phase 3). App Review required for Live mode beyond app roles.
     # Opt-in gate for real Facebook Page posts (verification smoke + manual live tests).
     ENABLE_FACEBOOK_LIVE_SMOKE: bool = False
 

@@ -68,6 +68,16 @@ def origin_for_source_type(source_type: str) -> str:
         return "fixture"
     if source_type == "manual_import":
         return "manual_import"
+    if source_type == "webhook":
+        return "webhook"
+    if source_type == "live_provider":
+        return "live_provider"
+    # Phase 3 live adapters produce live_provider origin while retaining
+    # provider-specific source_type for traceability.
+    from app.services.listening.providers import is_live_source_type
+
+    if is_live_source_type(source_type):
+        return "live_provider"
     if source_type in OBSERVATION_ORIGINS:
         return source_type
     return "manual_import"

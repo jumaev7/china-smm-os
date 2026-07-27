@@ -1,0 +1,12 @@
+{
+  "description": "Insufficient app access / Advanced Access — distinct from missing_scope",
+  "http_status": 403,
+  "payload": {
+    "error": {
+      "message": "Application has not been approved for Advanced Access to this endpoint",
+      "type": "OAuthException",
+      "code": 10
+    }
+  },
+  "expected_code": "insufficient_app_access"
+}

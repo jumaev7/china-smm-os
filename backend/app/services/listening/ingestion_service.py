@@ -308,11 +308,16 @@ async def ingest_observations(
     cursor: str | None = None,
     created_by_user_id: UUID | None = None,
     allow_paused: bool = False,
+    runtime_config: dict[str, Any] | None = None,
 ) -> TenantListeningIngestionRun:
     """Run a read-only ingestion for a project/source.
 
     Paused projects reject scheduled ingestion unless ``allow_paused`` (manual
     historical import may still be useful — default False for schedule safety).
+
+    ``runtime_config`` may include ephemeral Page tokens for live adapters.
+    It is never persisted onto ``source.config_json``, run checkpoints, or
+    mention provenance. Missing items on a later page never delete mentions.
     """
     project = await _load_project(db, tenant_id, project_id)
     if project.status == "archived":
@@ -340,7 +345,7 @@ async def ingest_observations(
     if caps.capability_status == "unsupported":
         raise SourceUnsupportedError(
             caps.unsupported_reason or f"source '{source_type}' unsupported",
-            details={"source_type": source_type},
+            details={"source_type": source_type, "error_code": "unsupported_capability"},
         )
 
     run = TenantListeningIngestionRun(
@@ -365,9 +370,14 @@ async def ingest_observations(
     provider_request_id: str | None = None
     watermark: datetime | None = None
 
+    # Prefer ephemeral runtime_config; fall back to persisted safe config.
+    fetch_config = runtime_config if runtime_config is not None else (
+        dict(source.config_json or {}) if source else None
+    )
+
     try:
         page = await adapter.fetch_observations(
-            config=source.config_json if source else None,
+            config=fetch_config,
             cursor=cursor,
             limit=MAX_ITEMS_PER_INGESTION_RUN,
             items=items,
@@ -478,25 +488,37 @@ async def ingest_observations(
     run.error_count = errors
     run.match_count = matches
     run.completed_at = utcnow()
-    run.cursor_after = next_cursor if fatal_error is None else run.cursor_before
     run.provider_request_id = provider_request_id
-    run.freshness_watermark = watermark if fatal_error is None else None
-    run.checkpoint_json = {
-        "advanced": fatal_error is None,
-        "dedupe_version": DEDUPE_VERSION,
-    }
 
     summaries = [s for s in (page_error, fatal_error) if s]
     run.error_summary = "; ".join(summaries)[:1000] if summaries else None
 
-    if fatal_error:
+    provider_hard_fail = bool(page_error) and not (created or updated or duplicates)
+    if fatal_error or provider_hard_fail:
         run.status = "failed"
-    elif errors or rejected:
+    elif errors or rejected or page_error:
         run.status = "partial"
     else:
         run.status = "succeeded"
 
-    if source is not None and fatal_error is None:
+    # Checkpoint advances only when the fetch was safely handled (not a hard fail).
+    if fatal_error or provider_hard_fail:
+        run.cursor_after = run.cursor_before
+        run.checkpoint_json = {
+            "advanced": False,
+            "dedupe_version": DEDUPE_VERSION,
+            "provider_error": page_error or fatal_error,
+        }
+        run.freshness_watermark = None
+    else:
+        run.cursor_after = next_cursor
+        run.freshness_watermark = watermark
+        run.checkpoint_json = {
+            "advanced": True,
+            "dedupe_version": DEDUPE_VERSION,
+        }
+
+    if source is not None and run.status in {"succeeded", "partial"} and not provider_hard_fail:
         source.last_success_at = run.completed_at
         source.freshness_watermark = watermark
         source.freshness_status = _freshness_status(source.last_success_at)

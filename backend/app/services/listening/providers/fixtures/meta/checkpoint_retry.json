@@ -1,0 +1,9 @@
+{
+  "description": "Checkpoint retry — resume from last_checkpoint without skipping collected work",
+  "checkpoint": {
+    "posts_after": null,
+    "post_id": "111_post_fail",
+    "comment_after": null
+  },
+  "resume_policy": "do_not_advance_checkpoint_on_hard_fail"
+}

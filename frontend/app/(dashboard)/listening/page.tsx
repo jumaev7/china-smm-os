@@ -74,6 +74,7 @@ export default function ListeningOverviewPage() {
             role="status"
           >
             {data.coverage_notice}
+            <span className="mt-1 block text-xs opacity-90">{t("listening.coveragePhase3")}</span>
             {!data.live_provider_available ? (
               <span className="mt-1 block font-medium">{t("listening.noLiveProvider")}</span>
             ) : null}

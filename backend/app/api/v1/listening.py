@@ -26,6 +26,7 @@ from app.schemas.listening import (
     IngestionRunResponse,
     InsightReviewResponse,
     InsightReviewUpdateRequest,
+    LiveSourceCreateRequest,
     ManualImportRequest,
     MentionListResponse,
     MentionResponse,
@@ -100,6 +101,19 @@ def _query_dict(q) -> dict:
 
 
 def _source_dict(s) -> dict:
+    from app.services.listening.normalize import origin_for_source_type
+    from app.services.listening.providers import get_adapter
+
+    caps = get_adapter(s.source_type).capabilities()
+    # Never expose tokens or ephemeral runtime keys.
+    raw_config = dict(s.config_json or {})
+    safe_config = {
+        k: v
+        for k, v in raw_config.items()
+        if not str(k).startswith("_runtime")
+        and "token" not in str(k).lower()
+        and "secret" not in str(k).lower()
+    }
     return {
         "id": s.id,
         "project_id": s.project_id,
@@ -111,8 +125,52 @@ def _source_dict(s) -> dict:
         "freshness_status": s.freshness_status,
         "freshness_watermark": s.freshness_watermark,
         "last_success_at": s.last_success_at,
+        "integration_id": getattr(s, "integration_id", None),
+        "provider_resource_ref": getattr(s, "provider_resource_ref", None),
+        "health_status": getattr(s, "health_status", None) or "unknown",
+        "last_failure_at": getattr(s, "last_failure_at", None),
+        "last_failure_code": getattr(s, "last_failure_code", None),
+        "last_failure_summary": getattr(s, "last_failure_summary", None),
+        "last_checkpoint": getattr(s, "last_checkpoint", None),
+        "poll_interval_seconds": getattr(s, "poll_interval_seconds", None),
+        "provider_capability_version": getattr(s, "provider_capability_version", None),
+        "enabled_capabilities": getattr(s, "enabled_capabilities_json", None),
+        "config": safe_config or None,
+        "observation_origin": caps.observation_origin or origin_for_source_type(s.source_type),
+        "provider_limitation_text": caps.provider_limitation_text or None,
+        "required_permissions": list(caps.required_permissions or ()),
         "created_at": s.created_at,
         "updated_at": s.updated_at,
+    }
+
+
+def _capability_dict(c) -> dict:
+    return {
+        "source_type": c.source_type,
+        "capability_status": c.capability_status,
+        "supports_keyword_search": c.supports_keyword_search,
+        "supports_account_feed": c.supports_account_feed,
+        "supports_historical_window": c.supports_historical_window,
+        "pagination_type": c.pagination_type,
+        "engagement_fields_available": c.engagement_fields_available,
+        "author_fields_available": c.author_fields_available,
+        "deletion_signals_available": c.deletion_signals_available,
+        "owned_content_comments": c.owned_content_comments,
+        "direct_account_mentions": c.direct_account_mentions,
+        "hashtag_discovery": c.hashtag_discovery,
+        "keyword_search": c.keyword_search,
+        "replies": c.replies,
+        "content_updates": c.content_updates,
+        "deletion_events": c.deletion_events,
+        "polling": c.polling,
+        "webhooks": c.webhooks,
+        "historical_window": c.historical_window,
+        "freshness_expectation": c.freshness_expectation,
+        "required_permissions": list(c.required_permissions or ()),
+        "provider_limitation_text": c.provider_limitation_text,
+        "observation_origin": c.observation_origin,
+        "notes": c.notes,
+        "unsupported_reason": c.unsupported_reason,
     }
 
 
@@ -137,33 +195,28 @@ async def get_capabilities(
     user: CurrentTenantUser = Depends(get_current_tenant_user),
 ):
     _ = user
+    from app.services.listening.providers import LIVE_SOURCE_TYPES
+
     fixture_ok = fixture_ingest_allowed()
+    live_ok = True  # adapters exist; individual sources still need authorized Page tokens
     return {
-        "live_provider_available": False,
+        "live_provider_available": live_ok,
         "fixture_ingest_available": fixture_ok,
         "coverage_notice": (
-            "Coverage is limited to configured supported sources "
-            "(manual_import"
+            "Coverage is limited to authorized Facebook Pages and supported Graph endpoints: "
+            "Facebook Page owned-content comments and Facebook Page tagged mentions "
+            "(plus manual_import"
             + (" and fixture" if fixture_ok else "")
-            + "). No live social listening provider is connected."
+            + "). Owned Page comments and tagged mentions are separate capabilities. "
+            "Not global Facebook keyword listening. Not competitor-wide Facebook coverage. "
+            "No Instagram listening in this phase. "
+            "Permission grant ≠ operational: Advanced Access/App Review and Page "
+            "authorization are also required. Production Live mode requires Meta App Review "
+            "+ Advanced Access."
         ),
         "provider_writes_supported": False,
-        "items": [
-            {
-                "source_type": c.source_type,
-                "capability_status": c.capability_status,
-                "supports_keyword_search": c.supports_keyword_search,
-                "supports_account_feed": c.supports_account_feed,
-                "supports_historical_window": c.supports_historical_window,
-                "pagination_type": c.pagination_type,
-                "engagement_fields_available": c.engagement_fields_available,
-                "author_fields_available": c.author_fields_available,
-                "deletion_signals_available": c.deletion_signals_available,
-                "notes": c.notes,
-                "unsupported_reason": c.unsupported_reason,
-            }
-            for c in list_source_capabilities()
-        ],
+        "live_source_types": sorted(LIVE_SOURCE_TYPES),
+        "items": [_capability_dict(c) for c in list_source_capabilities()],
     }
 
 
@@ -411,11 +464,95 @@ async def api_update_source(
             source_id,
             is_enabled=body.is_enabled,
             display_name=body.display_name,
+            poll_interval_seconds=body.poll_interval_seconds,
         ),
         label="listening.sources.update",
     )
     await db.commit()
     return _source_dict(source)
+
+
+@router.get("/integrations/facebook")
+async def api_list_facebook_integrations(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    items = await _guarded(
+        project_service.list_bindable_publishing_accounts(db, user.tenant_id),
+        label="listening.integrations.facebook",
+    )
+    return {"items": items}
+
+
+@router.post("/projects/{project_id}/live-sources", response_model=SourceResponse)
+async def api_create_live_source(
+    project_id: UUID,
+    body: LiveSourceCreateRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(require_role("owner", "manager")),
+):
+    source = await _guarded(
+        project_service.create_live_source(
+            db,
+            tenant_id=user.tenant_id,
+            project_id=project_id,
+            source_type=body.source_type,
+            publishing_account_id=body.publishing_account_id,
+            display_name=body.display_name,
+            poll_interval_seconds=body.poll_interval_seconds,
+            source_key=body.source_key,
+        ),
+        label="listening.sources.create_live",
+    )
+    await db.commit()
+    return _source_dict(source)
+
+
+@router.post("/sources/{source_id}/sync", response_model=IngestionRunResponse)
+async def api_sync_live_source(
+    source_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(require_role("owner", "manager")),
+):
+    from app.services.listening.live_sync_service import sync_live_source
+
+    run = await _guarded(
+        sync_live_source(
+            db,
+            tenant_id=user.tenant_id,
+            source_id=source_id,
+            trigger_type="sync",
+            created_by_user_id=user.user_id,
+            lock_owner=f"manual:{user.user_id}",
+            allow_paused_project=True,
+        ),
+        label="listening.sources.sync",
+    )
+    await db.commit()
+    return {
+        "id": run.id,
+        "project_id": run.project_id,
+        "source_id": run.source_id,
+        "source_type": run.source_type,
+        "trigger_type": run.trigger_type,
+        "status": run.status,
+        "started_at": run.started_at,
+        "completed_at": run.completed_at,
+        "fetched_count": run.fetched_count,
+        "created_count": run.created_count,
+        "updated_count": run.updated_count,
+        "duplicate_count": run.duplicate_count,
+        "rejected_count": run.rejected_count,
+        "error_count": run.error_count,
+        "match_count": run.match_count,
+        "error_summary": run.error_summary,
+        "cursor_before": run.cursor_before,
+        "cursor_after": run.cursor_after,
+        "freshness_watermark": run.freshness_watermark,
+        "provider_request_id": run.provider_request_id,
+        "created_by_user_id": run.created_by_user_id,
+        "created_at": run.created_at,
+    }
 
 
 # ---------------------------------------------------------------------------

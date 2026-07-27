@@ -32,7 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
-LISTENING_SCHEMA_VERSION = "1.1.0"
+LISTENING_SCHEMA_VERSION = "1.2.0"
 DEDUPE_VERSION = "listening_dedupe_v1"
 MATCHER_VERSION = "listening_matcher_v1"
 NORMALIZATION_VERSION = "listening_norm_v1"
@@ -46,8 +46,36 @@ INSIGHT_REVIEW_STATES = frozenset({
 
 PROJECT_STATUSES = frozenset({"active", "paused", "archived"})
 SUBJECT_TYPES = frozenset({"own_brand", "competitor", "product", "topic", "other"})
-SOURCE_TYPES = frozenset({"manual_import", "fixture"})
+SOURCE_TYPES = frozenset({
+    "manual_import",
+    "fixture",
+    "facebook_page_comments",
+    "facebook_page_mentions",
+})
+LIVE_SOURCE_TYPES = frozenset({"facebook_page_comments", "facebook_page_mentions"})
 OBSERVATION_ORIGINS = frozenset({"manual_import", "fixture", "live_provider", "webhook"})
+SOURCE_HEALTH_STATUSES = frozenset({
+    "unknown",
+    "healthy",
+    "healthy_zero",
+    # Sanitized live validation states (never Meta payloads / tokens).
+    "missing_scope",
+    "insufficient_app_access",
+    "page_not_authorized",
+    "token_expired_or_revoked",
+    "rate_limited",
+    "provider_unavailable",
+    "unsupported_capability",
+    # Operational / config states
+    "malformed_provider_response",
+    "invalid_configuration",
+    "missing_credentials",
+    "paused",
+    "disabled",
+    "internal_processing_failure",
+    # Legacy alias retained for rows written before Phase 3 rename.
+    "revoked_authorization",
+})
 CONTENT_TYPES = frozenset({"post", "comment", "article", "other"})
 REVIEW_STATES = frozenset({
     "unreviewed",
@@ -77,6 +105,7 @@ INGESTION_TRIGGER_TYPES = frozenset({
     "scheduled",
     "import",
     "fixture",
+    "sync",
 })
 FRESHNESS_STATUSES = frozenset({
     "fresh",
@@ -218,6 +247,24 @@ class TenantListeningSource(Base):
         String(40), nullable=False, server_default="import_only",
     )
     config_json: Mapped[dict | None] = mapped_column(JSONB(), nullable=True)
+    # Phase 3 live-source binding (tokens remain on publishing_accounts only).
+    integration_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("publishing_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    provider_resource_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    health_status: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="unknown",
+    )
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_failure_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_failure_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    last_checkpoint: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    poll_interval_seconds: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    provider_capability_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    enabled_capabilities_json: Mapped[dict | None] = mapped_column(JSONB(), nullable=True)
+    lock_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    lock_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     freshness_status: Mapped[str] = mapped_column(
         String(40), nullable=False, server_default="unavailable",
@@ -457,8 +504,8 @@ class TenantListeningIngestionRun(Base):
     error_count: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0")
     match_count: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0")
     error_summary: Mapped[str | None] = mapped_column(String(1000), nullable=True)
-    cursor_before: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    cursor_after: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cursor_before: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    cursor_after: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     checkpoint_json: Mapped[dict | None] = mapped_column(JSONB(), nullable=True)
     provider_request_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     freshness_watermark: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -476,6 +523,8 @@ __all__ = [
     "PROJECT_STATUSES",
     "SUBJECT_TYPES",
     "SOURCE_TYPES",
+    "LIVE_SOURCE_TYPES",
+    "SOURCE_HEALTH_STATUSES",
     "OBSERVATION_ORIGINS",
     "CONTENT_TYPES",
     "REVIEW_STATES",

@@ -2779,6 +2779,18 @@ def _ensure_listening_tables(connection) -> None:
             "is_enabled BOOLEAN NOT NULL DEFAULT true, "
             "capability_status VARCHAR(40) NOT NULL DEFAULT 'import_only', "
             "config_json JSONB, "
+            "integration_id UUID REFERENCES publishing_accounts(id) ON DELETE SET NULL, "
+            "provider_resource_ref VARCHAR(255), "
+            "health_status VARCHAR(40) NOT NULL DEFAULT 'unknown', "
+            "last_failure_at TIMESTAMPTZ, "
+            "last_failure_code VARCHAR(80), "
+            "last_failure_summary VARCHAR(500), "
+            "last_checkpoint VARCHAR(1000), "
+            "poll_interval_seconds INTEGER, "
+            "provider_capability_version VARCHAR(40), "
+            "enabled_capabilities_json JSONB, "
+            "lock_owner VARCHAR(120), "
+            "lock_expires_at TIMESTAMPTZ, "
             "last_success_at TIMESTAMPTZ, "
             "freshness_status VARCHAR(40) NOT NULL DEFAULT 'unavailable', "
             "freshness_watermark TIMESTAMPTZ, "
@@ -2815,8 +2827,8 @@ def _ensure_listening_tables(connection) -> None:
             "error_count INTEGER NOT NULL DEFAULT 0, "
             "match_count INTEGER NOT NULL DEFAULT 0, "
             "error_summary VARCHAR(1000), "
-            "cursor_before VARCHAR(255), "
-            "cursor_after VARCHAR(255), "
+            "cursor_before VARCHAR(1000), "
+            "cursor_after VARCHAR(1000), "
             "checkpoint_json JSONB, "
             "provider_request_id VARCHAR(255), "
             "freshness_watermark TIMESTAMPTZ, "
@@ -2957,7 +2969,12 @@ def _ensure_listening_tables(connection) -> None:
 
 
 async def ensure_listening_schema() -> None:
-    """Apply idempotent DDL for Social Listening tables (Phase 1 + Phase 2)."""
+    """Apply idempotent create-only DDL for Social Listening tables.
+
+    Must remain create-only: no ALTER/constraint/index evolution on existing
+    tables. Column widening and live-source ALTERs belong in Alembic
+    (``20260916_listening_live_sources`` and earlier revisions).
+    """
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_listening_tables)
 

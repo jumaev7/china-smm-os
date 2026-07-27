@@ -1,0 +1,6 @@
+{
+  "description": "Empty successful Graph response is healthy_zero, not failure",
+  "posts": {"data": []},
+  "tagged": {"data": []},
+  "comments": {"data": []}
+}

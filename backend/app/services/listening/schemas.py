@@ -17,6 +17,21 @@ class SourceCapabilities:
     engagement_fields_available: bool = False
     author_fields_available: bool = False
     deletion_signals_available: bool = False
+    # Phase 3 machine-readable capability flags (unsupported = False / unavailable).
+    owned_content_comments: bool = False
+    direct_account_mentions: bool = False
+    hashtag_discovery: bool = False
+    keyword_search: bool = False
+    replies: bool = False
+    content_updates: bool = False
+    deletion_events: bool = False
+    polling: bool = False
+    webhooks: bool = False
+    historical_window: str | None = None
+    freshness_expectation: str | None = None
+    required_permissions: tuple[str, ...] = ()
+    provider_limitation_text: str = ""
+    observation_origin: str = "manual_import"
     notes: str = ""
     unsupported_reason: str | None = None
 

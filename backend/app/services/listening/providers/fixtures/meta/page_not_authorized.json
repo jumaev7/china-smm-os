@@ -1,0 +1,13 @@
+{
+  "description": "Page not authorized for capability",
+  "http_status": 400,
+  "payload": {
+    "error": {
+      "message": "Unsupported get request. Object with ID does not exist, cannot be loaded due to missing permissions, or does not support this operation",
+      "type": "GraphMethodException",
+      "code": 100,
+      "error_subcode": 33
+    }
+  },
+  "expected_code": "page_not_authorized"
+}

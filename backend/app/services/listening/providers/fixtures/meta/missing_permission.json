@@ -1,0 +1,12 @@
+{
+  "description": "Missing permission — sanitized to missing_scope",
+  "http_status": 403,
+  "payload": {
+    "error": {
+      "message": "(#200) Requires pages_read_user_content permission to manage the object",
+      "type": "OAuthException",
+      "code": 200
+    }
+  },
+  "expected_code": "missing_scope"
+}

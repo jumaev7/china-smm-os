@@ -1,0 +1,16 @@
+{
+  "description": "Replies are not supported in Phase 3 (toplevel filter only)",
+  "replies_supported": false,
+  "comments": {
+    "data": [
+      {
+        "id": "parent_comment_1",
+        "message": "Parent only",
+        "created_time": "2026-07-01T11:00:00+0000",
+        "from": {"id": "user1", "name": "Ada"},
+        "comment_count": 2
+      }
+    ]
+  },
+  "note": "Nested replies are intentionally not fetched; replies capability flag remains false."
+}

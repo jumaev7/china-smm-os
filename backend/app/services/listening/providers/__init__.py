@@ -1,21 +1,32 @@
 """Listening source adapter registry.
 
-Only ``manual_import`` and ``fixture`` are wired in Phase 1. Unknown source
-types resolve to an unsupported adapter that never fabricates live data and
-never exposes mutation methods.
+Phase 1: manual_import, fixture.
+Phase 3: facebook_page_comments, facebook_page_mentions (governed Meta read-only).
+
+Unknown source types resolve to an unsupported adapter that never fabricates
+live data and never exposes mutation methods.
 """
 from __future__ import annotations
 
 from typing import Any
 
 from app.services.listening.providers.base import ListeningSourceAdapter
+from app.services.listening.providers.facebook_page_comments import FacebookPageCommentsAdapter
+from app.services.listening.providers.facebook_page_mentions import FacebookPageMentionsAdapter
 from app.services.listening.providers.fixture import FixtureAdapter
 from app.services.listening.providers.manual_import import ManualImportAdapter
 from app.services.listening.schemas import ObservationPage, SourceCapabilities
 
+LIVE_SOURCE_TYPES = frozenset({
+    "facebook_page_comments",
+    "facebook_page_mentions",
+})
+
 _ADAPTERS: dict[str, ListeningSourceAdapter] = {
     "manual_import": ManualImportAdapter(),
     "fixture": FixtureAdapter(),
+    "facebook_page_comments": FacebookPageCommentsAdapter(),
+    "facebook_page_mentions": FacebookPageMentionsAdapter(),
 }
 
 
@@ -29,9 +40,13 @@ class UnsupportedListeningAdapter(ListeningSourceAdapter):
             capability_status="unsupported",
             unsupported_reason=(
                 f"No live social listening integration is implemented for "
-                f"source '{self.source_type}' in Phase 1."
+                f"source '{self.source_type}'."
             ),
-            notes="Phase 1 supports manual_import and fixture only.",
+            notes=(
+                "Supported live sources: facebook_page_comments, facebook_page_mentions. "
+                "Also: manual_import, fixture."
+            ),
+            observation_origin="manual_import",
         )
 
     async def validate_configuration(self, config: dict[str, Any] | None) -> list[str]:
@@ -59,22 +74,38 @@ def get_adapter(source_type: str) -> ListeningSourceAdapter:
 
 def list_source_capabilities() -> list[SourceCapabilities]:
     caps = [adapter.capabilities() for adapter in _ADAPTERS.values()]
-    caps.append(
-        SourceCapabilities(
-            source_type="live_provider",
-            capability_status="unsupported",
-            unsupported_reason=(
-                "No live keyword/market listening provider is connected. "
-                "Coverage is limited to configured supported sources only."
-            ),
-            notes="Deferred to a later phase.",
+    # Explicit catalog entries for commonly assumed-but-unsupported providers.
+    for deferred_type, reason in (
+        (
+            "instagram_media_comments",
+            "Instagram comment read requires instagram_manage_comments "
+            "(not in current OAuth scopes; permission also allows write actions).",
+        ),
+        (
+            "keyword_search",
+            "No authorized global keyword / Public Content Access feature is configured.",
+        ),
+    ):
+        caps.append(
+            SourceCapabilities(
+                source_type=deferred_type,
+                capability_status="unsupported",
+                unsupported_reason=reason,
+                notes="Deferred — capability recorded for honesty, not invented.",
+                observation_origin="live_provider",
+            )
         )
-    )
     return caps
 
 
+def is_live_source_type(source_type: str) -> bool:
+    return source_type in LIVE_SOURCE_TYPES
+
+
 __all__ = [
+    "LIVE_SOURCE_TYPES",
     "get_adapter",
     "list_source_capabilities",
+    "is_live_source_type",
     "UnsupportedListeningAdapter",
 ]

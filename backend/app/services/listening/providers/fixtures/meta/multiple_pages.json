@@ -1,0 +1,7 @@
+{
+  "description": "Multiple authorized Facebook Pages — separate source bindings",
+  "pages": [
+    {"id": "111111111111111", "name": "Acme Brand Page"},
+    {"id": "222222222222222", "name": "Acme Support Page"}
+  ]
+}

@@ -182,9 +182,17 @@ def main() -> int:
 
     caps_list = list_source_capabilities()
     record("capabilities_nonempty", len(caps_list) >= 2)
+    live_caps = [c for c in caps_list if c.capability_status == "live"]
     record(
-        "no_live_capability_advertised",
-        all(c.capability_status != "live" for c in caps_list),
+        "live_capabilities_are_governed_facebook_only",
+        {c.source_type for c in live_caps}
+        == {"facebook_page_comments", "facebook_page_mentions"},
+        str(sorted(c.source_type for c in live_caps)),
+    )
+    record(
+        "live_capabilities_remain_separate",
+        any(c.owned_content_comments and not c.direct_account_mentions for c in live_caps)
+        and any(c.direct_account_mentions and not c.owned_content_comments for c in live_caps),
     )
 
     # Package static scan for obvious provider-write symbols.
@@ -204,8 +212,8 @@ def main() -> int:
     record("no_provider_write_symbols", bad == [], str(bad))
 
     # Review service must not import provider adapters (write boundary).
-    # Project service may call get_adapter(...).capabilities() only when seeding
-    # default sources — never fetch_observations / mutation APIs.
+    # Project service may resolve adapters for capabilities / live source binding
+    # but must never call fetch_observations or provider mutation APIs.
     review_src = (listening_root / "review_service.py").read_text(encoding="utf-8")
     project_src = (listening_root / "project_service.py").read_text(encoding="utf-8")
     record(
@@ -215,18 +223,18 @@ def main() -> int:
     record(
         "project_service_no_fetch_observations",
         "fetch_observations" not in project_src
-        and "publish" not in project_src.lower()
-        and "reply" not in project_src.lower(),
+        and "publish_post" not in project_src
+        and "create_comment" not in project_src
+        and "send_reply" not in project_src,
     )
     if "get_adapter" in project_src:
-        # Only capabilities() usage is allowed.
         record(
-            "project_service_adapter_capabilities_only",
-            "get_adapter(source_type).capabilities()" in project_src
-            and project_src.count("get_adapter") == 2,  # import + one call
+            "project_service_adapter_read_only_usage",
+            "fetch_observations" not in project_src
+            and ".capabilities()" in project_src,
         )
     else:
-        record("project_service_adapter_capabilities_only", True)
+        record("project_service_adapter_read_only_usage", True)
 
     # Import payload / rate-limit guards.
     from app.services.listening.errors import ImportValidationError, ListeningRateLimitedError

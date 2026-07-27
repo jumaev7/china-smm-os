@@ -1,0 +1,18 @@
+{
+  "description": "Deleted/unavailable content — Graph has no trustworthy deletion signal for polling; do not delete ObservedMention",
+  "first_page": {
+    "data": [
+      {
+        "id": "comment_keep",
+        "message": "Still visible later? maybe not",
+        "created_time": "2026-07-01T11:00:00+0000",
+        "from": {"id": "user1", "name": "Ada"}
+      }
+    ]
+  },
+  "later_page_missing_item": {
+    "data": []
+  },
+  "explicit_deletion_signal": null,
+  "policy": "non_destructive_without_official_deletion_signal"
+}

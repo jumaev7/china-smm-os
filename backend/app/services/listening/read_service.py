@@ -336,18 +336,25 @@ async def overview(db: AsyncSession, tenant_id: UUID) -> dict[str, Any]:
     from app.services.listening.ingestion_service import fixture_ingest_allowed
 
     fixture_ok = fixture_ingest_allowed()
+    from app.services.listening.providers import LIVE_SOURCE_TYPES
+
+    live_ok = True  # adapters exist; individual sources still need authorized Page tokens
     coverage = (
-        "Coverage is limited to configured supported sources "
-        "(manual import"
+        "Coverage is limited to authorized Facebook Pages and supported Graph endpoints: "
+        "Facebook Page owned-content comments (facebook_page_comments) and "
+        "Facebook Page tagged mentions (facebook_page_mentions), plus manual import"
         + (" and fixture/demo" if fixture_ok else "")
-        + " in Phase 1). "
-        "This is not whole-market social listening."
+        + ". Not global Facebook keyword listening. Not competitor-wide Facebook coverage. "
+        "No Instagram listening in this phase. "
+        "Permission grant ≠ operational: Meta App Review and Advanced Access are required "
+        "for production Live mode beyond Development-mode app roles."
     )
     return {
         "schema_version": LISTENING_SCHEMA_VERSION,
         "coverage_notice": coverage,
-        "live_provider_available": False,
+        "live_provider_available": live_ok,
         "fixture_ingest_available": fixture_ok,
+        "live_source_types": sorted(LIVE_SOURCE_TYPES),
         "project_count": project_total,
         "projects": [project_to_dict(p) for p in projects],
         "mention_total": mention_total,

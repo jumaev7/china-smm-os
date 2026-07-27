@@ -1,0 +1,43 @@
+{
+  "description": "Multi-page comment pagination across posts",
+  "posts_page_1": {
+    "data": [
+      {"id": "111_post_a", "message": "Launch post", "created_time": "2026-07-01T10:00:00+0000"},
+      {"id": "111_post_b", "message": "Follow-up", "created_time": "2026-07-02T10:00:00+0000"}
+    ],
+    "paging": {"cursors": {"after": "POSTS_CURSOR_2"}, "next": "https://graph.facebook.com/v21.0/111/posts?after=POSTS_CURSOR_2"}
+  },
+  "comments_post_a_page_1": {
+    "data": [
+      {
+        "id": "comment_a1",
+        "message": "Love this",
+        "created_time": "2026-07-01T11:00:00+0000",
+        "from": {"id": "user1", "name": "Ada"},
+        "permalink_url": "https://facebook.com/comment_a1"
+      }
+    ],
+    "paging": {"cursors": {"after": "COMM_A_2"}}
+  },
+  "comments_post_a_page_2": {
+    "data": [
+      {
+        "id": "comment_a2",
+        "message": "Second page comment",
+        "created_time": "2026-07-01T12:00:00+0000",
+        "from": {"id": "user2", "name": "Bob"},
+        "permalink_url": "https://facebook.com/comment_a2"
+      }
+    ]
+  },
+  "comments_post_b": {
+    "data": [
+      {
+        "id": "comment_b1",
+        "message": "On post B",
+        "created_time": "2026-07-02T11:00:00+0000",
+        "from": {"id": "user3", "name": "Cara"}
+      }
+    ]
+  }
+}

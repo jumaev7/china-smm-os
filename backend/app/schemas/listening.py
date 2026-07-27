@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field, field_validator
 ProjectStatus = Literal["active", "paused", "archived"]
 SubjectType = Literal["own_brand", "competitor", "product", "topic", "other"]
 ReviewState = Literal["unreviewed", "relevant", "irrelevant", "needs_follow_up", "resolved"]
-SourceType = Literal["manual_import", "fixture"]
+SourceType = Literal[
+    "manual_import",
+    "fixture",
+    "facebook_page_comments",
+    "facebook_page_mentions",
+]
 
 
 class ProjectCreateRequest(BaseModel):
@@ -63,9 +68,18 @@ class QueryUpdateRequest(BaseModel):
     subject_id: UUID | None = None
 
 
+class LiveSourceCreateRequest(BaseModel):
+    source_type: Literal["facebook_page_comments", "facebook_page_mentions"]
+    publishing_account_id: UUID
+    display_name: str | None = Field(None, min_length=1, max_length=200)
+    poll_interval_seconds: int | None = Field(None, ge=300, le=86400)
+    source_key: str | None = Field(None, max_length=80)
+
+
 class SourceUpdateRequest(BaseModel):
     is_enabled: bool | None = None
     display_name: str | None = Field(None, min_length=1, max_length=200)
+    poll_interval_seconds: int | None = Field(None, ge=300, le=86400)
 
 
 class ReviewUpdateRequest(BaseModel):
@@ -158,6 +172,20 @@ class SourceResponse(BaseModel):
     freshness_status: str
     freshness_watermark: datetime | None = None
     last_success_at: datetime | None = None
+    integration_id: UUID | None = None
+    provider_resource_ref: str | None = None
+    health_status: str | None = None
+    last_failure_at: datetime | None = None
+    last_failure_code: str | None = None
+    last_failure_summary: str | None = None
+    last_checkpoint: str | None = None
+    poll_interval_seconds: int | None = None
+    provider_capability_version: str | None = None
+    enabled_capabilities: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
+    observation_origin: str | None = None
+    provider_limitation_text: str | None = None
+    required_permissions: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -263,6 +291,7 @@ class OverviewResponse(BaseModel):
     coverage_notice: str
     live_provider_available: bool
     fixture_ingest_available: bool = True
+    live_source_types: list[str] = []
     project_count: int
     projects: list[dict[str, Any]]
     mention_total: int

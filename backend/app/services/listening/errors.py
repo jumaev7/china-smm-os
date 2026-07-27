@@ -81,6 +81,13 @@ class SourceUnsupportedError(ListeningError):
     http_status = 422
 
 
+class SourceAlreadyRunningError(ListeningError):
+    """Another worker holds a non-expired exclusive lease on this source."""
+
+    code = "already_running"
+    http_status = 409
+
+
 class ImportValidationError(ListeningError):
     code = "listening_import_validation_error"
     http_status = 400
@@ -116,6 +123,7 @@ __all__ = [
     "ProjectPausedError",
     "ProjectArchivedError",
     "SourceUnsupportedError",
+    "SourceAlreadyRunningError",
     "ImportValidationError",
     "FixtureUnavailableError",
     "ListeningForbiddenError",

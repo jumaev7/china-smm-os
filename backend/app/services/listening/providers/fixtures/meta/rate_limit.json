@@ -1,0 +1,12 @@
+{
+  "description": "Rate limit error — sanitized to rate_limited",
+  "http_status": 429,
+  "payload": {
+    "error": {
+      "message": "There have been too many calls to this Page account. Wait a bit and try again.",
+      "type": "OAuthException",
+      "code": 80001
+    }
+  },
+  "expected_code": "rate_limited"
+}

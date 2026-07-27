@@ -87,6 +87,9 @@ def assess_coverage(
 
     limitations: list[str] = [
         "Coverage reflects configured observed sources only — not whole-market coverage.",
+        "Live Facebook coverage is limited to authorized Pages via owned-content comments "
+        "and tagged mentions — not global keyword listening, not competitor-wide Facebook, "
+        "and not Instagram in this phase.",
         "Manual-import cadence completeness is unknown; expected interval coverage is not invented.",
         "Findings are descriptive decision support, not forecasts.",
     ]
