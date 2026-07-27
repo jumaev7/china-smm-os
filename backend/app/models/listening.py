@@ -32,10 +32,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
-LISTENING_SCHEMA_VERSION = "1.0.0"
+LISTENING_SCHEMA_VERSION = "1.1.0"
 DEDUPE_VERSION = "listening_dedupe_v1"
 MATCHER_VERSION = "listening_matcher_v1"
 NORMALIZATION_VERSION = "listening_norm_v1"
+INSIGHT_REVIEW_STATES = frozenset({
+    "unreviewed",
+    "acknowledged",
+    "dismissed",
+    "monitoring",
+    "resolved",
+})
 
 PROJECT_STATUSES = frozenset({"active", "paused", "archived"})
 SUBJECT_TYPES = frozenset({"own_brand", "competitor", "product", "topic", "other"})
@@ -380,6 +387,40 @@ class TenantMentionReview(Base):
     )
 
 
+class TenantListeningInsightReview(Base):
+    """Append-only analyst review of a deterministic MarketInsight identity.
+
+    Does not modify source mentions, trigger providers, CRM, or outreach.
+    Insight facts remain computed; only review state is persisted.
+    """
+
+    __tablename__ = "tenant_listening_insight_reviews"
+    __table_args__ = (
+        Index(
+            "ix_tenant_listening_insight_reviews_tenant_key_created",
+            "tenant_id",
+            "insight_key",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    insight_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    previous_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    new_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    window_json: Mapped[dict | None] = mapped_column(JSONB(), nullable=True)
+    methodology_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False,
+    )
+
+
 class TenantListeningIngestionRun(Base):
     """Observability for a single read-only ingestion/import run."""
 
@@ -449,5 +490,7 @@ __all__ = [
     "TenantObservedMention",
     "TenantMentionMatch",
     "TenantMentionReview",
+    "TenantListeningInsightReview",
     "TenantListeningIngestionRun",
+    "INSIGHT_REVIEW_STATES",
 ]

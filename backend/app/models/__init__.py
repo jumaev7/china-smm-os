@@ -181,6 +181,7 @@ from app.models.listening import (
     TenantObservedMention,
     TenantMentionMatch,
     TenantMentionReview,
+    TenantListeningInsightReview,
     TenantListeningIngestionRun,
 )
 from app.models.advertising_decision_support import (
@@ -380,5 +381,6 @@ __all__ = [
     "TenantObservedMention",
     "TenantMentionMatch",
     "TenantMentionReview",
+    "TenantListeningInsightReview",
     "TenantListeningIngestionRun",
 ]

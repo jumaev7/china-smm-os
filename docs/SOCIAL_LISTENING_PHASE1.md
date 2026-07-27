@@ -117,10 +117,16 @@ Production schema changes use Alembic (`20260914_social_listening_foundation`).
 with the Alembic revision and must not silently mutate columns on existing tables.
 Production startup does **not** call ensure helpers — only `alembic upgrade head`.
 
-## Phase 2 extension points (deferred)
+## Phase 2+ extension points
+
+Phase 2 (see `SOCIAL_LISTENING_PHASE2.md`) delivers:
+
+- Trend / Observed Share of Voice analytics with coverage semantics
+- Emerging topics + anomalies with evidence
+- Executive Copilot market-intelligence read interface (not raw mention-table coupling)
+
+Still deferred:
 
 - Live provider adapters behind the same read-only contract
-- Trend / share-of-voice analytics with comparable coverage semantics
 - Optional provisional sentiment with method/version/evidence
-- Executive synthesis via a clean read interface (not raw mention-table coupling)
 - Autonomous response planning/execution (explicitly out of scope until governed)

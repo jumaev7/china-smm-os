@@ -24,6 +24,8 @@ from app.schemas.listening import (
     FixtureIngestRequest,
     IngestionRunListResponse,
     IngestionRunResponse,
+    InsightReviewResponse,
+    InsightReviewUpdateRequest,
     ManualImportRequest,
     MentionListResponse,
     MentionResponse,
@@ -605,3 +607,490 @@ async def api_fixture_ingest(
     )
     await db.commit()
     return read_service.run_to_dict(run)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Market Intelligence (computed read layer; no provider calls)
+# ---------------------------------------------------------------------------
+
+def _intel_kwargs(
+    *,
+    project_id: UUID | None,
+    subject_id: list[UUID] | None,
+    query_id: list[UUID] | None,
+    source_type: list[str] | None,
+    content_type: list[str] | None,
+    language: list[str] | None,
+    review_policy: str,
+    include_fixture: bool,
+    window_key: str,
+    start: datetime | None,
+    end: datetime | None,
+    timezone_name: str | None,
+    granularity: str | None,
+) -> dict:
+    return {
+        "project_id": project_id,
+        "subject_ids": subject_id,
+        "query_ids": query_id,
+        "source_types": source_type,
+        "content_types": content_type,
+        "languages": language,
+        "review_policy": review_policy,
+        "include_fixture": include_fixture,
+        "window_key": window_key,
+        "start": start,
+        "end": end,
+        "timezone_name": timezone_name or "UTC",
+        "granularity": granularity,
+    }
+
+
+@router.get("/intelligence/overview")
+async def api_intelligence_overview(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.intelligence_overview(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_overview",
+    )
+
+
+@router.get("/intelligence/time-series")
+async def api_intelligence_time_series(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.time_series(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_time_series",
+    )
+
+
+@router.get("/intelligence/subjects")
+async def api_intelligence_subjects(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.subject_comparison(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_subjects",
+    )
+
+
+@router.get("/intelligence/share-of-voice")
+async def api_intelligence_sov(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.share_of_voice(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_sov",
+    )
+
+
+@router.get("/intelligence/topics")
+async def api_intelligence_topics(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.emerging_topics(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_topics",
+    )
+
+
+@router.get("/intelligence/anomalies")
+async def api_intelligence_anomalies(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.anomalies(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_anomalies",
+    )
+
+
+@router.get("/intelligence/insights")
+async def api_intelligence_insights(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.insights(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_insights",
+    )
+
+
+@router.get("/intelligence/insights/{insight_key}")
+async def api_intelligence_insight_detail(
+    insight_key: str,
+    project_id: UUID | None = None,
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.insight_detail(
+            db,
+            user.tenant_id,
+            insight_key,
+            project_id=project_id,
+            window_key=window_key,
+            start=start,
+            end=end,
+            timezone_name=timezone or "UTC",
+            review_policy=review_policy,
+            include_fixture=include_fixture,
+        ),
+        label="listening.intelligence_insight_detail",
+    )
+
+
+@router.get("/intelligence/coverage")
+async def api_intelligence_coverage(
+    project_id: UUID | None = None,
+    subject_id: list[UUID] | None = Query(None),
+    query_id: list[UUID] | None = Query(None),
+    source_type: list[str] | None = Query(None),
+    content_type: list[str] | None = Query(None),
+    language: list[str] | None = Query(None),
+    review_policy: str = Query("default_exclude_irrelevant"),
+    include_fixture: bool = Query(False),
+    window_key: str = Query("30d"),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    timezone: str | None = Query("UTC"),
+    granularity: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics.intelligence_service import ListeningIntelligenceService
+
+    return await _guarded(
+        ListeningIntelligenceService.coverage(
+            db,
+            user.tenant_id,
+            **_intel_kwargs(
+                project_id=project_id,
+                subject_id=subject_id,
+                query_id=query_id,
+                source_type=source_type,
+                content_type=content_type,
+                language=language,
+                review_policy=review_policy,
+                include_fixture=include_fixture,
+                window_key=window_key,
+                start=start,
+                end=end,
+                timezone_name=timezone,
+                granularity=granularity,
+            ),
+        ),
+        label="listening.intelligence_coverage",
+    )
+
+
+@router.post("/intelligence/insights/{insight_key}/review", response_model=InsightReviewResponse)
+async def api_insight_review(
+    insight_key: str,
+    body: InsightReviewUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(require_role("owner", "manager", "operator")),
+):
+    from app.services.listening.analytics import insight_review_service
+    from app.services.listening.analytics.contracts import INSIGHT_METHOD_VERSION
+
+    row = await _guarded(
+        insight_review_service.set_insight_review_state(
+            db,
+            tenant_id=user.tenant_id,
+            insight_key=insight_key,
+            new_state=body.review_state,
+            actor_user_id=user.id,
+            note=body.note,
+            methodology_version=INSIGHT_METHOD_VERSION,
+        ),
+        label="listening.insight_review",
+    )
+    return {
+        "id": row.id,
+        "insight_key": row.insight_key,
+        "actor_user_id": row.actor_user_id,
+        "previous_state": row.previous_state,
+        "new_state": row.new_state,
+        "note": row.note,
+        "methodology_version": row.methodology_version,
+        "created_at": row.created_at,
+    }
+
+
+@router.get("/intelligence/insights/{insight_key}/reviews")
+async def api_insight_reviews(
+    insight_key: str,
+    limit: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.analytics import insight_review_service
+
+    rows = await insight_review_service.list_insight_reviews(
+        db, user.tenant_id, insight_key, limit=limit,
+    )
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "insight_key": r.insight_key,
+                "actor_user_id": r.actor_user_id,
+                "previous_state": r.previous_state,
+                "new_state": r.new_state,
+                "note": r.note,
+                "methodology_version": r.methodology_version,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ],
+        "total": len(rows),
+        "limit": limit,
+        "offset": 0,
+    }

@@ -28,6 +28,7 @@ import {
   Cloud,
   Presentation,
   ClipboardCheck,
+  Radio,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import {
@@ -1836,6 +1837,69 @@ function ExecutiveCopilotPageContent() {
             <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">Source: {briefing.source}</p>
           </>
         )}
+      </SectionCard>
+
+      <SectionCard
+        title={t("executive.sectionMarketIntelligence")}
+        icon={Radio}
+        iconClassName="text-teal-500"
+      >
+        {(() => {
+          const mi = overview?.market_intelligence;
+          if (!mi || mi.available === false) {
+            return (
+              <p className="text-sm text-gray-500 dark-tenant:text-slate-400">
+                {t("executive.miNoStatements")}
+              </p>
+            );
+          }
+          return (
+            <div className="space-y-3">
+              {mi.conclusions_suppressed ? (
+                <div
+                  className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark-tenant:border-amber-900 dark-tenant:bg-amber-950/40 dark-tenant:text-amber-100"
+                  role="status"
+                >
+                  {t("executive.miSuppressed")}
+                </div>
+              ) : null}
+              {(mi.statements || []).length === 0 ? (
+                <p className="text-sm text-gray-500 dark-tenant:text-slate-400">
+                  {t("executive.miNoStatements")}
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {(mi.statements || []).map((s, idx) => (
+                    <li
+                      key={`${s.kind}-${idx}`}
+                      className={
+                        s.category === "data_quality"
+                          ? "rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark-tenant:border-rose-900 dark-tenant:bg-rose-950/40 dark-tenant:text-rose-100"
+                          : "rounded-md border border-slate-200 px-3 py-2 text-sm dark-tenant:border-slate-700"
+                      }
+                    >
+                      <span className="mr-2 text-[10px] font-semibold uppercase tracking-wide opacity-70">
+                        {s.category === "data_quality"
+                          ? t("executive.miDataQuality")
+                          : t("executive.miMarketSignal")}
+                      </span>
+                      {s.text}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[10px] text-gray-400 dark-tenant:text-slate-500">
+                {t("executive.miBhUnchanged")}
+              </p>
+              <Link
+                href={mi.evidence_href || "/listening/intelligence"}
+                className="inline-flex text-xs text-sky-700 underline dark-tenant:text-sky-300"
+              >
+                {t("executive.miOpenListening")}
+              </Link>
+            </div>
+          );
+        })()}
       </SectionCard>
 
       <SectionCard title={t("executive.quickLinks")} icon={Briefcase} iconClassName="text-sky-400">

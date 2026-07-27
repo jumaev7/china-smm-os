@@ -2931,9 +2931,33 @@ def _ensure_listening_tables(connection) -> None:
     ):
         connection.execute(text(sql))
 
+    if "tenant_listening_insight_reviews" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_insight_reviews ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "insight_key VARCHAR(80) NOT NULL, "
+            "actor_user_id UUID, "
+            "previous_state VARCHAR(40) NOT NULL, "
+            "new_state VARCHAR(40) NOT NULL, "
+            "note TEXT, "
+            "window_json JSONB, "
+            "methodology_version VARCHAR(40), "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+            ")"
+        ))
+        tables.add("tenant_listening_insight_reviews")
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_insight_reviews_tenant_id "
+        "ON tenant_listening_insight_reviews (tenant_id)",
+        "CREATE INDEX IF NOT EXISTS ix_tenant_listening_insight_reviews_tenant_key_created "
+        "ON tenant_listening_insight_reviews (tenant_id, insight_key, created_at)",
+    ):
+        connection.execute(text(sql))
+
 
 async def ensure_listening_schema() -> None:
-    """Apply idempotent DDL for Social Listening Phase 1 tables."""
+    """Apply idempotent DDL for Social Listening tables (Phase 1 + Phase 2)."""
     async with engine.begin() as conn:
         await conn.run_sync(_ensure_listening_tables)
 

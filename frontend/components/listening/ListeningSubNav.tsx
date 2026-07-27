@@ -12,6 +12,7 @@ export function ListeningSubNav() {
 
   const links = [
     { href: "/listening", label: t("listening.navOverview"), exact: true },
+    { href: "/listening/intelligence", label: t("listening.navIntelligence") },
     { href: "/listening/mentions", label: t("listening.navMentions") },
     { href: "/listening/projects", label: t("listening.navConfiguration") },
     { href: "/listening/runs", label: t("listening.navRuns") },

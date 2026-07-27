@@ -273,6 +273,40 @@ class OverviewResponse(BaseModel):
     source_capabilities: list[dict[str, Any]]
 
 
+# ---- Phase 2 market intelligence schemas ----
+
+WindowKey = Literal["7d", "30d", "90d", "custom"]
+GranularityLit = Literal["hour", "day", "week"]
+ReviewPolicy = Literal[
+    "default_exclude_irrelevant",
+    "include_all",
+    "relevant_only",
+]
+InsightReviewState = Literal[
+    "unreviewed",
+    "acknowledged",
+    "dismissed",
+    "monitoring",
+    "resolved",
+]
+
+
+class InsightReviewUpdateRequest(BaseModel):
+    review_state: InsightReviewState
+    note: str | None = Field(None, max_length=4000)
+
+
+class InsightReviewResponse(BaseModel):
+    id: UUID
+    insight_key: str
+    actor_user_id: UUID | None = None
+    previous_state: str
+    new_state: str
+    note: str | None = None
+    methodology_version: str | None = None
+    created_at: datetime
+
+
 __all__ = [
     "ProjectCreateRequest",
     "ProjectUpdateRequest",
@@ -296,4 +330,6 @@ __all__ = [
     "IngestionRunResponse",
     "IngestionRunListResponse",
     "OverviewResponse",
+    "InsightReviewUpdateRequest",
+    "InsightReviewResponse",
 ]

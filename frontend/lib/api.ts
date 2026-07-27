@@ -2111,6 +2111,27 @@ export interface ExecutiveCopilotOverview {
     trial_subscriptions: number;
     plan_distribution: Record<string, number>;
   };
+  market_intelligence?: {
+    available?: boolean;
+    coverage_status?: string;
+    conclusions_suppressed?: boolean;
+    eligible_mention_count?: number;
+    statements?: Array<{
+      kind: string;
+      text?: string;
+      category?: string;
+      evidence_mention_ids?: string[];
+      code?: string;
+    }>;
+    highest_priority_anomaly?: Record<string, unknown> | null;
+    strongest_subject_change?: Record<string, unknown> | null;
+    emerging_topic?: Record<string, unknown> | null;
+    coverage_warning?: Record<string, unknown> | null;
+    data_quality_warning?: Record<string, unknown> | null;
+    evidence_href?: string;
+    limitations?: string[];
+    business_health_unchanged?: boolean;
+  };
   errors?: string[];
 }
 
@@ -16443,4 +16464,235 @@ export const listeningApi = {
       `/listening/projects/${projectId}/fixture-ingest`,
       body ?? {},
     ),
+
+  intelligenceOverview: (params?: ListeningIntelligenceParams) =>
+    api.get<ListeningIntelligenceOverview>("/listening/intelligence/overview", { params }),
+  intelligenceTimeSeries: (params?: ListeningIntelligenceParams) =>
+    api.get<ListeningTimeSeriesResponse>("/listening/intelligence/time-series", { params }),
+  intelligenceSubjects: (params?: ListeningIntelligenceParams) =>
+    api.get<ListeningSubjectComparisonResponse>("/listening/intelligence/subjects", { params }),
+  intelligenceShareOfVoice: (params?: ListeningIntelligenceParams) =>
+    api.get<ListeningShareOfVoiceResponse>("/listening/intelligence/share-of-voice", { params }),
+  intelligenceTopics: (params?: ListeningIntelligenceParams) =>
+    api.get<{ window: Record<string, unknown>; coverage: ListeningCoverage; topics: ListeningEmergingTopic[]; limitations: string[] }>(
+      "/listening/intelligence/topics",
+      { params },
+    ),
+  intelligenceAnomalies: (params?: ListeningIntelligenceParams) =>
+    api.get<{
+      window: Record<string, unknown>;
+      coverage: ListeningCoverage;
+      market_signal: ListeningAnomaly[];
+      data_quality: ListeningAnomaly[];
+      limitations: string[];
+    }>("/listening/intelligence/anomalies", { params }),
+  intelligenceInsights: (params?: ListeningIntelligenceParams) =>
+    api.get<{ window: Record<string, unknown>; coverage: ListeningCoverage; insights: ListeningInsight[]; limitations: string[] }>(
+      "/listening/intelligence/insights",
+      { params },
+    ),
+  intelligenceInsightDetail: (insightKey: string, params?: ListeningIntelligenceParams) =>
+    api.get<ListeningInsightDetailResponse>(`/listening/intelligence/insights/${insightKey}`, { params }),
+  intelligenceCoverage: (params?: ListeningIntelligenceParams) =>
+    api.get<{ window: Record<string, unknown>; coverage: ListeningCoverage; limitations: string[] }>(
+      "/listening/intelligence/coverage",
+      { params },
+    ),
+  reviewInsight: (
+    insightKey: string,
+    body: { review_state: ListeningInsightReviewState; note?: string | null },
+  ) =>
+    api.post<{
+      id: string;
+      insight_key: string;
+      actor_user_id?: string | null;
+      previous_state: string;
+      new_state: string;
+      note?: string | null;
+      methodology_version?: string | null;
+      created_at: string;
+    }>(`/listening/intelligence/insights/${insightKey}/review`, body),
 };
+
+export type ListeningInsightReviewState =
+  | "unreviewed"
+  | "acknowledged"
+  | "dismissed"
+  | "monitoring"
+  | "resolved";
+
+export interface ListeningIntelligenceParams {
+  project_id?: string;
+  subject_id?: string | string[];
+  query_id?: string | string[];
+  source_type?: string | string[];
+  content_type?: string | string[];
+  language?: string | string[];
+  review_policy?: string;
+  include_fixture?: boolean;
+  window_key?: "7d" | "30d" | "90d" | "custom";
+  start?: string;
+  end?: string;
+  timezone?: string;
+  granularity?: "hour" | "day" | "week";
+}
+
+export interface ListeningCoverage {
+  status: "sufficient" | "partial" | "insufficient" | "unavailable";
+  eligible_mention_count: number;
+  mention_count: number;
+  days_with_observations: number;
+  freshness_status: string;
+  freshness_watermark?: string | null;
+  limitations: string[];
+  origin_composition?: Record<string, number>;
+  unreviewed_proportion?: number | null;
+  cadence_completeness?: string;
+  policy_version?: string;
+  comparable_subject_ids?: string[];
+  failed_ingestion_count?: number;
+  partial_ingestion_count?: number;
+}
+
+export interface ListeningSubjectPerf {
+  subject_id: string;
+  subject_type: string;
+  canonical_name: string;
+  observed_mention_count: number;
+  previous_comparable_count?: number | null;
+  absolute_change?: number | null;
+  percentage_change?: number | null;
+  change_kind: string;
+  observed_share?: number | null;
+  rank?: number | null;
+  evidence_mention_ids?: string[];
+  coverage_status: string;
+  confidence_status: string;
+}
+
+export interface ListeningEmergingTopic {
+  topic_id: string;
+  label: string;
+  current_count: number;
+  baseline_count: number;
+  velocity?: number | null;
+  change_kind: string;
+  representative_mention_ids: string[];
+  confidence: string;
+  coverage_status: string;
+  detection_method: string;
+  detection_reason: string;
+  limitations: string[];
+}
+
+export interface ListeningAnomaly {
+  code: string;
+  anomaly_type: string;
+  category: "market_signal" | "data_quality";
+  severity: string;
+  explanation: string;
+  current_value?: number | null;
+  baseline_value?: number | null;
+  magnitude?: number | null;
+  evidence_mention_ids?: string[];
+  limitations?: string[];
+}
+
+export interface ListeningInsight {
+  insight_key: string;
+  code: string;
+  category: string;
+  severity: string;
+  priority: number;
+  title: string;
+  explanation: string;
+  observed_facts: string[];
+  evidence_mention_ids: string[];
+  affected_subject_ids: string[];
+  coverage_status: string;
+  confidence: string;
+  methodology_version: string;
+  analyst_review_state: ListeningInsightReviewState;
+  limitations: string[];
+}
+
+export interface ListeningIntelligenceOverview {
+  schema_version: string;
+  window: Record<string, unknown>;
+  coverage: ListeningCoverage;
+  eligible_mention_count: number;
+  previous_eligible_mention_count?: number | null;
+  comparison_valid: boolean;
+  top_subjects: ListeningSubjectPerf[];
+  observed_share_of_voice: ListeningShareOfVoiceResponse;
+  notable_anomalies: ListeningAnomaly[];
+  data_quality_anomalies: ListeningAnomaly[];
+  emerging_topics: ListeningEmergingTopic[];
+  insights: ListeningInsight[];
+  sentiment: { available: boolean; status: string; reason?: string };
+  limitations: string[];
+  generated_at: string;
+}
+
+export interface ListeningTimeSeriesResponse {
+  window: Record<string, unknown>;
+  coverage: ListeningCoverage;
+  comparison_valid: boolean;
+  buckets: Array<{
+    bucket_start: string;
+    bucket_end: string;
+    total_observed_mentions: number;
+    counts_by_source: Record<string, number>;
+    observed: boolean;
+  }>;
+  textual_summary: string;
+  limitations: string[];
+}
+
+export interface ListeningSubjectComparisonResponse {
+  window: Record<string, unknown>;
+  coverage: ListeningCoverage;
+  comparison_valid: boolean;
+  subjects: ListeningSubjectPerf[];
+  observed_share_of_voice: ListeningShareOfVoiceResponse;
+  limitations: string[];
+}
+
+export interface ListeningShareOfVoiceResponse {
+  metric_name?: string;
+  label?: string;
+  available: boolean;
+  denominator?: number;
+  comparison_set?: Array<{ subject_id: string; subject_type: string; canonical_name: string }>;
+  shares?: Array<{
+    subject_id: string;
+    canonical_name: string;
+    subject_type: string;
+    observed_mention_count: number;
+    observed_share_pct?: number | null;
+    rank?: number | null;
+  }>;
+  share_sum_pct?: number;
+  limitations?: string[];
+  coverage_status?: string;
+  window?: Record<string, unknown>;
+  coverage?: ListeningCoverage;
+}
+
+export interface ListeningInsightDetailResponse {
+  insight: ListeningInsight;
+  evidence: Array<{
+    id: string;
+    project_id?: string | null;
+    content_excerpt?: string | null;
+    canonical_url?: string | null;
+    published_at?: string | null;
+    observation_origin: string;
+    source_type: string;
+    review_state: string;
+  }>;
+  coverage: ListeningCoverage;
+  window: Record<string, unknown>;
+  methodology_version: string;
+  limitations: string[];
+}

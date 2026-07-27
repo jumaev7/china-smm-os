@@ -101,9 +101,11 @@ async def _run() -> int:
     )
 
     heads = _alembic("heads")
+    history = _alembic("history", "-v")
+    history_text = (history.stdout or "") + (heads.stdout or "")
     record(
         "alembic_heads_ok",
-        heads.returncode == 0 and EXPECTED_REVISION in (heads.stdout or ""),
+        heads.returncode == 0 and EXPECTED_REVISION in history_text,
         (heads.stdout or heads.stderr or "")[:240],
     )
 
@@ -115,10 +117,15 @@ async def _run() -> int:
         (up.stdout or up.stderr or "")[:300],
     )
     cur = _alembic("current")
+    cur_text = cur.stdout or ""
     record(
         "alembic_current_at_or_past_listening",
-        cur.returncode == 0 and EXPECTED_REVISION in (cur.stdout or ""),
-        (cur.stdout or cur.stderr or "")[:240],
+        cur.returncode == 0
+        and (
+            EXPECTED_REVISION in cur_text
+            or "20260915_listening_market_intelligence" in cur_text
+        ),
+        cur_text[:240],
     )
 
     from app.core.database import ensure_listening_schema, engine
@@ -215,7 +222,7 @@ async def _run() -> int:
         str(missing_after_down),
     )
 
-    up2 = _alembic("upgrade", EXPECTED_REVISION)
+    up2 = _alembic("upgrade", "head")
     record(
         "alembic_reupgrade_listening",
         up2.returncode == 0,

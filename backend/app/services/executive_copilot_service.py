@@ -131,6 +131,12 @@ class ExecutiveCopilotService:
             "whatsapp_provider": snap.lead_metrics.get("whatsapp_provider") or {},
             "tenants": snap.lead_metrics.get("tenants") or {},
             "subscription_billing": snap.lead_metrics.get("subscription_billing") or {},
+            "market_intelligence": snap.lead_metrics.get("market_intelligence") or {
+                "available": False,
+                "conclusions_suppressed": True,
+                "statements": [],
+                "business_health_unchanged": True,
+            },
             "errors": snap.errors,
         }
 
@@ -147,6 +153,23 @@ class ExecutiveCopilotService:
             )
         snap = await ExecutiveCopilotService._build_overview_snapshot(db, client_id=client_id)
         result = ExecutiveCopilotService._overview_from_snapshot(snap)
+        # Prefer explicit tenant_id for listening MI when client probe was empty.
+        mi = result.get("market_intelligence") or {}
+        if tenant_id and not mi.get("available"):
+            from app.services.listening.executive_read import safe_executive_market_intelligence
+            result["market_intelligence"] = await safe_section(
+                "market_intelligence",
+                safe_executive_market_intelligence(db, tenant_id=tenant_id),
+                default={
+                    "available": False,
+                    "conclusions_suppressed": True,
+                    "statements": [],
+                    "business_health_unchanged": True,
+                },
+                errors=result.setdefault("errors", []),
+                db=db,
+                timeout=6.0,
+            )
         health = await ExecutiveCopilotService._assess_business_health(
             db, snap=snap, tenant_id=tenant_id, client_id=client_id,
         )
@@ -416,6 +439,31 @@ class ExecutiveCopilotService:
             errors=errors,
             db=db,
             timeout=4.0,
+        )
+
+        probe_tenant_id = None
+        if client_id:
+            from app.models.client import Client
+            client = await db.get(Client, client_id)
+            if client and client.tenant_id:
+                probe_tenant_id = client.tenant_id
+
+        async def _market_intelligence() -> dict[str, Any]:
+            from app.services.listening.executive_read import safe_executive_market_intelligence
+            return await safe_executive_market_intelligence(db, tenant_id=probe_tenant_id)
+
+        snap.lead_metrics["market_intelligence"] = await safe_section(
+            "market_intelligence",
+            _market_intelligence(),
+            default={
+                "available": False,
+                "conclusions_suppressed": True,
+                "statements": [],
+                "business_health_unchanged": True,
+            },
+            errors=errors,
+            db=db,
+            timeout=6.0,
         )
         return snap
 
@@ -785,6 +833,23 @@ class ExecutiveCopilotService:
             client = await db.get(Client, client_id)
             if client and client.tenant_id:
                 probe_tenant_id = client.tenant_id
+
+        async def _market_intelligence_full() -> dict[str, Any]:
+            from app.services.listening.executive_read import safe_executive_market_intelligence
+            return await safe_executive_market_intelligence(db, tenant_id=probe_tenant_id)
+
+        snap.lead_metrics["market_intelligence"] = await safe_section(
+            "market_intelligence",
+            _market_intelligence_full(),
+            default={
+                "available": False,
+                "conclusions_suppressed": True,
+                "statements": [],
+                "business_health_unchanged": True,
+            },
+            errors=errors,
+            db=db,
+        )
 
         async def _customer_portal() -> dict[str, Any]:
             from app.services.customer_portal_service import CustomerPortalService

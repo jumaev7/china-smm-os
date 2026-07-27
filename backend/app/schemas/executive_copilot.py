@@ -84,6 +84,7 @@ class ExecutiveCopilotOverviewResponse(BaseModel):
     revenue_attribution: dict = Field(default_factory=dict)
     wechat_sync: dict = Field(default_factory=dict)
     whatsapp_sync: dict = Field(default_factory=dict)
+    market_intelligence: dict = Field(default_factory=dict)
     errors: List[str] = Field(default_factory=list)
 
 
