@@ -118,6 +118,8 @@ class PublishAttemptOpsService:
     ) -> PublishAttempt:
         result = await db.execute(
             select(PublishAttempt)
+            .join(ContentItem, ContentItem.id == PublishAttempt.content_id)
+            .join(Client, Client.id == ContentItem.client_id)
             .where(PublishAttempt.id == attempt_id)
             .options(selectinload(PublishAttempt.account))
         )

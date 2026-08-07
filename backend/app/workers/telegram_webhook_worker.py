@@ -41,7 +41,9 @@ class TelegramWebhookWorker:
             try:
                 async with AsyncSessionLocal() as db:
                     await process_update(db, payload)
-                    await TelegramWebhookQueueService.mark_completed(db, event_id, worker_id=self.worker_id)
+                    await TelegramWebhookQueueService.mark_completed(
+                        db, event_id, worker_id=self.worker_id,
+                    )
                     await db.commit()
                 completed += 1
             except Exception as exc:

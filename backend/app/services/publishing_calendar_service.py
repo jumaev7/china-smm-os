@@ -8,6 +8,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.client_scope_guard import scope_select
 from app.models.client import Client
 from app.models.content import ContentItem
 
@@ -86,8 +87,7 @@ class PublishingCalendarService:
             .order_by(event_at.asc())
         )
 
-        if client_id:
-            query = query.where(ContentItem.client_id == client_id)
+        query, _ = scope_select(query, None, ContentItem.client_id, client_id=client_id)
         if platform:
             query = query.where(ContentItem.platforms.contains([platform]))
 

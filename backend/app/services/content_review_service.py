@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.client_scope_guard import guard_resource_client_id
 from app.core.config import settings
 from app.models.client import Client
 from app.models.content import ContentItem
@@ -105,6 +106,7 @@ class ContentReviewService:
         item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(status_code=404, detail="Content item not found")
+        guard_resource_client_id(item.client_id)
         return item
 
     @staticmethod

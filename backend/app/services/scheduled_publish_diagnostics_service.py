@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.client_scope_guard import scope_select
 from app.models.content import ContentItem
 from app.models.publishing_account import PublishingAccount
 from app.services.content_readiness_service import _has_caption
@@ -207,12 +208,14 @@ class ScheduledPublishDiagnosticsService:
         client_timezone: str | None = None,
     ) -> dict:
         now = _utc_now()
-        result = await db.execute(
+        query = (
             select(ContentItem)
             .where(ContentItem.scheduled_for.isnot(None))
             .options(selectinload(ContentItem.media_file))
             .order_by(ContentItem.scheduled_for.asc())
         )
+        query, _ = scope_select(query, None, ContentItem.client_id)
+        result = await db.execute(query)
         items = list(result.scalars().all())
         diagnosed = [
             await ScheduledPublishDiagnosticsService.diagnose_item(

@@ -39,6 +39,7 @@ from app.services.telegram_group_agent_service import (
     handle_buffer_admin_instruction,
     handle_buffer_reply_instruction,
     has_selection_intent,
+    mark_update_processed,
     record_buffer_bot_ack,
     is_admin_operator,
     is_buffer_mode,
@@ -1275,11 +1276,19 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
     """
     Main entry point. Receives a raw Telegram update dict, processes it,
     returns a summary dict or None if ignored.
+
+    Dedup: telegram_processed_updates is written only after successful handling
+    (or intentional no-op). Failures leave the update reclaimable via the
+    webhook queue lease. Duplicate update_id after success remains safe.
     """
     update_id = update.get("update_id")
     if not await claim_update(db, update_id):
         return {"duplicate": True, "update_id": update_id}
-    await db.commit()
+
+    async def _succeed(result: dict | None) -> dict | None:
+        await mark_update_processed(db, update_id)
+        await db.commit()
+        return result
 
     if "callback_query" in update:
         from app.services.client_review_telegram_service import ClientReviewTelegramService
@@ -1287,12 +1296,11 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
             result = await ClientReviewTelegramService.handle_callback(
                 db, update["callback_query"],
             )
-            await db.commit()
-            return result or {"callback_handled": True}
+            return await _succeed(result or {"callback_handled": True})
         except Exception as exc:
             await db.rollback()
             logger.error("Telegram: callback_query failed — %s", exc, exc_info=True)
-            return {"callback_error": str(exc)[:200]}
+            raise
 
     message = (
         update.get("message")
@@ -1302,7 +1310,7 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
     )
     if not message:
         logger.debug("Telegram: update has no message — skipping")
-        return None
+        return await _succeed(None)
 
     chat = message.get("chat", {})
     chat_id = chat.get("id", 0)
@@ -1326,12 +1334,12 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
                     feedback_text,
                     reply_chat_id=chat_id,
                 )
-                await db.commit()
                 if result:
-                    return {"client_review_feedback": True, **result}
+                    return await _succeed({"client_review_feedback": True, **result})
             except Exception as exc:
                 await db.rollback()
                 logger.error("Telegram: client feedback failed — %s", exc, exc_info=True)
+                raise
 
     # Operator-alert recipient enrollment: private `/start <token>` only.
     # Must run before /chat_id and content ingestion so tokens never become content.
@@ -1348,16 +1356,22 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
                 message=message,
             )
             if enrollment_result is not None:
-                await db.commit()
-                return enrollment_result
+                if enrollment_result.get("ok") is False:
+                    raise RuntimeError(
+                        f"Telegram enrollment failed: {enrollment_result.get('reason') or 'handler_error'}"
+                    )
+                return await _succeed(enrollment_result)
+    except RuntimeError:
+        await db.rollback()
+        raise
     except Exception as exc:
         await db.rollback()
         logger.error("Telegram: enrollment handling failed — %s", type(exc).__name__, exc_info=True)
-        return {"enrollment": True, "ok": False, "reason": "handler_error"}
+        raise
 
     if _is_chat_id_command(message):
         await _reply_chat_id_info(chat_id, chat)
-        return {"chat_id_command": True, "chat_id": chat_id}
+        return await _succeed({"chat_id_command": True, "chat_id": chat_id})
 
     chat_title: str = (chat.get("title") or "").strip()
     is_group = _is_group_chat(chat)
@@ -1372,15 +1386,19 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
             chat_title,
             sender_name or telegram_user_id,
         )
-        return await _process_group_message(
+        result = await _process_group_message(
             db, message, chat_id, chat_title, telegram_user_id, sender_name,
         )
+        if isinstance(result, dict) and result.get("processing_ok") is False:
+            await db.rollback()
+            raise RuntimeError(result.get("error") or "Telegram group processing failed")
+        return await _succeed(result)
 
     if not _is_allowed_sender(telegram_user_id):
         logger.warning(
             "Telegram: rejected message from unauthorized sender %s", telegram_user_id
         )
-        return None
+        return await _succeed(None)
 
     caption: str = message.get("caption", "") or message.get("text", "") or ""
     has_media = bool(
@@ -1389,7 +1407,7 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
     )
     if not has_media and not caption.strip():
         logger.debug("Telegram: empty message (no media, no text) — skipping")
-        return None
+        return await _succeed(None)
 
     logger.info(
         "Telegram: received private message from %s (id=%s) — media=%s text=%s",
@@ -1400,7 +1418,7 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
         client = await _find_or_create_client(db, telegram_user_id, sender_name)
         settings_row = await TelegramIngestionService.get_settings(db)
         if not TelegramIngestionService.is_ingestion_enabled(settings_row):
-            return {"ignored": True, "ingestion_disabled": True}
+            return await _succeed({"ignored": True, "ingestion_disabled": True})
         await TelegramIngestionService.apply_tenant_to_client(db, client, settings_row)
         result = await _create_content_from_telegram_message(
             db,
@@ -1411,12 +1429,11 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
             is_group=False,
         )
         result.pop("content_item", None)
-        return result
+        if result.get("processing_ok") is False:
+            await db.rollback()
+            raise RuntimeError(result.get("error") or "Telegram content processing failed")
+        return await _succeed(result)
     except Exception as exc:
         await db.rollback()
         logger.error("Telegram: processing failed — %s", exc, exc_info=True)
-        return {
-            "processing_ok": False,
-            "is_group": False,
-            "error": str(exc)[:200],
-        }
+        raise

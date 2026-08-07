@@ -182,16 +182,36 @@ def is_buffer_create_instruction(text: str) -> bool:
     return should_assemble_from_buffer(text)
 
 
-async def claim_update(db: AsyncSession, update_id: int | None) -> bool:
-    """Return False if this update_id was already processed."""
+async def is_update_already_processed(db: AsyncSession, update_id: int | None) -> bool:
+    """Return True if this Telegram update_id was already successfully processed."""
     if update_id is None:
-        return True
+        return False
+    existing = await db.get(TelegramProcessedUpdate, update_id)
+    return existing is not None
+
+
+async def mark_update_processed(db: AsyncSession, update_id: int | None) -> None:
+    """Record successful processing. Safe under concurrent duplicate delivery."""
+    if update_id is None:
+        return
     existing = await db.get(TelegramProcessedUpdate, update_id)
     if existing:
-        logger.info("[Group Agent] duplicate update_id=%s — skipped", update_id)
-        return False
+        return
     db.add(TelegramProcessedUpdate(update_id=update_id))
     await db.flush()
+
+
+async def claim_update(db: AsyncSession, update_id: int | None) -> bool:
+    """Compatibility wrapper: True if update is not yet successfully processed.
+
+    Does NOT permanently claim. Durable success marking is mark_update_processed
+    after work completes. Queue leases (telegram_webhook_events) own reclaim.
+    """
+    if update_id is None:
+        return True
+    if await is_update_already_processed(db, update_id):
+        logger.info("[Group Agent] duplicate update_id=%s — skipped", update_id)
+        return False
     return True
 
 

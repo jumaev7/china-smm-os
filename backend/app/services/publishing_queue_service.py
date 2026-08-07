@@ -10,6 +10,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.client_scope_guard import scope_select
 from app.models.calendar import CalendarEntry
 from app.models.content import ContentItem
 from app.schemas.publishing import PublishContentRequest
@@ -84,7 +85,7 @@ class PublishingQueueService:
         client_timezone: str | None = None,
     ) -> dict:
         now = _utc_now()
-        result = await db.execute(
+        query = (
             select(ContentItem)
             .where(
                 ContentItem.status.in_(tuple(QUEUE_STATUSES)),
@@ -99,6 +100,8 @@ class PublishingQueueService:
             )
             .order_by(ContentItem.scheduled_for.asc().nulls_last(), ContentItem.created_at.desc())
         )
+        query, _ = scope_select(query, None, ContentItem.client_id)
+        result = await db.execute(query)
         items = list(result.scalars().all())
         rows: list[dict] = []
         counts: dict[str, int] = {}
@@ -246,7 +249,7 @@ class PublishingQueueService:
     @staticmethod
     async def retry_publish(db: AsyncSession, content_id: UUID) -> dict:
         await PublishService.recover_stale_publishing(db, content_id=content_id)
-        item = await PublishService._get_content(db, content_id)
+        item = await ContentService.get(db, content_id)
         platforms = list(item.platforms or [])
 
         safety = await PublishSafetyService.evaluate(

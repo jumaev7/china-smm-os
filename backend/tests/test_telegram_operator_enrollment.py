@@ -568,6 +568,9 @@ def test_process_update_enrollment_bypasses_ingestion():
             "app.services.telegram_service.claim_update",
             AsyncMock(return_value=True),
         ), patch(
+            "app.services.telegram_service.mark_update_processed",
+            AsyncMock(),
+        ), patch(
             "app.services.publish_alert_telegram_enrollment_service.PublishAlertTelegramEnrollmentService.try_handle_start_message",
             AsyncMock(return_value={"enrollment": True, "ok": True, "status": "candidate_received"}),
         ) as enroll, patch(
@@ -605,6 +608,9 @@ def test_bare_start_without_token_does_not_enter_enrollment():
         with patch(
             "app.services.telegram_service.claim_update",
             AsyncMock(return_value=True),
+        ), patch(
+            "app.services.telegram_service.mark_update_processed",
+            AsyncMock(),
         ), patch(
             "app.services.telegram_service._is_allowed_sender",
             return_value=False,
