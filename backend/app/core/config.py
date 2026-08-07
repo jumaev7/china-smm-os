@@ -143,11 +143,13 @@ class Settings(BaseSettings):
     LISTENING_WORKER_POLL_SECONDS: float = 30.0
     LISTENING_WORKER_BATCH_SIZE: int = 20
     META_OAUTH_SCOPES: str = (
-        "pages_show_list,instagram_basic,business_management,"
+        "pages_show_list,pages_read_engagement,pages_read_user_content,"
+        "instagram_basic,business_management,"
         "pages_manage_posts,instagram_content_publish"
     )
-    # pages_read_user_content is required for Page UGC comments and /tagged mentions
-    # (Social Listening Phase 3). App Review required for Live mode beyond app roles.
+    # Listening Phase 3 (Facebook Page comments + tagged mentions) requires
+    # pages_read_engagement and pages_read_user_content. Existing Meta
+    # connections must re-authorize OAuth before Listening live sources work.
     # Opt-in gate for real Facebook Page posts (verification smoke + manual live tests).
     ENABLE_FACEBOOK_LIVE_SMOKE: bool = False
     # Opt-in gate for real Instagram Business posts (verification smoke + manual live tests).

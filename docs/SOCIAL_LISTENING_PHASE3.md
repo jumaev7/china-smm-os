@@ -62,6 +62,17 @@ Official docs:
 **Production:** Meta App Review + Advanced Access required for
 `pages_read_user_content`.
 
+## OAuth scope alignment
+
+Default backend `META_OAUTH_SCOPES` (and `.env.production.example`) request the
+minimum permissions for implemented publish + Listening features, including
+`pages_read_engagement` and `pages_read_user_content`.
+
+**Reconnection required for existing integrations:** tokens issued before these
+scopes were added will not gain Listening permissions until the tenant
+re-runs Meta OAuth connect. Capability health correctly reports `missing_scope`
+until reconnection. Do not broaden scopes beyond implemented features.
+
 ## Access layers (do not conflate)
 
 1. **Permission granted to a token** — OAuth scopes present on the Page token

@@ -127,6 +127,7 @@ class MetaOAuthService:
             "permissions": sorted({
                 "pages_show_list",
                 "pages_read_engagement",
+                "pages_read_user_content",
                 "instagram_basic",
                 "business_management",
                 "pages_manage_posts",
