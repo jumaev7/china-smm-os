@@ -77,12 +77,16 @@ is respected when present.
 Do **not** expect automatic retries for authentication, permission, validation,
 or unsupported-media failures — those are terminal and need operator action.
 
+Meta write timeouts and connection errors are treated as **ambiguous** (provider
+may have accepted the post). Those attempts go to `operator_review` and are
+**not** auto-retried.
+
 ### Operator checklist
 
 1. Open **Publishing → Queue** (or content Publish history) and check attempt
    badges: `retrying`, `operator_review`, `exhausted`, `in_progress`, `failed`.
 2. For `retrying`, wait for `next_retry_at` or use guarded **Retry**.
-3. For `operator_review` (usually Meta timed out while in progress):
+3. For `operator_review` (Meta timeout, connection loss, or stale in-progress):
    - Confirm in Meta Business Suite whether a live post already exists.
    - Only then use **Retry** — the UI asks for confirmation to avoid duplicates.
 4. For `exhausted`: fix the underlying issue (token, media, permissions), then Retry.
@@ -94,10 +98,25 @@ or unsupported-media failures — those are terminal and need operator action.
 | Symptom | Likely cause | Action |
 |---|---|---|
 | Stuck `publishing` / `in_progress` | Worker restart mid-publish | Wait for stale recovery (`PUBLISH_STALE_ATTEMPT_MINUTES`) or cancel/recover from queue |
-| Meta `operator_review` | Ambiguous in-progress timeout | Verify live post; retry only if absent |
+| Meta `operator_review` | Ambiguous timeout / connection / stale claim | Verify live post; retry only if absent |
 | Repeated `rate_limited` | Meta throttling | Let backoff run; raise base/max seconds only if needed |
 | Auth/permission failures | Expired token / missing scopes | Reconnect Meta; do not force duplicate publishes |
 | Duplicate approval/webhook | Same content approved twice | Dedup suppresses second live post |
+
+### Meta OAuth scopes (publish + Listening)
+
+Default `META_OAUTH_SCOPES` includes the minimum set for publishing and Facebook
+Listening read sources:
+
+`pages_show_list`, `pages_read_engagement`, `pages_read_user_content`,
+`instagram_basic`, `business_management`, `pages_manage_posts`,
+`instagram_content_publish`.
+
+**Existing Meta connections do not gain new permissions automatically.** After
+deploying scope changes, each tenant must re-authorize Meta OAuth before
+Facebook Listening (`facebook_page_comments` / `facebook_page_mentions`) will
+pass capability checks. Publishing with previously granted publish scopes
+continues to work until reconnect.
 
 API (authenticated, tenant-scoped):
 

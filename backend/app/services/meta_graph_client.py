@@ -28,6 +28,8 @@ class MetaGraphError(RuntimeError):
         error_subcode: int | None = None,
         retry_after: int | None = None,
         is_transient: bool | None = None,
+        is_timeout: bool = False,
+        is_connection_error: bool = False,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -35,6 +37,8 @@ class MetaGraphError(RuntimeError):
         self.error_subcode = error_subcode
         self.retry_after = retry_after
         self.is_transient = is_transient
+        self.is_timeout = bool(is_timeout)
+        self.is_connection_error = bool(is_connection_error)
 
     def to_publish_fields(self) -> dict[str, Any]:
         return {
@@ -42,8 +46,8 @@ class MetaGraphError(RuntimeError):
             "meta_code": self.error_code,
             "meta_subcode": self.error_subcode,
             "retry_after_seconds": self.retry_after,
-            "is_timeout": False,
-            "is_connection_error": False,
+            "is_timeout": self.is_timeout,
+            "is_connection_error": self.is_connection_error,
         }
 
 
@@ -131,7 +135,11 @@ def _graph_url(path: str) -> str:
 
 def build_oauth_authorize_url(*, state: str) -> str:
     scopes = (settings.META_OAUTH_SCOPES or "").strip() or ",".join(
-        sorted(REQUIRED_CONNECTION_PERMISSIONS | FUTURE_PUBLISH_PERMISSIONS)
+        sorted(
+            REQUIRED_CONNECTION_PERMISSIONS
+            | FUTURE_PUBLISH_PERMISSIONS
+            | LISTENING_FACEBOOK_READ_PERMISSIONS
+        )
     )
     params = {
         "client_id": settings.META_APP_ID,
@@ -161,12 +169,14 @@ async def _get_json(path: str, *, params: dict[str, Any] | None = None) -> dict[
             f"Meta Graph API timeout: {exc}",
             status_code=None,
             is_transient=True,
+            is_timeout=True,
         ) from exc
     except httpx.HTTPError as exc:
         raise MetaGraphError(
             f"Meta Graph API connection error: {exc}",
             status_code=None,
             is_transient=True,
+            is_connection_error=True,
         ) from exc
 
 
@@ -188,12 +198,14 @@ async def _post_json(path: str, *, params: dict[str, Any]) -> dict[str, Any]:
             f"Meta Graph API timeout: {exc}",
             status_code=None,
             is_transient=True,
+            is_timeout=True,
         ) from exc
     except httpx.HTTPError as exc:
         raise MetaGraphError(
             f"Meta Graph API connection error: {exc}",
             status_code=None,
             is_transient=True,
+            is_connection_error=True,
         ) from exc
 
 

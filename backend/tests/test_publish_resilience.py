@@ -212,7 +212,8 @@ class _FlushDb:
 
 async def _finalize_transient_then_success() -> None:
     db = _FlushDb()
-    attempt = _FakeAttempt(attempt_number=1)
+    # Non-Meta platforms still auto-retry on timeout.
+    attempt = _FakeAttempt(attempt_number=1, platform="telegram")
     await PublishResilienceService.finalize_attempt(
         db,
         attempt,
@@ -241,6 +242,91 @@ async def _finalize_transient_then_success() -> None:
 
 def test_transient_failure_schedules_retry_then_success():
     asyncio.run(_finalize_transient_then_success())
+
+
+async def _finalize_meta_timeout_operator_review() -> None:
+    db = _FlushDb()
+    attempt = _FakeAttempt(attempt_number=1, platform="facebook")
+    await PublishResilienceService.finalize_attempt(
+        db,
+        attempt,
+        {
+            "success": False,
+            "error": "Meta Graph API timeout",
+            "is_timeout": True,
+            "retryable": True,  # adapter may claim retryable; finalize must override
+        },
+    )
+    assert attempt.status == STATUS_OPERATOR_REVIEW
+    assert attempt.retryable is False
+    assert attempt.next_retry_at is None
+    assert attempt.failure_code == "publish_timeout"
+    assert "operator review" in (attempt.error or "").lower()
+
+
+def test_meta_timeout_routes_to_operator_review_not_auto_retry():
+    asyncio.run(_finalize_meta_timeout_operator_review())
+
+
+async def _finalize_meta_connection_operator_review() -> None:
+    db = _FlushDb()
+    attempt = _FakeAttempt(attempt_number=1, platform="instagram")
+    await PublishResilienceService.finalize_attempt(
+        db,
+        attempt,
+        {
+            "success": False,
+            "error": "Meta Graph API connection error",
+            "is_connection_error": True,
+            "retryable": True,
+        },
+    )
+    assert attempt.status == STATUS_OPERATOR_REVIEW
+    assert attempt.retryable is False
+
+
+def test_meta_connection_error_routes_to_operator_review():
+    asyncio.run(_finalize_meta_connection_operator_review())
+
+
+async def _finalize_meta_rate_limit_still_retryable() -> None:
+    db = _FlushDb()
+    attempt = _FakeAttempt(attempt_number=1, platform="facebook")
+    await PublishResilienceService.finalize_attempt(
+        db,
+        attempt,
+        {"success": False, "error": "rate limited", "http_status": 429},
+    )
+    assert attempt.status == STATUS_RETRYING
+    assert attempt.retryable is True
+    assert attempt.failure_code == "rate_limited"
+
+
+def test_meta_known_safe_rate_limit_remains_retryable():
+    asyncio.run(_finalize_meta_rate_limit_still_retryable())
+
+
+async def _finalize_meta_success_persists_post_id() -> None:
+    db = _FlushDb()
+    attempt = _FakeAttempt(attempt_number=1, platform="facebook")
+    await PublishResilienceService.finalize_attempt(
+        db,
+        attempt,
+        {
+            "success": True,
+            "platform_post_id": "123_456",
+            "post_url": "https://facebook.com/123/posts/456",
+            "mock": False,
+        },
+    )
+    assert attempt.status == STATUS_SUCCESS
+    assert attempt.external_post_id == "123_456"
+    assert attempt.external_post_url == "https://facebook.com/123/posts/456"
+    assert attempt.retryable is False
+
+
+def test_meta_provider_success_persists_external_post_id():
+    asyncio.run(_finalize_meta_success_persists_post_id())
 
 
 async def _finalize_terminal() -> None:
@@ -342,6 +428,10 @@ if __name__ == "__main__":
     test_idempotency_key_is_stable_per_destination_version()
     test_prior_live_successes_ignore_mock_and_test_attempts()
     test_transient_failure_schedules_retry_then_success()
+    test_meta_timeout_routes_to_operator_review_not_auto_retry()
+    test_meta_connection_error_routes_to_operator_review()
+    test_meta_known_safe_rate_limit_remains_retryable()
+    test_meta_provider_success_persists_external_post_id()
     test_terminal_failure_does_not_auto_retry()
     test_max_retry_exhaustion()
     test_manual_retry_blocked_for_already_published()

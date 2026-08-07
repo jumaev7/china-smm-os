@@ -41,6 +41,15 @@ OPS_LIST_STATUSES = frozenset({
     STATUS_EXHAUSTED,
 })
 
+# Meta Graph write platforms: ambiguous outcomes must not auto-republish.
+META_PUBLISH_PLATFORMS = frozenset({"facebook", "instagram"})
+# Failure codes where a provider-side post may already exist.
+AMBIGUOUS_META_FAILURE_CODES = frozenset({
+    "publish_timeout",
+    "connection_error",
+    "stale_in_progress",
+})
+
 # Meta Graph transient / rate-limit style codes
 _META_TRANSIENT_CODES = frozenset({1, 2, 4, 17, 32, 613})
 _META_AUTH_CODES = frozenset({190, 102, 463, 467})
@@ -109,6 +118,36 @@ def build_idempotency_key(
     return f"{content_id}:{platform}:{account_part}:{publish_version}"
 
 
+def is_meta_publish_platform(platform: str | None) -> bool:
+    return (platform or "").strip().lower() in META_PUBLISH_PLATFORMS
+
+
+def is_ambiguous_meta_publish_outcome(
+    *,
+    platform: str | None,
+    failure_code: str | None = None,
+    is_timeout: bool = False,
+    is_connection_error: bool = False,
+    error: str | None = None,
+) -> bool:
+    """True when Meta may have accepted the write but local ack is unproven.
+
+    Fail-closed: ambiguous Meta outcomes must not auto-republish.
+    """
+    if not is_meta_publish_platform(platform):
+        return False
+    if is_timeout or is_connection_error:
+        return True
+    if failure_code in AMBIGUOUS_META_FAILURE_CODES:
+        return True
+    text = (error or "").lower()
+    if any(token in text for token in ("timeout", "timed out", "interrupted")):
+        return True
+    if any(token in text for token in ("connection", "connecterror", "network")):
+        return True
+    return False
+
+
 def classify_publish_failure(
     error: str | None,
     *,
@@ -118,7 +157,11 @@ def classify_publish_failure(
     is_timeout: bool = False,
     is_connection_error: bool = False,
 ) -> tuple[str, str, bool]:
-    """Return (failure_code, failure_category, retryable)."""
+    """Return (failure_code, failure_category, retryable).
+
+    Retryable here means the failure class is transient in general. Meta write
+    ambiguity is enforced separately in finalize_attempt (operator_review).
+    """
     text = (error or "").lower()
 
     if is_timeout or "timeout" in text or "timed out" in text or "interrupted" in text:
@@ -540,6 +583,34 @@ class PublishResilienceService:
             category = str(clean["failure_category"])
         if "retryable" in clean and clean["retryable"] is not None:
             retryable = bool(clean["retryable"])
+
+        # Fail-closed for Meta: if a provider-side post may already exist,
+        # never auto-republish — force operator review.
+        ambiguous_meta = is_ambiguous_meta_publish_outcome(
+            platform=attempt.platform,
+            failure_code=code,
+            is_timeout=is_timeout or bool(clean.get("is_timeout")),
+            is_connection_error=is_connection_error or bool(clean.get("is_connection_error")),
+            error=error,
+        )
+        if ambiguous_meta:
+            attempt.failure_code = code if code in AMBIGUOUS_META_FAILURE_CODES else "publish_timeout"
+            attempt.failure_category = "timeout"
+            attempt.retryable = False
+            attempt.status = STATUS_OPERATOR_REVIEW
+            attempt.next_retry_at = None
+            if not attempt.error:
+                attempt.error = sanitize_error_message(
+                    "Ambiguous Meta publish outcome — operator review required "
+                    "before retrying to avoid duplicate posts"
+                )
+            elif "operator review" not in (attempt.error or "").lower():
+                attempt.error = sanitize_error_message(
+                    f"{attempt.error} — operator review required to avoid duplicate posts"
+                )
+            await db.flush()
+            await cls._notify_alert(db, attempt, previous_status=STATUS_IN_PROGRESS)
+            return attempt
 
         attempt.failure_code = code
         attempt.failure_category = category

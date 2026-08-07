@@ -23,11 +23,15 @@ from app.services.automation_domain_events import (
 )
 from app.services.content_service import ContentService
 from app.services.publish_context import PublishContext
+from app.core.client_scope_guard import guard_resource_client_id
 from app.services.publish_resilience import (
+    META_PUBLISH_PLATFORMS,
     PublishResilienceService,
     STATUS_OPERATOR_REVIEW,
     STATUS_RETRYING,
     compute_publish_version,
+    is_ambiguous_meta_publish_outcome,
+    is_meta_publish_platform,
     sanitize_error_message,
     scrub_publish_result,
 )
@@ -125,6 +129,8 @@ class PublishService:
         item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(status_code=404, detail="Content item not found")
+        # Tenant JWT: reject cross-tenant IDs. Workers/admin (no tenant ctx) pass through.
+        guard_resource_client_id(item.client_id)
         return item
 
     @staticmethod
@@ -206,43 +212,87 @@ class PublishService:
 
         recovered = 0
         for item in items:
+            platforms = list(item.platforms or [])
+            has_meta = any(is_meta_publish_platform(p) for p in platforms)
             # Transition publishing → failed only (query already filters status).
             item.status = "failed"
-            _append_publish_note(item, "[Publish] Publishing timeout — auto-recovered to failed")
-            platform = item.platforms[0] if item.platforms else "unknown"
-            attempt = PublishAttempt(
-                content_id=item.id,
-                platform=platform,
-                account_id=None,
-                status="failed",
-                response=None,
-                error=sanitize_error_message("Publishing timeout"),
-                failure_code="publish_timeout",
-                failure_category="timeout",
-                retryable=True,
-                finished_at=datetime.now(timezone.utc),
-            )
-            db.add(attempt)
-            await db.flush()
-            await PublishService._emit_publish_failed(
-                db,
-                item,
-                results=[{
-                    "platform": platform,
-                    "success": False,
-                    "error": "Publishing timeout",
-                    "account_id": None,
-                }],
-                failure_code="publish_timeout",
-                failure_category="timeout",
-                retryable=True,
-                attempt_number=1,
-                source="stale_recovery",
-            )
+            platform = platforms[0] if platforms else "unknown"
+            if has_meta:
+                _append_publish_note(
+                    item,
+                    "[Publish] Publishing timeout — Meta destination requires operator review",
+                )
+                attempt = PublishAttempt(
+                    content_id=item.id,
+                    platform=platform if is_meta_publish_platform(platform) else next(
+                        (p for p in platforms if is_meta_publish_platform(p)),
+                        platform,
+                    ),
+                    account_id=None,
+                    status=STATUS_OPERATOR_REVIEW,
+                    response=None,
+                    error=sanitize_error_message(
+                        "Publishing timed out while in progress — operator review required "
+                        "before retrying to avoid duplicate Meta posts"
+                    ),
+                    failure_code="stale_in_progress",
+                    failure_category="timeout",
+                    retryable=False,
+                    finished_at=datetime.now(timezone.utc),
+                )
+                db.add(attempt)
+                await db.flush()
+                await PublishService._emit_publish_failed(
+                    db,
+                    item,
+                    results=[{
+                        "platform": attempt.platform,
+                        "success": False,
+                        "error": "Publishing timeout — operator review required",
+                        "account_id": None,
+                    }],
+                    failure_code="stale_in_progress",
+                    failure_category="timeout",
+                    retryable=False,
+                    attempt_number=1,
+                    source="stale_recovery",
+                )
+            else:
+                _append_publish_note(item, "[Publish] Publishing timeout — auto-recovered to failed")
+                attempt = PublishAttempt(
+                    content_id=item.id,
+                    platform=platform,
+                    account_id=None,
+                    status="failed",
+                    response=None,
+                    error=sanitize_error_message("Publishing timeout"),
+                    failure_code="publish_timeout",
+                    failure_category="timeout",
+                    retryable=True,
+                    finished_at=datetime.now(timezone.utc),
+                )
+                db.add(attempt)
+                await db.flush()
+                await PublishService._emit_publish_failed(
+                    db,
+                    item,
+                    results=[{
+                        "platform": platform,
+                        "success": False,
+                        "error": "Publishing timeout",
+                        "account_id": None,
+                    }],
+                    failure_code="publish_timeout",
+                    failure_category="timeout",
+                    retryable=True,
+                    attempt_number=1,
+                    source="stale_recovery",
+                )
             recovered += 1
             logger.warning(
-                "[Publish] failed: content=%s error=Publishing timeout (stale recovery)",
+                "[Publish] failed: content=%s error=Publishing timeout (stale recovery) meta=%s",
                 item.id,
+                has_meta,
             )
         await db.commit()
         logger.info(
@@ -356,6 +406,7 @@ class PublishService:
         error = sanitize_error_message(clean.get("error"))
         code = category = None
         retryable = None
+        status = "success" if success else "failed"
         if not success:
             code, category, retryable = classify_publish_failure(error)
             if clean.get("failure_code"):
@@ -364,6 +415,21 @@ class PublishService:
                 category = str(clean["failure_category"])
             if "retryable" in clean and clean["retryable"] is not None:
                 retryable = bool(clean["retryable"])
+            if is_ambiguous_meta_publish_outcome(
+                platform=platform,
+                failure_code=code,
+                is_timeout=bool(clean.get("is_timeout")),
+                is_connection_error=bool(clean.get("is_connection_error")),
+                error=error,
+            ):
+                status = STATUS_OPERATOR_REVIEW
+                retryable = False
+                code = code if code in ("publish_timeout", "connection_error", "stale_in_progress") else "publish_timeout"
+                category = "timeout"
+                error = sanitize_error_message(
+                    f"{error or 'Ambiguous Meta publish outcome'} — operator review "
+                    "required before retrying to avoid duplicate posts"
+                )
 
         post_id = clean.get("platform_post_id")
         post_url = clean.get("post_url")
@@ -371,7 +437,7 @@ class PublishService:
             content_id=content_id,
             platform=platform,
             account_id=account.id if account else None,
-            status="success" if success else "failed",
+            status=status,
             response=json.dumps(clean, ensure_ascii=False, default=str),
             error=error,
             publish_version=publish_version,
@@ -836,6 +902,14 @@ class PublishService:
                         )
                         continue
                     claimed_attempt = claim.attempt
+                    # Durable claim before Meta provider I/O so crash/timeout
+                    # recovery can observe in_progress and fail closed.
+                    if claimed_attempt is not None and is_meta_publish_platform(platform):
+                        await db.commit()
+                        claimed_attempt = await db.get(PublishAttempt, claimed_attempt.id)
+                        item = await PublishService._get_content(db, content_id)
+                        if account is not None:
+                            account = await db.get(PublishingAccount, account.id)
 
                 adapter = ADAPTERS.get(platform)
                 if not adapter:
@@ -1058,11 +1132,37 @@ class PublishService:
             )
             if not test_mode and not finalized:
                 try:
+                    # Fail-closed: any Meta claim still in_progress after interrupt
+                    # may have succeeded provider-side — never auto-republish.
+                    meta_open = list(
+                        (
+                            await db.scalars(
+                                select(PublishAttempt).where(
+                                    PublishAttempt.content_id == content_id,
+                                    PublishAttempt.status == "in_progress",
+                                    PublishAttempt.platform.in_(tuple(META_PUBLISH_PLATFORMS)),
+                                )
+                            )
+                        ).all()
+                    )
+                    for live in meta_open:
+                        await PublishResilienceService.finalize_attempt(
+                            db,
+                            live,
+                            {
+                                "success": False,
+                                "error": "Publishing interrupted — ambiguous Meta outcome",
+                                "is_timeout": True,
+                                "platform": live.platform,
+                            },
+                        )
                     if not results:
                         fail_result = _failure_result(
                             target_platforms[0] if target_platforms else "unknown",
                             "Publishing interrupted",
                         )
+                        if is_meta_publish_platform(fail_result["platform"]):
+                            fail_result["is_timeout"] = True
                         await PublishService._record_attempt(
                             db,
                             content_id=content_id,
