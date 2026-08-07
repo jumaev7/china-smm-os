@@ -97,7 +97,13 @@ async def register_webhook(public_url: str, *, drop_pending: bool) -> dict:
     webhook_url = _webhook_url(public_url)
     payload: dict = {
         "url": webhook_url,
-        "allowed_updates": ["message", "edited_message", "callback_query"],
+        "allowed_updates": [
+            "message",
+            "edited_message",
+            "channel_post",
+            "edited_channel_post",
+            "callback_query",
+        ],
         "drop_pending_updates": drop_pending,
         "max_connections": 40,
     }

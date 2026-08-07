@@ -14,8 +14,11 @@ from app.services.content_enrichment_service import enrich_content
 from app.services.content_quality_service import run_quality_checks
 from app.services.telegram_ingestion_service import (
     TelegramIngestionService,
+    _short_caption,
+    apply_suggestions_to_content,
     extract_forward_info,
 )
+from app.services.telegram_service import _is_group_chat, _strip_post_command
 
 
 def test_classify_product():
@@ -73,6 +76,34 @@ def test_quality_missing_caption():
     assert "missing_caption" in ids
 
 
+def test_suggestions_materialized_without_overwrite():
+    item = SimpleNamespace(
+        platforms=["instagram"],
+        caption_short_ru="Operator text",
+        caption_long_ru=None,
+        caption_short_uz=None,
+        caption_long_uz=None,
+        caption_short_en=None,
+        caption_long_en=None,
+        hashtags=None,
+    )
+    apply_suggestions_to_content(item, {
+        "target_platforms": ["telegram", "instagram", "facebook"],
+        "captions": {
+            "ru": "Generated Russian caption",
+            "uz": "Generated Uzbek caption",
+            "en": "Generated English caption",
+        },
+        "hashtags": "#factory #export",
+    })
+    assert item.platforms == ["telegram", "instagram", "facebook"]
+    assert item.caption_short_ru == "Operator text"
+    assert item.caption_long_ru == "Generated Russian caption"
+    assert item.caption_long_uz == "Generated Uzbek caption"
+    assert item.caption_long_en == "Generated English caption"
+    assert item.hashtags == "#factory #export"
+
+
 def test_forward_info():
     msg = {
         "forward_origin": {
@@ -97,14 +128,38 @@ def test_feedback_message():
     assert "2 files" in text
 
 
+def test_channel_uses_group_ingestion_path():
+    assert _is_group_chat({"type": "channel"}) is True
+    assert _is_group_chat({"type": "supergroup"}) is True
+    assert _is_group_chat({"type": "private"}) is False
+
+
+def test_post_command_is_not_publishable_copy():
+    assert _strip_post_command("/post Новая коллекция") == "Новая коллекция"
+    assert _strip_post_command("/post@China_SMM_bot New collection") == "New collection"
+    assert _strip_post_command("Обычная подпись") == "Обычная подпись"
+
+
+def test_short_caption_uses_word_boundary():
+    text = "Зеркало с УФ-камерой " * 12
+    shortened = _short_caption(text)
+    assert len(shortened) <= 150
+    assert shortened.endswith("…")
+    assert not shortened.endswith("каме…")
+
+
 def main() -> None:
     tests = [
         test_classify_product,
         test_classify_promotion,
         test_enrich_content,
         test_quality_missing_caption,
+        test_suggestions_materialized_without_overwrite,
         test_forward_info,
         test_feedback_message,
+        test_channel_uses_group_ingestion_path,
+        test_post_command_is_not_publishable_copy,
+        test_short_caption_uses_word_boundary,
     ]
     failed = 0
     for fn in tests:

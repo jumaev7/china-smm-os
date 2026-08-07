@@ -6,6 +6,7 @@ import secrets
 
 from app.core.config import settings
 from app.services.meta_graph_client import (
+    MetaGraphError,
     missing_facebook_publish_permissions,
     publish_page_feed_post,
     publish_page_photo_post,
@@ -123,6 +124,22 @@ async def _live_publish(ctx: PublishContext) -> dict:
             "media_url": image_url,
             "caption_preview": caption[:120] if caption else None,
         }
+    except MetaGraphError as exc:
+        logger.error("[Facebook Publish] failed page_id=%s error=%s", page_id, exc)
+        payload = {
+            "platform": "facebook",
+            "success": False,
+            "mock": False,
+            "platform_post_id": None,
+            "error": str(exc),
+            "caption_preview": caption[:120] if caption else None,
+        }
+        payload.update(exc.to_publish_fields())
+        if exc.is_transient is False:
+            payload["retryable"] = False
+        elif exc.is_transient is True:
+            payload["retryable"] = True
+        return payload
     except Exception as exc:
         logger.error("[Facebook Publish] failed page_id=%s error=%s", page_id, exc)
         return {

@@ -5,6 +5,7 @@ Uses AI when configured; otherwise rule-based placeholders.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.models.client import Client
 
 SUPPORTED_LANGUAGES = ("ru", "uz", "en", "zh")
 DEFAULT_PLATFORMS = ("instagram", "telegram", "facebook")
+logger = logging.getLogger(__name__)
 
 
 def _first_sentence(text: str, max_len: int = 120) -> str:
@@ -113,9 +115,99 @@ async def enrich_with_ai(
 ) -> dict[str, Any] | None:
     """AI enrichment hook — returns None when not configured."""
     from app.core.config import settings
-    if not settings.OPENAI_API_KEY or settings.DEMO_MODE:
+    if settings.DEMO_MODE or not settings.AI_PLATFORM_ENABLED or not client.tenant_id:
         return None
-    return None
+    from app.services.ai_platform.generation_service import GenerationService
+    from app.services.ai_platform.schemas import TASK_AI_CONTENT_ADAPTATION
+
+    source_parts: list[str] = []
+    if (caption or "").strip():
+        source_parts.append(f"Operator caption:\n{caption.strip()}")
+    if (internal_notes or "").strip():
+        source_parts.append(f"Extracted media context (OCR/transcript):\n{internal_notes.strip()}")
+    source = "\n\n".join(source_parts)
+    if not source:
+        return None
+    langs = [lang for lang in target_languages if lang in SUPPORTED_LANGUAGES]
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["title", "captions", "hashtags", "cta", "target_platforms"],
+        "properties": {
+            "title": {"type": "string"},
+            "captions": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {lang: {"type": "string"} for lang in langs},
+            },
+            "hashtags": {"type": "string"},
+            "cta": {"type": "string"},
+            "target_platforms": {
+                "type": "array",
+                "items": {"type": "string", "enum": list(DEFAULT_PLATFORMS)},
+            },
+        },
+    }
+    brand = {
+        "company_name": client.company_name,
+        "category": getattr(client, "business_category", None),
+        "tone": getattr(client, "tone_of_voice", None),
+        "cta_telegram": client.cta_telegram,
+        "cta_phone": client.cta_phone,
+        "cta_website": client.cta_website,
+        "hashtag_preferences": client.hashtag_preferences,
+    }
+    try:
+        response, _, _ = await GenerationService.generate_structured(
+            tenant_id=str(client.tenant_id),
+            task_type=TASK_AI_CONTENT_ADAPTATION,
+            model_alias="content_standard",
+            system_instructions=(
+                "Create publish-ready social captions from the supplied source. Preserve every factual claim; "
+                "never invent prices, features, contacts, guarantees, or events. Return JSON only. "
+                "Write one natural caption for each requested language and concise relevant hashtags. "
+                "Your JSON must match this schema exactly: "
+                + json.dumps(schema, ensure_ascii=False)
+            ),
+            input_messages=[{
+                "role": "user",
+                "content": json.dumps({
+                    "source": source,
+                    "classification": classification,
+                    "languages": langs,
+                    "brand": brand,
+                    "platforms": list(DEFAULT_PLATFORMS),
+                }, ensure_ascii=False),
+            }],
+            output_schema=schema,
+            temperature=0.25,
+            max_output_tokens=1400,
+            metadata={"pipeline": "telegram_ingestion_enrichment"},
+            parse_output=False,
+        )
+        data = response.structured_output or {}
+        captions = data.get("captions") if isinstance(data.get("captions"), dict) else {}
+        clean_captions = {
+            lang: str(captions.get(lang) or "").strip()[:4000]
+            for lang in langs
+            if str(captions.get(lang) or "").strip()
+        }
+        platforms = [p for p in data.get("target_platforms", []) if p in DEFAULT_PLATFORMS]
+        if not clean_captions:
+            return None
+        return {
+            "title": str(data.get("title") or "").strip()[:200],
+            "short_description": _first_sentence(next(iter(clean_captions.values())), 200),
+            "captions": clean_captions,
+            "hashtags": str(data.get("hashtags") or "").strip()[:500],
+            "cta": str(data.get("cta") or "").strip()[:500],
+            "target_platforms": platforms or list(DEFAULT_PLATFORMS),
+            "price_detected": _extract_price(source),
+            "method": "governed_ai",
+        }
+    except Exception as exc:
+        logger.warning("telegram_ai_enrichment_fallback error=%s", type(exc).__name__)
+        return None
 
 
 def suggestions_to_json(data: dict[str, Any]) -> str:

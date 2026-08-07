@@ -1,6 +1,7 @@
 import os
 import uuid
 import aiofiles
+import mimetypes
 from pathlib import Path
 from app.core.config import settings
 
@@ -63,7 +64,14 @@ class StorageService:
             aws_access_key_id=settings.S3_ACCESS_KEY,
             aws_secret_access_key=settings.S3_SECRET_KEY,
         )
-        s3.put_object(Bucket=settings.S3_BUCKET, Key=key, Body=data)
+        content_type = mimetypes.guess_type(key)[0] or "application/octet-stream"
+        s3.put_object(
+            Bucket=settings.S3_BUCKET,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
+            CacheControl="public, max-age=31536000, immutable",
+        )
         return key
 
     async def read_file_bytes(self, path: str) -> bytes:
@@ -90,7 +98,11 @@ class StorageService:
         if not path:
             return ""
         if settings.USE_S3:
-            base = settings.S3_ENDPOINT_URL or f"https://{settings.S3_BUCKET}.s3.amazonaws.com"
+            base = (
+                settings.S3_PUBLIC_BASE_URL
+                or settings.S3_ENDPOINT_URL
+                or f"https://{settings.S3_BUCKET}.s3.amazonaws.com"
+            ).rstrip("/")
             return f"{base}/{path}"
         # Local dev: served via FastAPI /media static mount
         # MEDIA_BASE_URL allows overriding (e.g. in Docker: http://localhost:8000)

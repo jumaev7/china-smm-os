@@ -50,6 +50,11 @@ class Client(Base):
     operator_auto_draft_enabled: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False,
     )
+    # Opt-in: once both admin and client approved, queue the content for the
+    # existing safety-checked scheduled publisher. Never bypasses approval.
+    auto_publish_after_client_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False,
+    )
     # Active draft/ready content task for Telegram group workflow
     telegram_active_content_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("content_items.id", ondelete="SET NULL"), nullable=True,

@@ -27,6 +27,7 @@ _CLIENT_APPROVED_NOTE = "[Client review]: Client approved via review link."
 _CLIENT_APPROVED_TG_NOTE = "[Client review]: Client approved via Telegram."
 _CLIENT_FEEDBACK_PREFIX = "[Client review feedback]:"
 _CLIENT_REGEN_NOTE = "[Client review]: Client requested regeneration."
+_AUTO_PUBLISH_QUEUED_NOTE = "[Automation]: Queued for publish after client approval."
 
 
 def _review_url(token: str) -> str:
@@ -61,6 +62,21 @@ def is_client_approved(item: ContentItem) -> bool:
 
 def client_review_required(item: ContentItem) -> bool:
     return item.client_review_status in (CLIENT_REVIEW_PENDING, CLIENT_REVIEW_CHANGES)
+
+
+def should_auto_schedule_after_client_approval(item: ContentItem) -> bool:
+    """Return true only for the governed, fully-approved opt-in path."""
+    client = item.client
+    return bool(
+        client
+        and getattr(client, "auto_publish_after_client_approval", False)
+        and item.status == "approved"
+        and item.approved_at is not None
+        and item.client_review_status == CLIENT_REVIEW_APPROVED
+        and item.client_approved_at is not None
+        and item.published_at is None
+        and item.platforms
+    )
 
 
 class ContentReviewService:
@@ -380,6 +396,11 @@ class ContentReviewService:
         item.client_review_status = CLIENT_REVIEW_APPROVED
         note = _CLIENT_APPROVED_TG_NOTE if via == "telegram" else _CLIENT_APPROVED_NOTE
         _append_internal_note(item, note)
+        auto_scheduled = should_auto_schedule_after_client_approval(item)
+        if auto_scheduled:
+            item.status = "scheduled"
+            item.scheduled_for = now
+            _append_internal_note(item, _AUTO_PUBLISH_QUEUED_NOTE)
         await db.commit()
 
         await ContentReviewService._notify_admin_action(item, "✅ Client approved the content.")
@@ -390,6 +411,7 @@ class ContentReviewService:
             "message": "Thank you — your approval has been recorded.",
             "client_approved_at": now,
             "client_review_status": item.client_review_status,
+            "auto_publish_scheduled": auto_scheduled,
         }
 
     @staticmethod

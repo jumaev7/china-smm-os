@@ -138,7 +138,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def create_tables():
     """Create all tables (dev only — use Alembic in production)."""
     async with engine.begin() as conn:
-        from app.models import client, media, content, calendar, telegram_buffer, publishing_account, publish_attempt, content_plan, client_knowledge_base, operator_task, content_factory, crm_lead, crm_proposal, crm_document, crm_deal, crm_pipeline_event, deal_room, attribution_source, revenue_event, partner, partner_network, sales_agent_recommendation, sales_assistant_recommendation, sales_workflow_recommendation, product, export_agent, campaign, media_library, communication, attribution_link, landing_page, buyer_recommendation, buyer_discovery, buyer_network, buyer_crm, marketplace, ai_command, whatsapp, wechat_sync, wechat_provider, whatsapp_sync, whatsapp_provider, factory_partner_application, customer_portal_account, factory_platform_profile, factory_profile, tenant, admin_user, sales_crm  # noqa
+        from app.models import client, media, content, calendar, telegram_buffer, telegram_ingestion, publishing_account, publish_attempt, content_plan, client_knowledge_base, operator_task, content_factory, crm_lead, crm_proposal, crm_document, crm_deal, crm_pipeline_event, deal_room, attribution_source, revenue_event, partner, partner_network, sales_agent_recommendation, sales_assistant_recommendation, sales_workflow_recommendation, product, export_agent, campaign, media_library, communication, attribution_link, landing_page, buyer_recommendation, buyer_discovery, buyer_network, buyer_crm, marketplace, ai_command, whatsapp, wechat_sync, wechat_provider, whatsapp_sync, whatsapp_provider, factory_partner_application, customer_portal_account, factory_platform_profile, factory_profile, tenant, admin_user, sales_crm  # noqa
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_client_brand_columns)
         await conn.run_sync(_ensure_telegram_buffer_columns)
@@ -2967,6 +2967,28 @@ def _ensure_listening_tables(connection) -> None:
     ):
         connection.execute(text(sql))
 
+    if "tenant_listening_webhook_events" not in tables:
+        connection.execute(text(
+            "CREATE TABLE IF NOT EXISTS tenant_listening_webhook_events ("
+            "id UUID PRIMARY KEY, "
+            "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE, "
+            "project_id UUID NOT NULL REFERENCES tenant_listening_projects(id) ON DELETE CASCADE, "
+            "source_id UUID NOT NULL REFERENCES tenant_listening_sources(id) ON DELETE CASCADE, "
+            "event_key VARCHAR(64) NOT NULL, provider_object_ref VARCHAR(255) NOT NULL, "
+            "provider_field VARCHAR(80), status VARCHAR(40) NOT NULL DEFAULT 'pending', "
+            "attempt_count INTEGER NOT NULL DEFAULT 0, next_attempt_at TIMESTAMPTZ, "
+            "last_error_code VARCHAR(80), payload_summary_json JSONB, "
+            "received_at TIMESTAMPTZ NOT NULL DEFAULT now(), processed_at TIMESTAMPTZ, "
+            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+            "CONSTRAINT uq_listening_webhook_source_event UNIQUE (source_id, event_key)"
+            ")"
+        ))
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_listening_webhook_events_status_due ON tenant_listening_webhook_events (status, next_attempt_at)",
+        "CREATE INDEX IF NOT EXISTS ix_listening_webhook_events_tenant_created ON tenant_listening_webhook_events (tenant_id, created_at)",
+    ):
+        connection.execute(text(sql))
+
 
 async def ensure_listening_schema() -> None:
     """Apply idempotent create-only DDL for Social Listening tables.
@@ -3244,6 +3266,13 @@ def _ensure_telegram_ingestion_columns(connection) -> None:
     from sqlalchemy import inspect, text
 
     inspector = inspect(connection)
+    if "telegram_ingestion_settings" in inspector.get_table_names():
+        settings_existing = {c["name"] for c in inspector.get_columns("telegram_ingestion_settings")}
+        if "auto_publishing_review" not in settings_existing:
+            connection.execute(text(
+                "ALTER TABLE telegram_ingestion_settings "
+                "ADD COLUMN IF NOT EXISTS auto_publishing_review BOOLEAN NOT NULL DEFAULT TRUE"
+            ))
     if "content_items" not in inspector.get_table_names():
         return
     existing = {c["name"] for c in inspector.get_columns("content_items")}
@@ -3633,6 +3662,7 @@ def _ensure_client_brand_columns(connection) -> None:
         ("telegram_publish_title", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS telegram_publish_title VARCHAR(255)"),
         ("telegram_publish_type", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS telegram_publish_type VARCHAR(20)"),
         ("operator_auto_draft_enabled", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS operator_auto_draft_enabled BOOLEAN DEFAULT FALSE"),
+        ("auto_publish_after_client_approval", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS auto_publish_after_client_approval BOOLEAN DEFAULT FALSE"),
         ("plan_name", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS plan_name VARCHAR(100)"),
         ("monthly_fee", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS monthly_fee NUMERIC(10,2)"),
         ("monthly_post_limit", "ALTER TABLE clients ADD COLUMN IF NOT EXISTS monthly_post_limit INTEGER"),

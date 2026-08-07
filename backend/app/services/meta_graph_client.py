@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import urlencode
@@ -14,9 +15,78 @@ logger = logging.getLogger(__name__)
 
 GRAPH_BASE = "https://graph.facebook.com"
 
+
+class MetaGraphError(RuntimeError):
+    """Structured Meta Graph failure with retry metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        error_code: int | None = None,
+        error_subcode: int | None = None,
+        retry_after: int | None = None,
+        is_transient: bool | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.error_code = error_code
+        self.error_subcode = error_subcode
+        self.retry_after = retry_after
+        self.is_transient = is_transient
+
+    def to_publish_fields(self) -> dict[str, Any]:
+        return {
+            "http_status": self.status_code,
+            "meta_code": self.error_code,
+            "meta_subcode": self.error_subcode,
+            "retry_after_seconds": self.retry_after,
+            "is_timeout": False,
+            "is_connection_error": False,
+        }
+
+
+def _parse_retry_after(response: httpx.Response) -> int | None:
+    raw = response.headers.get("Retry-After") or response.headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return max(0, int(str(raw).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def _raise_meta_error(response: httpx.Response, payload: dict[str, Any]) -> None:
+    error = payload.get("error") if isinstance(payload, dict) else {}
+    if not isinstance(error, dict):
+        error = {}
+    message = error.get("message") or (response.text[:240] if response.text else "Meta Graph API error")
+    # Never include request URLs (may contain access_token query params).
+    code = error.get("code")
+    subcode = error.get("error_subcode")
+    try:
+        code_i = int(code) if code is not None else None
+    except (TypeError, ValueError):
+        code_i = None
+    try:
+        subcode_i = int(subcode) if subcode is not None else None
+    except (TypeError, ValueError):
+        subcode_i = None
+    retry_after = _parse_retry_after(response)
+    transient = response.status_code == 429 or (code_i in {1, 2, 4, 17, 32, 613})
+    raise MetaGraphError(
+        f"Meta Graph API error: {message}",
+        status_code=response.status_code,
+        error_code=code_i,
+        error_subcode=subcode_i,
+        retry_after=retry_after,
+        is_transient=transient,
+    )
+
+
 REQUIRED_CONNECTION_PERMISSIONS = frozenset({
     "pages_show_list",
-    "pages_read_engagement",
     "instagram_basic",
     "business_management",
 })
@@ -35,6 +105,10 @@ FUTURE_PUBLISH_PERMISSIONS = frozenset({
 
 REQUIRED_FACEBOOK_PUBLISH_PERMISSIONS = frozenset({
     "pages_manage_posts",
+})
+
+REQUIRED_INSTAGRAM_PUBLISH_PERMISSIONS = frozenset({
+    "instagram_content_publish",
 })
 
 
@@ -70,25 +144,57 @@ def build_oauth_authorize_url(*, state: str) -> str:
 
 
 async def _get_json(path: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(_graph_url(path), params=params or {})
-        payload = response.json()
-        if response.status_code >= 400 or "error" in payload:
-            error = payload.get("error") or {}
-            message = error.get("message") or response.text
-            raise RuntimeError(f"Meta Graph API error: {message}")
-        return payload
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(_graph_url(path), params=params or {})
+            try:
+                payload = response.json()
+            except Exception:
+                payload = {}
+            if response.status_code >= 400 or (isinstance(payload, dict) and "error" in payload):
+                _raise_meta_error(response, payload if isinstance(payload, dict) else {})
+            return payload if isinstance(payload, dict) else {}
+    except MetaGraphError:
+        raise
+    except httpx.TimeoutException as exc:
+        raise MetaGraphError(
+            f"Meta Graph API timeout: {exc}",
+            status_code=None,
+            is_transient=True,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise MetaGraphError(
+            f"Meta Graph API connection error: {exc}",
+            status_code=None,
+            is_transient=True,
+        ) from exc
 
 
 async def _post_json(path: str, *, params: dict[str, Any]) -> dict[str, Any]:
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(_graph_url(path), data=params)
-        payload = response.json()
-        if response.status_code >= 400 or "error" in payload:
-            error = payload.get("error") or {}
-            message = error.get("message") or response.text
-            raise RuntimeError(f"Meta Graph API error: {message}")
-        return payload
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(_graph_url(path), data=params)
+            try:
+                payload = response.json()
+            except Exception:
+                payload = {}
+            if response.status_code >= 400 or (isinstance(payload, dict) and "error" in payload):
+                _raise_meta_error(response, payload if isinstance(payload, dict) else {})
+            return payload if isinstance(payload, dict) else {}
+    except MetaGraphError:
+        raise
+    except httpx.TimeoutException as exc:
+        raise MetaGraphError(
+            f"Meta Graph API timeout: {exc}",
+            status_code=None,
+            is_transient=True,
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise MetaGraphError(
+            f"Meta Graph API connection error: {exc}",
+            status_code=None,
+            is_transient=True,
+        ) from exc
 
 
 def facebook_post_url(platform_post_id: str) -> str | None:
@@ -228,6 +334,74 @@ def missing_connection_permissions(granted: list[str]) -> list[str]:
 def missing_facebook_publish_permissions(granted: list[str]) -> list[str]:
     granted_set = set(granted)
     return sorted(REQUIRED_FACEBOOK_PUBLISH_PERMISSIONS - granted_set)
+
+
+def missing_instagram_publish_permissions(granted: list[str]) -> list[str]:
+    granted_set = set(granted)
+    return sorted(REQUIRED_INSTAGRAM_PUBLISH_PERMISSIONS - granted_set)
+
+
+async def publish_instagram_image(
+    *,
+    instagram_business_account_id: str,
+    page_access_token: str,
+    image_url: str,
+    caption: str = "",
+) -> dict[str, Any]:
+    """Create, await, and publish a single-image Instagram Business container."""
+    create_params: dict[str, Any] = {
+        "access_token": page_access_token,
+        "image_url": image_url,
+    }
+    if caption:
+        create_params["caption"] = caption
+    created = await _post_json(
+        f"{instagram_business_account_id}/media",
+        params=create_params,
+    )
+    creation_id = str(created.get("id") or "")
+    if not creation_id:
+        raise RuntimeError("Meta Graph API returned no Instagram creation id")
+
+    status_payload: dict[str, Any] = {}
+    for _ in range(12):
+        status_payload = await _get_json(
+            creation_id,
+            params={
+                "access_token": page_access_token,
+                "fields": "status_code,status",
+            },
+        )
+        status_code = str(status_payload.get("status_code") or "").upper()
+        if status_code == "FINISHED":
+            break
+        if status_code in {"ERROR", "EXPIRED"}:
+            detail = status_payload.get("status") or status_code
+            raise RuntimeError(f"Instagram media container failed: {detail}")
+        await asyncio.sleep(2)
+    else:
+        raise RuntimeError("Instagram media container was not ready before timeout")
+
+    published = await _post_json(
+        f"{instagram_business_account_id}/media_publish",
+        params={
+            "access_token": page_access_token,
+            "creation_id": creation_id,
+        },
+    )
+    media_id = str(published.get("id") or "")
+    if not media_id:
+        raise RuntimeError("Meta Graph API returned no Instagram media id")
+    media = await _get_json(
+        media_id,
+        params={"access_token": page_access_token, "fields": "permalink"},
+    )
+    return {
+        "platform_post_id": media_id,
+        "post_url": media.get("permalink"),
+        "creation_id": creation_id,
+        "raw": published,
+    }
 
 
 def pick_page(pages: list[dict[str, Any]]) -> dict[str, Any] | None:

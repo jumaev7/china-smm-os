@@ -28,16 +28,20 @@ services:
       DB_POOL_TIMEOUT: "60"
       DB_PROBE_CONCURRENCY: "2"
       HEALTH_SNAPSHOT_ENABLED: "false"
-      SCHEDULED_PUBLISH_ENABLED: "false"
+      # Publishes only due items that already passed admin + client approval
+      # and all existing publish-safety checks.
+      SCHEDULED_PUBLISH_ENABLED: "true"
       AUTOMATION_SCHEDULER_ENABLED: "false"
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000,https://app.chinasmmos.com
       # MEDIA_BASE_URL must be reachable from the user's browser (not from inside Docker).
       # Port 8000 is published to the host, so localhost:8000 works.
-      MEDIA_BASE_URL: http://localhost:8000
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:8000}
+      ENABLE_FACEBOOK_LIVE_SMOKE: ${ENABLE_FACEBOOK_LIVE_SMOKE:-false}
+      ENABLE_INSTAGRAM_LIVE_SMOKE: ${ENABLE_INSTAGRAM_LIVE_SMOKE:-false}
       # Telegram bot — set these or put them in backend/.env
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID:-}
-      PUBLIC_APP_URL: http://localhost:3000
+      PUBLIC_APP_URL: https://app.chinasmmos.com
     env_file:
       - ./backend/.env
     depends_on:
@@ -46,7 +50,7 @@ services:
       - ./backend:/app
       # Named volume — uploaded media survives container restarts and rebuilds
       - media_storage:/app/media_storage
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   automation-worker:
     build: ./backend
@@ -70,6 +74,59 @@ services:
       - ./backend:/app
     command: python scripts/run_automation_worker.py
 
+  telegram-webhook-worker:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/china_smm_os
+      APP_ENV: development
+      TELEGRAM_WEBHOOK_WORKER_POLL_SECONDS: "0.5"
+      TELEGRAM_WEBHOOK_WORKER_BATCH_SIZE: "5"
+      TELEGRAM_WEBHOOK_WORKER_LEASE_SECONDS: "180"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      SCHEDULED_PUBLISH_ENABLED: "false"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+      - media_storage:/app/media_storage
+    command: python scripts/run_telegram_webhook_worker.py
+
+  listening-worker:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:password@postgres:5432/china_smm_os
+      APP_ENV: development
+      LISTENING_WORKER_ENABLED: "true"
+      LISTENING_WORKER_POLL_SECONDS: "30"
+      LISTENING_WORKER_BATCH_SIZE: "20"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      SCHEDULED_PUBLISH_ENABLED: "false"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - postgres
+    volumes:
+      - ./backend:/app
+    command: python scripts/run_listening_worker.py
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - backend
+      - frontend
+    command: tunnel --no-autoupdate run
+
   frontend:
     build:
       context: ./frontend
@@ -78,7 +135,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000/api/v1
+      NEXT_PUBLIC_API_URL: https://api.chinasmmos.com/api/v1
     depends_on:
       - backend
     volumes:

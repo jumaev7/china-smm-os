@@ -87,11 +87,40 @@ class PublishAttemptResponse(BaseModel):
     platform_post_id: Optional[str] = None
     post_url: Optional[str] = None
     created_at: datetime
+    idempotency_key: Optional[str] = None
+    publish_version: Optional[str] = None
+    attempt_number: Optional[int] = None
+    failure_code: Optional[str] = None
+    failure_category: Optional[str] = None
+    retryable: Optional[bool] = None
+    next_retry_at: Optional[datetime] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    external_post_id: Optional[str] = None
+    external_post_url: Optional[str] = None
+    manual_retry_allowed: Optional[bool] = None
+    manual_retry_blocked_reason: Optional[str] = None
+    company_name: Optional[str] = None
+    content_status: Optional[str] = None
+    tenant_id: Optional[UUID] = None
 
 
 class PublishAttemptListResponse(BaseModel):
     items: List[PublishAttemptResponse]
     total: int
+    current_time: Optional[datetime] = None
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
+class PublishAttemptActionResponse(BaseModel):
+    ok: bool
+    message: str
+    attempt_id: UUID
+    content_id: UUID
+    status: Optional[str] = None
+    retry_blocked_reason: Optional[str] = None
+    existing_post_id: Optional[str] = None
+    publish_result: Optional[dict] = None
 
 
 class ScheduledPublishDebugItem(BaseModel):
@@ -154,6 +183,7 @@ class PublishingQueueItem(BaseModel):
     block_reason_label: Optional[str] = None
     queue_category: str
     is_due: bool
+    latest_attempt: Optional[dict] = None
 
 
 class PublishingQueueResponse(BaseModel):

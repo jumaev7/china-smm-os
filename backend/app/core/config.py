@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     MEDIA_BASE_URL: str = "http://localhost:8000"
     S3_BUCKET: str = "china-smm-os"
     S3_ENDPOINT_URL: str = ""
+    # Public CDN/custom-domain origin used in URLs returned to social platforms.
+    # For Cloudflare R2 this is different from the S3 API endpoint.
+    S3_PUBLIC_BASE_URL: str = ""
     S3_ACCESS_KEY: str = ""
     S3_SECRET_KEY: str = ""
 
@@ -72,6 +75,8 @@ class Settings(BaseSettings):
     # (get it from @userinfobot) to restrict who can send content.
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_ADMIN_ID: str = ""  # comma-separated user IDs, empty = accept all
+    # Public @username without @ — optional; otherwise enrollment resolves via getMe
+    TELEGRAM_BOT_USERNAME: str = ""
     # When True, Telegram groups without explicit workflow_mode use admin_controlled_buffer
     TELEGRAM_GROUP_DEFAULT_BUFFER: bool = True
     TELEGRAM_WEBHOOK_SECRET: str = ""
@@ -81,6 +86,34 @@ class Settings(BaseSettings):
 
     # Scheduled auto-publish worker
     SCHEDULED_PUBLISH_ENABLED: bool = True
+    # Publish resilience (Facebook/Instagram/Telegram retries)
+    PUBLISH_MAX_ATTEMPTS: int = 5
+    PUBLISH_RETRY_BASE_SECONDS: int = 60
+    PUBLISH_RETRY_MAX_SECONDS: int = 3600
+    PUBLISH_STALE_ATTEMPT_MINUTES: int = 5
+    PUBLISH_ATTEMPT_LEASE_SECONDS: int = 300
+    # Publish operator alerts (in-app always on; outbound channels opt-in)
+    PUBLISH_ALERT_REPEATED_FAILURE_THRESHOLD: int = 3
+    PUBLISH_ALERT_REPEATED_FAILURE_WINDOW_MINUTES: int = 60
+    PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
+    PUBLISH_ALERT_EMAIL_ENABLED: bool = False
+    PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300
+    # Telegram alert outbox worker (disabled by default; master kill switch still required)
+    PUBLISH_ALERT_TELEGRAM_WORKER_ENABLED: bool = False
+    PUBLISH_ALERT_TELEGRAM_WORKER_POLL_SECONDS: float = 5.0
+    PUBLISH_ALERT_TELEGRAM_WORKER_BATCH_SIZE: int = 10
+    PUBLISH_ALERT_TELEGRAM_MAX_ATTEMPTS: int = 8
+    PUBLISH_ALERT_TELEGRAM_RETRY_BASE_SECONDS: int = 30
+    PUBLISH_ALERT_TELEGRAM_RETRY_MAX_SECONDS: int = 3600
+    PUBLISH_ALERT_TELEGRAM_LEASE_SECONDS: int = 120
+    PUBLISH_ALERT_TELEGRAM_RECOVERY_ENABLED: bool = False
+    # Operator-recipient self-enrollment (disabled until separately enabled)
+    PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED: bool = False
+    PUBLISH_ALERT_TELEGRAM_ENROLLMENT_TOKEN_TTL_SECONDS: int = 600  # 10m; clamped 60–1800
+    PUBLISH_ALERT_TELEGRAM_ENROLLMENT_POLL_SECONDS: float = 3.0
+    PUBLISH_ALERT_TELEGRAM_MAX_CONFIRMED_RECIPIENTS: int = 1
+    # Absolute app origin used in outbound alert deep-links
+    PUBLISH_ALERT_APP_BASE_URL: str = "https://app.chinasmmos.com"
     # Durable automation scheduler worker (separate process)
     AUTOMATION_SCHEDULER_ENABLED: bool = True
     AUTOMATION_SCHEDULER_POLL_SECONDS: float = 2.0
@@ -103,15 +136,22 @@ class Settings(BaseSettings):
     META_APP_SECRET: str = ""
     META_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/publishing/meta/oauth/callback"
     META_GRAPH_API_VERSION: str = "v21.0"
+    LISTENING_META_WEBHOOK_VERIFY_TOKEN: str = ""
+    LISTENING_WEBHOOK_MAX_ATTEMPTS: int = 5
+    LISTENING_WEBHOOK_RETRY_BASE_SECONDS: int = 60
+    LISTENING_WORKER_ENABLED: bool = False
+    LISTENING_WORKER_POLL_SECONDS: float = 30.0
+    LISTENING_WORKER_BATCH_SIZE: int = 20
     META_OAUTH_SCOPES: str = (
-        "pages_show_list,pages_read_engagement,pages_read_user_content,"
-        "instagram_basic,business_management,"
+        "pages_show_list,instagram_basic,business_management,"
         "pages_manage_posts,instagram_content_publish"
     )
     # pages_read_user_content is required for Page UGC comments and /tagged mentions
     # (Social Listening Phase 3). App Review required for Live mode beyond app roles.
     # Opt-in gate for real Facebook Page posts (verification smoke + manual live tests).
     ENABLE_FACEBOOK_LIVE_SMOKE: bool = False
+    # Opt-in gate for real Instagram Business posts (verification smoke + manual live tests).
+    ENABLE_INSTAGRAM_LIVE_SMOKE: bool = False
 
     @property
     def admin_secret_key(self) -> str:

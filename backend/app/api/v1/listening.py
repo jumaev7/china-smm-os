@@ -673,6 +673,65 @@ async def api_list_mention_reviews(
 # ---------------------------------------------------------------------------
 
 
+def _webhook_event_dict(event) -> dict:
+    return {
+        "id": event.id,
+        "project_id": event.project_id,
+        "source_id": event.source_id,
+        "provider_object_ref": event.provider_object_ref,
+        "provider_field": event.provider_field,
+        "status": event.status,
+        "attempt_count": event.attempt_count,
+        "next_attempt_at": event.next_attempt_at,
+        "last_error_code": event.last_error_code,
+        "payload_summary": event.payload_summary_json,
+        "received_at": event.received_at,
+        "processed_at": event.processed_at,
+    }
+
+
+@router.get("/ops/webhook-events")
+async def api_list_webhook_events(
+    limit: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(get_current_tenant_user),
+):
+    from app.services.listening.webhook_service import list_events
+
+    rows = await list_events(db, tenant_id=user.tenant_id, limit=limit)
+    return {"items": [_webhook_event_dict(row) for row in rows]}
+
+
+@router.post("/ops/webhook-events/{event_id}/replay")
+async def api_replay_webhook_event(
+    event_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(require_role("owner", "manager")),
+):
+    from fastapi import HTTPException
+    from app.services.listening.webhook_service import replay_event
+
+    event = await replay_event(db, tenant_id=user.tenant_id, event_id=event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Webhook event not found")
+    await db.commit()
+    return _webhook_event_dict(event)
+
+
+@router.post("/ops/webhook-events/process")
+async def api_process_webhook_events(
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser = Depends(require_role("owner", "manager")),
+):
+    from app.services.listening.webhook_service import process_due_events
+
+    # The processor is global, so a tenant endpoint must not process another
+    # tenant's inbox. A dedicated worker may omit this filter in the future.
+    results = await process_due_events(db, limit=limit, tenant_id=user.tenant_id)
+    return {"items": results}
+
+
 @router.get("/ingestion-runs", response_model=IngestionRunListResponse)
 async def api_list_runs(
     project_id: UUID | None = Query(None),

@@ -148,6 +148,39 @@ class PublishingQueueService:
             if scheduled_for and scheduled_for.tzinfo is None:
                 scheduled_for = scheduled_for.replace(tzinfo=timezone.utc)
 
+            latest_attempt = None
+            try:
+                from app.models.publish_attempt import PublishAttempt
+                from sqlalchemy import select as sa_select
+
+                attempt_row = await db.execute(
+                    sa_select(PublishAttempt)
+                    .where(PublishAttempt.content_id == item.id)
+                    .order_by(PublishAttempt.created_at.desc())
+                    .limit(1)
+                )
+                latest = attempt_row.scalar_one_or_none()
+                if latest is not None:
+                    latest_attempt = {
+                        "id": latest.id,
+                        "status": latest.status,
+                        "attempt_number": latest.attempt_number,
+                        "failure_code": latest.failure_code,
+                        "retryable": latest.retryable,
+                        "next_retry_at": latest.next_retry_at,
+                        "error": latest.error,
+                        "manual_retry_allowed": True,
+                    }
+                    if latest.status in ("retrying", "operator_review", "exhausted", "in_progress"):
+                        category = {
+                            "retrying": "failed",
+                            "operator_review": "failed",
+                            "exhausted": "failed",
+                            "in_progress": "stuck_publishing",
+                        }.get(latest.status, category)
+            except Exception:
+                latest_attempt = None
+
             rows.append({
                 "id": item.id,
                 "client_id": item.client_id,
@@ -165,6 +198,7 @@ class PublishingQueueService:
                 "block_reason_label": _block_reason_label(skip_reason),
                 "queue_category": category,
                 "is_due": is_due,
+                "latest_attempt": latest_attempt,
             })
 
         return {

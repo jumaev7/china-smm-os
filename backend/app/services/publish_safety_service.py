@@ -244,6 +244,7 @@ class PublishSafetyService:
                 account_status=account.status if account else None,
                 telegram_publish_chat_id=client_tg_dest,
                 facebook_page_id=account.facebook_page_id if account else None,
+                instagram_business_account_id=account.instagram_business_account_id if account else None,
                 permissions=permissions,
                 token_expired=expired_flag,
                 has_page_token=bool(account and account.access_token_encrypted),
@@ -254,6 +255,7 @@ class PublishSafetyService:
                 dest_status=dest_status,
                 account_status=account.status if account else None,
                 facebook_page_id=account.facebook_page_id if account else None,
+                instagram_business_account_id=account.instagram_business_account_id if account else None,
                 permissions=permissions,
                 token_expired=expired_flag,
                 has_page_token=bool(account and account.access_token_encrypted),
@@ -274,9 +276,7 @@ class PublishSafetyService:
                         "Telegram account is mock — test publish returns fake post id",
                     )
                 elif platform == "instagram":
-                    entry["blockers"].append(
-                        "Instagram adapter is mock-only — no real post is created",
-                    )
+                    entry["blockers"].append("Instagram account is configured for mock publishing")
                 else:
                     entry["blockers"].append(
                         "Platform adapter is mock-only — no real post is created",
@@ -287,6 +287,13 @@ class PublishSafetyService:
                 if not settings.ENABLE_FACEBOOK_LIVE_SMOKE:
                     entry["blockers"].append(
                         "Facebook is live-ready but ENABLE_FACEBOOK_LIVE_SMOKE is not set — posts are blocked",
+                    )
+            elif impl == "live" and platform == "instagram":
+                from app.core.config import settings
+
+                if not settings.ENABLE_INSTAGRAM_LIVE_SMOKE:
+                    entry["blockers"].append(
+                        "Instagram is live-ready but ENABLE_INSTAGRAM_LIVE_SMOKE is not set — posts are blocked",
                     )
             elif impl == "blocked" and platform == "telegram":
                 if not telegram_bot_configured():
@@ -369,7 +376,7 @@ class PublishSafetyService:
                     if platform == "facebook":
                         meta_blockers = MetaConnectionService.facebook_publish_blockers(account)
                     else:
-                        meta_blockers = MetaConnectionService.readiness_blockers(account)
+                        meta_blockers = MetaConnectionService.instagram_publish_blockers(account)
                     for idx, blocker in enumerate(meta_blockers):
                         add_error(
                             f"account_{platform}" if idx == 0 else f"account_{platform}_{idx}",
@@ -492,8 +499,14 @@ class PublishSafetyService:
         target_platforms: list[str],
         account_id: UUID | None,
     ) -> None:
-        if item.status != "scheduled":
-            add_error("status", "Scheduled publish requires status=scheduled")
+        # The scheduler performs an atomic scheduled -> publishing claim before
+        # invoking PublishService. Both states are therefore valid here; the
+        # pre-claim scheduler check still requires scheduled exactly.
+        if item.status not in ("scheduled", "publishing"):
+            add_error(
+                "status",
+                "Scheduled publish requires status=scheduled or an active scheduler claim",
+            )
 
         if not item.approved_at:
             add_error("admin_approved", "Content must be admin approved before publishing")
@@ -515,13 +528,6 @@ class PublishSafetyService:
             )
 
         await PublishSafetyService._check_media_or_caption(db, item, add_error)
-
-        for platform in target_platforms:
-            if platform == "facebook":
-                add_error(
-                    "platform_facebook",
-                    "Facebook scheduled live publish is not enabled in this milestone",
-                )
 
         if not item.scheduled_for:
             add_error(

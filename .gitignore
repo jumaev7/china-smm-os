@@ -11,7 +11,13 @@ build/
 venv/
 env/
 .env
+.env.production
 !.env.example
+!.env.production.example
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
 
 # Node
 node_modules/
@@ -32,10 +38,21 @@ backend/scripts/.verify_*_last.json
 *.swo
 .DS_Store
 
-# Storage
+# Storage / backups / dumps / logs
 media_storage/
+backups/
 *.sqlite3
+*.dump
+*.sql.gz
+*.sql.bak
+*.log
 
-# Alembic
-migrations/versions/*.py
-!migrations/versions/.gitkeep
+# Local/runtime test artifacts (logs, tunnels, binaries, screenshots)
+test-artifacts/
+
+# Local private keys / certs (never commit)
+*.pem
+id_rsa
+id_ed25519
+*.p12
+*.pfx

@@ -18,6 +18,7 @@ function formFromClient(client: Client) {
     telegram_group_title: client.telegram_group_title ?? "",
     telegram_workflow_mode: client.telegram_workflow_mode ?? "auto_create_from_media",
     operator_auto_draft_enabled: Boolean(client.operator_auto_draft_enabled),
+    auto_publish_after_client_approval: Boolean(client.auto_publish_after_client_approval),
     telegram_publish_chat_id: client.telegram_publish_chat_id ?? "",
     telegram_publish_title: client.telegram_publish_title ?? "",
     telegram_publish_type: (client.telegram_publish_type ?? "") as PublishType,
@@ -39,6 +40,7 @@ export function ClientTelegramSettingsForm({ client, onSaved }: Props) {
         telegram_group_title: form.telegram_group_title.trim() || null,
         telegram_workflow_mode: form.telegram_workflow_mode,
         operator_auto_draft_enabled: form.operator_auto_draft_enabled,
+        auto_publish_after_client_approval: form.auto_publish_after_client_approval,
         telegram_publish_chat_id: form.use_publish_destination
           ? form.telegram_publish_chat_id.trim() || null
           : null,
@@ -133,6 +135,23 @@ export function ClientTelegramSettingsForm({ client, onSaved }: Props) {
                 <p className="text-xs text-gray-600 mt-1 font-normal">
                   When enabled, AI will create draft posts from new Telegram materials automatically.
                   Nothing is published without admin approval.
+                </p>
+              </span>
+            </label>
+          </div>
+          <div className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+            <label className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-1 rounded border-gray-300"
+                checked={form.auto_publish_after_client_approval}
+                onChange={set("auto_publish_after_client_approval")}
+              />
+              <span>
+                <span className="font-medium">Auto-publish after client approval</span>
+                <p className="text-xs text-gray-600 mt-1 font-normal">
+                  After admin approval and the client&apos;s ✅, queue the post for the existing
+                  safety-checked publisher. Disabled by default.
                 </p>
               </span>
             </label>

@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.endpoint_guard import run_guarded
 from app.core.tenant_access import get_current_tenant_user
 from app.schemas.publishing_intelligence import (
@@ -23,10 +24,39 @@ from app.schemas.publishing_intelligence import (
 from app.services.publishing_intelligence.platform_policies import check_catalog, list_policies
 from app.services.publishing_intelligence.review_engine import PublishingReviewEngine
 from app.services.publishing_intelligence.schemas import ReviewEngineResult
+from app.models.publishing_intelligence import (
+    TenantPublishingPlatformReview,
+    TenantPublishingReview,
+)
 from app.services.publish_safety_service import PublishSafetyService
 from app.services.tenant_auth_service import CurrentTenantUser
 
 router = APIRouter(prefix="/publishing-intelligence", tags=["publishing-intelligence"])
+
+
+async def _emit_review_signals_background(tenant_id: UUID, review_id: UUID) -> None:
+    """Run optional intelligence fan-out after the review response is durable."""
+    async with AsyncSessionLocal() as background_db:
+        review = await background_db.get(TenantPublishingReview, review_id)
+        if review is None or review.tenant_id != tenant_id:
+            return
+        platform_reviews = list((await background_db.scalars(
+            select(TenantPublishingPlatformReview).where(
+                TenantPublishingPlatformReview.publishing_review_id == review_id,
+                TenantPublishingPlatformReview.tenant_id == tenant_id,
+            ),
+        )).all())
+        summary = dict(review.summary or {})
+        await PublishingReviewEngine._emit_intelligence_signals(
+            background_db,
+            tenant_id=tenant_id,
+            review=review,
+            platform_reviews=platform_reviews,
+            warning_count=int(summary.get("warning_count", 0)),
+            failure_count=int(summary.get("failure_count", 0)),
+            critical_count=int(summary.get("critical_issue_count", 0)),
+        )
+        await background_db.commit()
 
 
 def _to_response(result: ReviewEngineResult) -> PublishingReviewResponse:
@@ -107,6 +137,7 @@ def _to_response(result: ReviewEngineResult) -> PublishingReviewResponse:
 )
 async def create_publishing_review(
     content_id: UUID,
+    background_tasks: BackgroundTasks,
     user: CurrentTenantUser = Depends(get_current_tenant_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -116,10 +147,16 @@ async def create_publishing_review(
             user.tenant_id,
             content_id,
             created_by=user.id,
+            emit_signals=False,
         ),
         label="publishing_intelligence.review",
     )
     await db.commit()
+    background_tasks.add_task(
+        _emit_review_signals_background,
+        user.tenant_id,
+        result.review_id,
+    )
     return _to_response(result)
 
 

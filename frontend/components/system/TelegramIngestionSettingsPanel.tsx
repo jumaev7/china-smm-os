@@ -137,6 +137,15 @@ export function TelegramIngestionSettingsPanel() {
           Quality checks on ingest
         </label>
 
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={data.auto_publishing_review}
+            onChange={(e) => save({ auto_publishing_review: e.target.checked })}
+          />
+          Auto-run Publishing Score on ingest
+        </label>
+
         {mutation.isPending && (
           <p className="text-xs text-gray-400 flex items-center gap-1">
             <Save size={12} /> Saving…

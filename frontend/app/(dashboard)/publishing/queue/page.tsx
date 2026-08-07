@@ -111,6 +111,7 @@ function SectionTable({
               <th className="px-4 py-2 font-medium">Platforms</th>
               <th className="px-4 py-2 font-medium">Client review</th>
               <th className="px-4 py-2 font-medium">Block reason</th>
+              <th className="px-4 py-2 font-medium">Attempt</th>
               <th className="px-4 py-2 font-medium text-right">Actions</th>
             </tr>
           </thead>
@@ -160,6 +161,47 @@ function SectionTable({
                     {item.block_reason_label || "Ready"}
                   </span>
                 </td>
+                <td className="px-4 py-3 text-[11px] text-gray-600">
+                  {item.latest_attempt ? (
+                    <div className="space-y-0.5">
+                      <span
+                        className={cn(
+                          "inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                          item.latest_attempt.status === "success"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : item.latest_attempt.status === "retrying"
+                              ? "bg-amber-100 text-amber-800"
+                              : item.latest_attempt.status === "operator_review"
+                                ? "bg-violet-100 text-violet-800"
+                                : item.latest_attempt.status === "in_progress"
+                                  ? "bg-sky-100 text-sky-800"
+                                  : "bg-red-100 text-red-700",
+                        )}
+                      >
+                        {item.latest_attempt.status}
+                        {item.latest_attempt.attempt_number
+                          ? ` #${item.latest_attempt.attempt_number}`
+                          : ""}
+                      </span>
+                      {item.latest_attempt.failure_code && (
+                        <p className="text-[10px] text-gray-500">{item.latest_attempt.failure_code}</p>
+                      )}
+                      {item.latest_attempt.next_retry_at && (
+                        <p className="text-[10px] text-amber-700">
+                          Next retry{" "}
+                          {formatScheduledLocal(item.latest_attempt.next_retry_at)}
+                        </p>
+                      )}
+                      {item.latest_attempt.error && (
+                        <p className="text-[10px] text-red-600 line-clamp-2">
+                          {item.latest_attempt.error}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1 justify-end">{renderActions(item)}</div>
                 </td>
@@ -202,12 +244,26 @@ export default function PublishingQueuePage() {
   });
 
   const retryMutation = useMutation({
-    mutationFn: (id: string) => publishingApi.retryQueueItem(id),
-    onMutate: (id) => setBusyId(id),
+    mutationFn: async (item: PublishingQueueItem) => {
+      if (item.latest_attempt?.id && item.latest_attempt.status !== "success") {
+        return publishingApi.retryAttempt(item.latest_attempt.id);
+      }
+      return publishingApi.retryQueueItem(item.id);
+    },
+    onMutate: (item) => setBusyId(item.id),
     onSettled: () => setBusyId(null),
     onSuccess: (res) => {
       if (res.data.ok) toast.success(res.data.message);
-      else toast.error(res.data.message || res.data.block_reason || "Retry blocked");
+      else {
+        const data = res.data as {
+          message?: string;
+          block_reason?: string;
+          retry_blocked_reason?: string | null;
+        };
+        const blocked =
+          data.retry_blocked_reason || data.block_reason || data.message;
+        toast.error(String(blocked || "Retry blocked"));
+      }
       invalidate();
     },
     onError: () => toast.error("Retry failed"),
@@ -264,8 +320,33 @@ export default function PublishingQueuePage() {
         <button
           type="button"
           className="btn-primary text-[10px] py-1 px-2"
-          disabled={busy}
-          onClick={() => retryMutation.mutate(item.id)}
+          disabled={
+            busy ||
+            (item.latest_attempt?.manual_retry_allowed === false &&
+              item.latest_attempt?.status === "success")
+          }
+          title={
+            item.latest_attempt?.status === "success"
+              ? "Already published — retry blocked"
+              : undefined
+          }
+          onClick={() => {
+            if (
+              item.latest_attempt?.status === "in_progress" &&
+              !confirm("Attempt is in progress. Retry anyway after recovery?")
+            ) {
+              return;
+            }
+            if (
+              item.latest_attempt?.status === "operator_review" &&
+              !confirm(
+                "This attempt needs operator review (possible duplicate risk). Retry only if you confirmed no live post exists.",
+              )
+            ) {
+              return;
+            }
+            retryMutation.mutate(item);
+          }}
         >
           <RefreshCw size={11} className={busy ? "animate-spin" : ""} />
           Retry

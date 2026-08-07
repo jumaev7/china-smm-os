@@ -146,6 +146,54 @@ PLATFORM_EVENT_DEFINITIONS: tuple[EventDefinition, ...] = (
         ),
     ),
     _def(
+        "tenant.publish_alert.operator_review",
+        category="publishing",
+        description="Publish attempt requires operator review",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, automation=True,
+        ),
+    ),
+    _def(
+        "tenant.publish_alert.exhausted",
+        category="publishing",
+        description="Publish retries exhausted",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, automation=True,
+        ),
+    ),
+    _def(
+        "tenant.publish_alert.terminal_failure",
+        category="publishing",
+        description="Terminal publish failure",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, automation=True,
+        ),
+    ),
+    _def(
+        "tenant.publish_alert.stale_in_progress",
+        category="publishing",
+        description="Stale in-progress publish attempt recovered",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, automation=True,
+        ),
+    ),
+    _def(
+        "tenant.publish_alert.recovery",
+        category="publishing",
+        description="Previously alerted destination published successfully",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True,
+        ),
+    ),
+    _def(
+        "tenant.publish_alert.repeated_failure",
+        category="publishing",
+        description="Repeated publish failures on a destination",
+        integrations=EventIntegrations(
+            audit=True, activity=True, notification=True, automation=True,
+        ),
+    ),
+    _def(
         "tenant.integration.disconnected",
         category="integrations",
         description="Platform integration disconnected",

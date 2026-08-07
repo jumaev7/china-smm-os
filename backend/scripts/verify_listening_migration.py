@@ -160,6 +160,7 @@ async def _run() -> int:
         cur.returncode == 0
         and (
             LIVE_REVISION in cur_text
+            or "20260917_listening_webhook_ops" in cur_text
             or EXPECTED_REVISION in cur_text
             or "20260915_listening_market_intelligence" in cur_text
         ),

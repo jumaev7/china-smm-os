@@ -24,6 +24,7 @@ from app.services.meta_graph_client import (
     meta_oauth_configured,
     missing_connection_permissions,
     missing_facebook_publish_permissions,
+    missing_instagram_publish_permissions,
     pick_page,
     token_is_expired,
 )
@@ -209,6 +210,7 @@ class MetaConnectionService:
             has_account=True,
             account_status=effective_status,
             facebook_page_id=account.facebook_page_id,
+            instagram_business_account_id=account.instagram_business_account_id,
             permissions=permissions,
             token_expired=expired_flag,
             has_page_token=has_page_token,
@@ -219,12 +221,13 @@ class MetaConnectionService:
             dest_status=dest_status,
             account_status=effective_status,
             facebook_page_id=account.facebook_page_id,
+            instagram_business_account_id=account.instagram_business_account_id,
             permissions=permissions,
             token_expired=expired_flag,
             has_page_token=has_page_token,
             is_demo=is_demo,
         )
-        publish_ready = account.platform == "facebook" and implementation == "live"
+        publish_ready = account.platform in ("facebook", "instagram") and implementation == "live"
 
         return {
             "platform": account.platform,
@@ -552,6 +555,27 @@ class MetaConnectionService:
             return ["Facebook Page access token is missing — reconnect Meta account"]
         if token_is_expired(account.expires_at):
             return ["Meta access token expired — reconnect or refresh the connection"]
+        return []
+
+    @staticmethod
+    def instagram_publish_blockers(account: PublishingAccount) -> list[str]:
+        """Publish-time blockers specific to Instagram Business image posts."""
+        if account.platform != "instagram" or account.status == "mock":
+            return []
+        if MetaConnectionService.account_metadata(account).get("demo"):
+            return ["Instagram demo account cannot publish live — connect a real Meta account"]
+        blockers = MetaConnectionService.readiness_blockers(account)
+        if blockers:
+            return blockers
+        missing = missing_instagram_publish_permissions(
+            MetaConnectionService.account_permissions(account),
+        )
+        if missing:
+            return [f"Instagram publish permission missing: {', '.join(missing)}"]
+        if not account.instagram_business_account_id:
+            return ["Instagram Business account ID is missing — reconnect Meta account"]
+        if not account.access_token_encrypted:
+            return ["Instagram Page access token is missing — reconnect Meta account"]
         return []
 
     @staticmethod

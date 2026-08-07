@@ -132,6 +132,8 @@ import {
 
   Bell,
 
+  AlertTriangle,
+
   type LucideIcon,
 
 } from "lucide-react";
@@ -159,6 +161,8 @@ import { computeSessionAwareAuthReady } from "@/lib/session-sync";
 import { useDashboardOverlayCleanup } from "@/lib/useDashboardOverlayCleanup";
 import { useNotificationUnreadCount } from "@/lib/notification-center-hooks";
 import { formatUnreadBadge } from "@/lib/notification-center-ui";
+import { useQuery } from "@tanstack/react-query";
+import { publishingApi } from "@/lib/api";
 
 
 
@@ -399,6 +403,8 @@ const NAV_SECTIONS: NavSection[] = [
 
       { href: "/publishing/queue", icon: ListOrdered, labelKey: "nav.publishingQueue" },
 
+      { href: "/publishing/alerts", icon: AlertTriangle, labelKey: "nav.publishingAlerts" },
+
     ],
 
   },
@@ -465,6 +471,7 @@ const TENANT_SIMPLIFIED_NAV_SECTIONS: NavSection[] = [
       { href: "/content-factory", icon: Factory, labelKey: "nav.contentFactory" },
       { href: "/media-library", icon: Images, labelKey: "nav.mediaLibrary" },
       { href: "/publishing", icon: Radio, labelKey: "nav.publishing" },
+      { href: "/publishing/alerts", icon: AlertTriangle, labelKey: "nav.publishingAlerts" },
       { href: "/calendar", icon: Calendar, labelKey: "nav.calendar" },
     ],
   },
@@ -673,6 +680,17 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     authReady && isTenantAuthenticated && isTenantNav,
   );
   const unreadBadge = formatUnreadBadge(unreadData?.unread_count ?? 0);
+  const { data: publishAlertCounts } = useQuery({
+    queryKey: ["publishing-alert-counts", "nav"],
+    queryFn: () => publishingApi.alertCounts().then((r) => r.data),
+    enabled: authReady && isTenantAuthenticated && isTenantNav,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const publishAlertBadge = formatUnreadBadge(
+    (publishAlertCounts?.critical_open_count ?? 0) +
+      (publishAlertCounts?.warning_open_count ?? 0),
+  );
 
   return (
 
@@ -761,7 +779,12 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
                         active && (isTenantNav ? "text-violet-400" : "text-accent-cyan"),
                       )} />
 
-                      <span className="truncate">{t(labelKey)}</span>
+                      <span className="truncate flex-1">{t(labelKey)}</span>
+                      {href === "/publishing/alerts" && publishAlertBadge ? (
+                        <span className="ml-auto min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-red-500 text-[10px] font-bold text-white flex items-center justify-center">
+                          {publishAlertBadge}
+                        </span>
+                      ) : null}
 
                     </Link>
 

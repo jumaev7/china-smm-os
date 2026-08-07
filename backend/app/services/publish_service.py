@@ -23,11 +23,20 @@ from app.services.automation_domain_events import (
 )
 from app.services.content_service import ContentService
 from app.services.publish_context import PublishContext
+from app.services.publish_resilience import (
+    PublishResilienceService,
+    STATUS_OPERATOR_REVIEW,
+    STATUS_RETRYING,
+    compute_publish_version,
+    sanitize_error_message,
+    scrub_publish_result,
+)
 from app.services.publishing_account_service import PublishingAccountService
 from app.services.publishing_tenant_scope import tenant_id_for_content, tenant_id_for_content_optional
 from app.utils.telegram_publish_destination import validate_telegram_publish_chat_id
 from app.services.meta_connection_service import MetaConnectionService
-from app.services.meta_graph_client import token_is_expired
+from app.services.meta_graph_client import MetaGraphError, token_is_expired
+from app.core.config import settings
 from app.utils.token_vault import decrypt_token
 from app.services import (
     telegram_publisher,
@@ -169,8 +178,16 @@ class PublishService:
         *,
         content_id: UUID | None = None,
     ) -> int:
-        """Mark publishing items older than 5 minutes as failed."""
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=STALE_PUBLISHING_MINUTES)
+        """Mark publishing items older than the stale window as failed.
+
+        Also reconciles stale in-progress publish attempts (operator review for
+        Meta destinations; safe retry for others).
+        """
+        stale_minutes = max(
+            STALE_PUBLISHING_MINUTES,
+            int(getattr(settings, "PUBLISH_STALE_ATTEMPT_MINUTES", STALE_PUBLISHING_MINUTES)),
+        )
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
         query = select(ContentItem).where(
             ContentItem.status == "publishing",
             ContentItem.updated_at < cutoff,
@@ -179,7 +196,12 @@ class PublishService:
             query = query.where(ContentItem.id == content_id)
         result = await db.execute(query)
         items = list(result.scalars().all())
-        if not items:
+
+        attempt_recovered = await PublishResilienceService.recover_stale_attempts(
+            db, content_id=content_id,
+        )
+
+        if not items and not attempt_recovered:
             return 0
 
         recovered = 0
@@ -194,7 +216,11 @@ class PublishService:
                 account_id=None,
                 status="failed",
                 response=None,
-                error="Publishing timeout",
+                error=sanitize_error_message("Publishing timeout"),
+                failure_code="publish_timeout",
+                failure_category="timeout",
+                retryable=True,
+                finished_at=datetime.now(timezone.utc),
             )
             db.add(attempt)
             await db.flush()
@@ -219,8 +245,12 @@ class PublishService:
                 item.id,
             )
         await db.commit()
-        logger.info("[Publish] finally: recovered %s stale publishing item(s)", recovered)
-        return recovered
+        logger.info(
+            "[Publish] finally: recovered %s stale publishing item(s), %s stale attempt(s)",
+            recovered,
+            attempt_recovered,
+        )
+        return recovered + attempt_recovered
 
     @staticmethod
     async def _client_publish_context(db: AsyncSession, item: ContentItem) -> dict:
@@ -271,11 +301,13 @@ class PublishService:
             effective_name = telegram_publish_title
 
         facebook_page_id = None
+        instagram_business_account_id = None
         page_access_token = None
         permissions: list[str] = []
         token_expired = token_is_expired(account.expires_at)
-        if platform == "facebook":
+        if platform in ("facebook", "instagram"):
             facebook_page_id = account.facebook_page_id
+            instagram_business_account_id = account.instagram_business_account_id
             if account.access_token_encrypted:
                 try:
                     page_access_token = decrypt_token(account.access_token_encrypted)
@@ -299,6 +331,7 @@ class PublishService:
             account_status=account.status,
             selected_media=list(payload.get("selected_media") or []),
             facebook_page_id=facebook_page_id,
+            instagram_business_account_id=instagram_business_account_id,
             page_access_token=page_access_token,
             permissions=permissions,
             token_expired=token_expired,
@@ -312,25 +345,61 @@ class PublishService:
         platform: str,
         account: PublishingAccount | None,
         result: dict,
+        attempt: PublishAttempt | None = None,
+        publish_version: str | None = None,
     ) -> PublishAttempt:
-        attempt = PublishAttempt(
+        if attempt is not None:
+            return await PublishResilienceService.finalize_attempt(db, attempt, result)
+
+        clean = scrub_publish_result(result)
+        success = bool(clean.get("success"))
+        error = sanitize_error_message(clean.get("error"))
+        code = category = None
+        retryable = None
+        if not success:
+            code, category, retryable = classify_publish_failure(error)
+            if clean.get("failure_code"):
+                code = str(clean["failure_code"])
+            if clean.get("failure_category"):
+                category = str(clean["failure_category"])
+            if "retryable" in clean and clean["retryable"] is not None:
+                retryable = bool(clean["retryable"])
+
+        post_id = clean.get("platform_post_id")
+        post_url = clean.get("post_url")
+        recorded = PublishAttempt(
             content_id=content_id,
             platform=platform,
             account_id=account.id if account else None,
-            status="success" if result.get("success") else "failed",
-            response=json.dumps(result, ensure_ascii=False, default=str),
-            error=result.get("error"),
+            status="success" if success else "failed",
+            response=json.dumps(clean, ensure_ascii=False, default=str),
+            error=error,
+            publish_version=publish_version,
+            attempt_number=1,
+            failure_code=code,
+            failure_category=category,
+            retryable=retryable if not success else False,
+            finished_at=datetime.now(timezone.utc),
+            external_post_id=str(post_id) if post_id and success and not clean.get("mock") else None,
+            external_post_url=str(post_url) if post_url and success and not clean.get("mock") else None,
         )
-        db.add(attempt)
+        db.add(recorded)
         await db.flush()
         logger.info(
             "[Publish] publish_attempt saved: content=%s platform=%s status=%s attempt_id=%s",
             content_id,
             platform,
-            attempt.status,
-            attempt.id,
+            recorded.status,
+            recorded.id,
         )
-        return attempt
+        try:
+            await PublishResilienceService._notify_alert(db, recorded)
+        except Exception:
+            logger.exception(
+                "[Publish] alert notify failed for legacy attempt content=%s",
+                content_id,
+            )
+        return recorded
 
     @staticmethod
     async def _emit_publish_failed(
@@ -519,19 +588,15 @@ class PublishService:
         items = []
         for attempt in result.scalars().all():
             extras = PublishService._parse_attempt_response(attempt.response)
-            items.append({
-                "id": attempt.id,
-                "content_id": attempt.content_id,
-                "platform": attempt.platform,
-                "account_id": attempt.account_id,
-                "account_name": attempt.account.account_name if attempt.account else None,
-                "status": attempt.status,
-                "response": attempt.response,
-                "error": attempt.error,
-                "created_at": attempt.created_at,
-                "platform_post_id": extras.get("platform_post_id"),
-                "post_url": extras.get("post_url"),
-            })
+            serialized = PublishResilienceService.serialize_attempt(attempt)
+            serialized["platform_post_id"] = (
+                attempt.external_post_id or extras.get("platform_post_id")
+            )
+            serialized["post_url"] = attempt.external_post_url or extras.get("post_url")
+            serialized["account_name"] = (
+                attempt.account.account_name if attempt.account else None
+            )
+            items.append(serialized)
         return items, total
 
     @staticmethod
@@ -564,6 +629,50 @@ class PublishService:
             "platform_post_id": str(platform_post_id) if platform_post_id is not None else None,
             "post_url": post_url,
         }
+
+    @staticmethod
+    async def _prior_live_successes(
+        db: AsyncSession,
+        content_id: UUID,
+        platforms: list[str],
+    ) -> dict[str, dict]:
+        """Return the newest confirmed live success for each requested platform.
+
+        A retry after a partial failure must not create a second provider post on
+        a platform that already succeeded. Mock and explicit test results are not
+        live publications and therefore never suppress a later real publish.
+        """
+        if not platforms:
+            return {}
+        result = await db.execute(
+            select(PublishAttempt)
+            .where(
+                PublishAttempt.content_id == content_id,
+                PublishAttempt.platform.in_(platforms),
+                PublishAttempt.status == "success",
+            )
+            .order_by(PublishAttempt.created_at.desc())
+        )
+        successes: dict[str, dict] = {}
+        for attempt in result.scalars().all():
+            if attempt.platform in successes or not attempt.response:
+                continue
+            try:
+                payload = json.loads(attempt.response)
+            except (json.JSONDecodeError, TypeError):
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if payload.get("mock") is True or payload.get("test") is True:
+                continue
+            if not payload.get("platform_post_id"):
+                continue
+            payload["success"] = True
+            payload["platform"] = attempt.platform
+            payload["deduplicated"] = True
+            payload["message"] = payload.get("message") or "Already published; duplicate suppressed"
+            successes[attempt.platform] = payload
+        return successes
 
     @staticmethod
     async def publish_content(
@@ -641,6 +750,16 @@ class PublishService:
             client_ctx = await PublishService._client_publish_context(db, item)
             client_tg_dest = None if explicit_account else client_ctx["chat_id"]
             content_tenant_id = await tenant_id_for_content(db, item)
+            prior_live_successes = (
+                {}
+                if test_mode
+                else await PublishService._prior_live_successes(
+                    db,
+                    content_id,
+                    target_platforms,
+                )
+            )
+            publish_version = compute_publish_version(item, payload)
             if client_tg_dest and "telegram" in target_platforms:
                 logger.info(
                     "[Publish] telegram destination: client=%s chat=%s",
@@ -652,6 +771,18 @@ class PublishService:
                 logger.info("[Publish] adapter start: content=%s platform=%s", content_id, platform)
                 account: PublishingAccount | None = None
                 result: dict
+                claimed_attempt: PublishAttempt | None = None
+
+                prior_success = prior_live_successes.get(platform)
+                if prior_success:
+                    results.append(prior_success)
+                    logger.info(
+                        "[Publish] adapter skipped: content=%s platform=%s reason=prior_live_success post_id=%s",
+                        content_id,
+                        platform,
+                        prior_success.get("platform_post_id"),
+                    )
+                    continue
 
                 try:
                     account = await PublishingAccountService.resolve_for_platform(
@@ -667,16 +798,44 @@ class PublishService:
                     result = _failure_result(platform, str(exc.detail))
                     all_ok = False
                     await PublishService._record_attempt(
-                        db, content_id=content_id, platform=platform, account=None, result=result,
+                        db,
+                        content_id=content_id,
+                        platform=platform,
+                        account=None,
+                        result=result,
+                        publish_version=publish_version,
                     )
                     results.append(result)
                     logger.info(
                         "[Publish] adapter result: content=%s platform=%s success=False error=%s",
                         content_id,
                         platform,
-                        exc.detail,
+                        sanitize_error_message(str(exc.detail)),
                     )
                     continue
+
+                if not test_mode:
+                    claim = await PublishResilienceService.begin_attempt(
+                        db,
+                        content_id=content_id,
+                        platform=platform,
+                        account=account,
+                        publish_version=publish_version,
+                        lease_owner=f"publish:{content_id}",
+                        test_mode=False,
+                    )
+                    if claim.skip and claim.result is not None:
+                        results.append(claim.result)
+                        if not claim.result.get("success"):
+                            all_ok = False
+                        logger.info(
+                            "[Publish] adapter skipped: content=%s platform=%s reason=%s",
+                            content_id,
+                            platform,
+                            claim.reason,
+                        )
+                        continue
+                    claimed_attempt = claim.attempt
 
                 adapter = ADAPTERS.get(platform)
                 if not adapter:
@@ -699,6 +858,16 @@ class PublishService:
                     )
                     try:
                         result = await adapter(ctx)
+                    except MetaGraphError as exc:
+                        logger.exception(
+                            "[Publish] adapter result: content=%s platform=%s meta_error",
+                            content_id,
+                            platform,
+                        )
+                        result = _failure_result(platform, str(exc), account)
+                        result.update(exc.to_publish_fields())
+                        if exc.is_transient is not None:
+                            result["retryable"] = bool(exc.is_transient)
                     except Exception as exc:
                         logger.exception(
                             "[Publish] adapter result: content=%s platform=%s exception",
@@ -713,21 +882,40 @@ class PublishService:
                         all_ok = False
 
                 attempt = await PublishService._record_attempt(
-                    db, content_id=content_id, platform=platform, account=account, result=result,
+                    db,
+                    content_id=content_id,
+                    platform=platform,
+                    account=account,
+                    result=result,
+                    attempt=claimed_attempt,
+                    publish_version=publish_version,
                 )
+                if attempt.status == STATUS_RETRYING:
+                    result["next_retry_at"] = (
+                        attempt.next_retry_at.isoformat() if attempt.next_retry_at else None
+                    )
+                    result["attempt_number"] = attempt.attempt_number
+                    result["retryable"] = True
+                elif attempt.status == STATUS_OPERATOR_REVIEW:
+                    result["operator_review"] = True
+                    result["retryable"] = False
                 results.append(result)
                 logger.info(
-                    "[Publish] adapter result: content=%s platform=%s success=%s post_id=%s",
+                    "[Publish] adapter result: content=%s platform=%s success=%s post_id=%s attempt_status=%s",
                     content_id,
                     platform,
                     result.get("success"),
                     result.get("platform_post_id"),
+                    attempt.status,
                 )
                 # Best-effort measurement registration — never break publishing.
                 if (
                     not test_mode
                     and result.get("success")
                     and result.get("platform_post_id")
+                    and not result.get("mock")
+                    and not result.get("test")
+                    and not result.get("deduplicated")
                 ):
                     try:
                         from app.services.measurement.publication_registry import (

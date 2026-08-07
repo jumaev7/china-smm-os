@@ -4,8 +4,12 @@ Architecture supports swapping in AI classification later via classify_with_ai()
 """
 from __future__ import annotations
 
+import json
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 CLASSIFICATION_CATEGORIES = (
     "product",
@@ -124,12 +128,55 @@ async def classify_with_ai(
     caption: str | None,
     internal_notes: str | None,
     image_description: str | None = None,
+    tenant_id: str | None = None,
 ) -> dict[str, Any] | None:
     """
     Placeholder for AI classification. Returns None when AI is not configured.
     """
     from app.core.config import settings
-    if not settings.OPENAI_API_KEY or settings.DEMO_MODE:
+    if settings.DEMO_MODE or not settings.AI_PLATFORM_ENABLED or not tenant_id:
         return None
-    # Future: OpenAI structured output with CLASSIFICATION_CATEGORIES
-    return None
+    from app.services.ai_platform.generation_service import GenerationService
+    from app.services.ai_platform.schemas import TASK_AI_CONTENT_ADAPTATION
+
+    source = "\n".join(
+        part.strip() for part in (caption, internal_notes, image_description) if part and part.strip()
+    )
+    if not source:
+        return None
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["category", "confidence"],
+        "properties": {
+            "category": {"type": "string", "enum": list(CLASSIFICATION_CATEGORIES)},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        },
+    }
+    try:
+        response, _, _ = await GenerationService.generate_structured(
+            tenant_id=tenant_id,
+            task_type=TASK_AI_CONTENT_ADAPTATION,
+            model_alias="content_fast",
+            system_instructions=(
+                "Classify social-media source material. Return JSON only. Do not invent facts. "
+                f"Allowed categories: {', '.join(CLASSIFICATION_CATEGORIES)}. "
+                "Your JSON must match this schema exactly: "
+                + json.dumps(schema, ensure_ascii=False)
+            ),
+            input_messages=[{"role": "user", "content": json.dumps({"source": source}, ensure_ascii=False)}],
+            output_schema=schema,
+            temperature=0,
+            max_output_tokens=120,
+            metadata={"pipeline": "telegram_ingestion_classification"},
+            parse_output=False,
+        )
+        data = response.structured_output or {}
+        category = str(data.get("category") or "")
+        confidence = float(data.get("confidence", 0))
+        if category not in CLASSIFICATION_CATEGORIES or not 0 <= confidence <= 1:
+            return None
+        return {"category": category, "confidence": round(confidence, 2), "method": "governed_ai"}
+    except Exception as exc:
+        logger.warning("telegram_ai_classification_fallback error=%s", type(exc).__name__)
+        return None

@@ -184,7 +184,8 @@ async def _run() -> int:
     cur3 = _alembic("current")
     record(
         "alembic_current_at_head_live",
-        LIVE_REVISION in ((cur3.stdout or "") + (cur3.stderr or "")),
+        LIVE_REVISION in ((cur3.stdout or "") + (cur3.stderr or ""))
+        or "20260917_listening_webhook_ops" in ((cur3.stdout or "") + (cur3.stderr or "")),
         (cur3.stdout or cur3.stderr or "")[:240],
     )
 

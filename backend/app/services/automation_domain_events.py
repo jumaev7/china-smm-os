@@ -110,17 +110,14 @@ async def emit_domain_event(
 
 
 def classify_publish_failure(error: str | None) -> tuple[str, str, bool]:
-    """Map a free-text publish error into safe structured diagnostics."""
-    text = (error or "").lower()
-    if "timeout" in text or "interrupted" in text:
-        return "publish_timeout", "timeout", True
-    if "token" in text or "oauth" in text or "auth" in text or "permission" in text:
-        return "auth_or_permission", "auth", True
-    if "account" in text or "not found" in text or "no connected" in text:
-        return "account_unavailable", "account", False
-    if "rate" in text or "throttle" in text:
-        return "rate_limited", "provider", True
-    return "adapter_failure", "provider", True
+    """Map a free-text publish error into safe structured diagnostics.
+
+    Auth/permission failures are terminal (not auto-retried). Delegates to the
+    shared publish resilience classifier so events and attempts stay aligned.
+    """
+    from app.services.publish_resilience import classify_publish_failure as _classify
+
+    return _classify(error)
 
 
 def utc_now_iso() -> str:

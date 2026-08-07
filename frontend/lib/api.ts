@@ -160,6 +160,7 @@ export interface Client {
   telegram_group_title?: string | null;
   telegram_workflow_mode?: "auto_create_from_media" | "admin_controlled_buffer";
   operator_auto_draft_enabled?: boolean;
+  auto_publish_after_client_approval?: boolean;
   telegram_publish_chat_id?: string | null;
   telegram_publish_title?: string | null;
   telegram_publish_type?: "channel" | "supergroup" | null;
@@ -278,6 +279,21 @@ export interface PublishAttempt {
   platform_post_id?: string | null;
   post_url?: string | null;
   created_at: string;
+  idempotency_key?: string | null;
+  publish_version?: string | null;
+  attempt_number?: number | null;
+  failure_code?: string | null;
+  failure_category?: string | null;
+  retryable?: boolean | null;
+  next_retry_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  external_post_id?: string | null;
+  external_post_url?: string | null;
+  manual_retry_allowed?: boolean | null;
+  manual_retry_blocked_reason?: string | null;
+  company_name?: string | null;
+  content_status?: string | null;
 }
 
 export interface PublishingAccount {
@@ -4709,6 +4725,7 @@ export interface TelegramIngestionSettings {
   auto_classification: boolean;
   auto_enrichment: boolean;
   quality_checks_enabled: boolean;
+  auto_publishing_review: boolean;
   updated_at?: string | null;
   env_bot_configured: boolean;
 }
@@ -9941,7 +9958,318 @@ export const publishingApi = {
     api.post<PublishingQueueActionResponse>(`/publishing/queue/${contentId}/retry`),
   sendClientReviewQueueItem: (contentId: string) =>
     api.post<PublishingQueueActionResponse>(`/publishing/queue/${contentId}/send-client-review`),
+  listAttempts: (params?: {
+    status?: string;
+    platform?: string;
+    content_id?: string;
+    tenant_id?: string;
+    limit?: number;
+    offset?: number;
+  }) =>
+    api.get<{
+      items: PublishAttempt[];
+      total: number;
+      counts: Record<string, number>;
+      current_time?: string;
+    }>("/publishing/attempts", { params }),
+  retryAttempt: (attemptId: string, params?: { tenant_id?: string }) =>
+    api.post<PublishAttemptActionResponse>(`/publishing/attempts/${attemptId}/retry`, null, {
+      params,
+    }),
+  listAlerts: (params?: {
+    state?: string;
+    severity?: string;
+    platform?: string;
+    client_id?: string;
+    alert_type?: string;
+    created_from?: string;
+    created_to?: string;
+    page?: number;
+    page_size?: number;
+    tenant_id?: string;
+  }) =>
+    api.get<PublishAlertListResponse>("/publishing/alerts", { params }),
+  alertCounts: (params?: { tenant_id?: string }) =>
+    api.get<PublishAlertCountsResponse>("/publishing/alerts/counts", { params }),
+  acknowledgeAlert: (alertId: string, params?: { tenant_id?: string }) =>
+    api.post<PublishAlertAcknowledgeResponse>(
+      `/publishing/alerts/${alertId}/acknowledge`,
+      null,
+      { params },
+    ),
+  resolveAlert: (
+    alertId: string,
+    data?: { note?: string },
+    params?: { tenant_id?: string },
+  ) =>
+    api.post<PublishAlertResolveResponse>(
+      `/publishing/alerts/${alertId}/resolve`,
+      data ?? {},
+      { params },
+    ),
+  getTelegramAlertSettings: (params?: { tenant_id?: string }) =>
+    api.get<TelegramAlertSettings>("/publishing/alerts/telegram-settings", { params }),
+  updateTelegramAlertSettings: (
+    data: TelegramAlertSettingsUpdate,
+    params?: { tenant_id?: string },
+  ) =>
+    api.put<TelegramAlertSettings>("/publishing/alerts/telegram-settings", data, { params }),
+  listTelegramAlertDeliveries: (params?: {
+    status?: string;
+    page?: number;
+    page_size?: number;
+    tenant_id?: string;
+  }) =>
+    api.get<TelegramDeliveryListResponse>("/publishing/alerts/telegram-deliveries", { params }),
+  cancelTelegramAlertDelivery: (deliveryId: string, params?: { tenant_id?: string }) =>
+    api.post(`/publishing/alerts/telegram-deliveries/${deliveryId}/cancel`, null, { params }),
+  retryTelegramAlertDelivery: (deliveryId: string, params?: { tenant_id?: string }) =>
+    api.post(`/publishing/alerts/telegram-deliveries/${deliveryId}/retry`, null, { params }),
+  testTelegramAlertDelivery: (
+    data: { confirm: boolean },
+    params?: { tenant_id?: string },
+  ) =>
+    api.post("/publishing/alerts/telegram-deliveries/test", data, { params }),
+  createTelegramEnrollment: (params?: { tenant_id?: string }) =>
+    api.post<TelegramEnrollmentStatus>("/publishing/alerts/telegram-enrollment", null, { params }),
+  getTelegramEnrollment: (params?: { tenant_id?: string }) =>
+    api.get<TelegramEnrollmentStatus>("/publishing/alerts/telegram-enrollment", { params }),
+  revokeTelegramEnrollment: (enrollmentId: string, params?: { tenant_id?: string }) =>
+    api.post<TelegramEnrollmentStatus>(
+      `/publishing/alerts/telegram-enrollment/${enrollmentId}/revoke`,
+      null,
+      { params },
+    ),
+  confirmTelegramEnrollment: (
+    enrollmentId: string,
+    data?: { replace_existing?: boolean },
+    params?: { tenant_id?: string },
+  ) =>
+    api.post<{
+      enrollment: TelegramEnrollmentStatus;
+      settings: TelegramAlertSettings;
+      idempotent: boolean;
+      delivery_enabled: boolean;
+      tenant_delivery_flag?: boolean | null;
+    }>(`/publishing/alerts/telegram-enrollment/${enrollmentId}/confirm`, data ?? {}, { params }),
+  rejectTelegramEnrollment: (enrollmentId: string, params?: { tenant_id?: string }) =>
+    api.post<TelegramEnrollmentStatus>(
+      `/publishing/alerts/telegram-enrollment/${enrollmentId}/reject`,
+      null,
+      { params },
+    ),
+  listTelegramRecipients: (params?: {
+    page?: number;
+    page_size?: number;
+    include_history?: boolean;
+    tenant_id?: string;
+  }) =>
+    api.get<TelegramRecipientListResponse>("/publishing/alerts/telegram-recipients", { params }),
+  removeTelegramRecipient: (params?: { enrollment_id?: string; tenant_id?: string }) =>
+    api.post<{
+      removed: boolean;
+      enrollment?: TelegramEnrollmentStatus | null;
+      settings?: TelegramAlertSettings | null;
+    }>("/publishing/alerts/telegram-recipients/remove", null, { params }),
 };
+
+export type PublishAlertType =
+  | "operator_review"
+  | "exhausted"
+  | "terminal_failure"
+  | "stale_in_progress"
+  | "recovery"
+  | "repeated_failure";
+export type PublishAlertState = "open" | "acknowledged" | "resolved";
+export type PublishAlertSeverity = "warning" | "critical" | "info";
+
+export interface PublishAlert {
+  id: string;
+  tenant_id: string;
+  dedupe_key: string;
+  alert_type: PublishAlertType;
+  state: PublishAlertState;
+  severity: PublishAlertSeverity;
+  title: string;
+  body?: string | null;
+  client_id?: string | null;
+  content_id?: string | null;
+  account_id?: string | null;
+  attempt_id?: string | null;
+  platform?: string | null;
+  account_name?: string | null;
+  company_name?: string | null;
+  attempt_status?: string | null;
+  attempt_number?: number | null;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  next_retry_at?: string | null;
+  occurrence_count: number;
+  first_occurred_at: string;
+  latest_occurred_at: string;
+  acknowledged_at?: string | null;
+  resolved_at?: string | null;
+  resolve_note?: string | null;
+  resolved_by_system?: boolean;
+  action_url?: string | null;
+  content_url?: string | null;
+  queue_url?: string | null;
+  attempts_url?: string | null;
+  context?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublishAlertListResponse {
+  items: PublishAlert[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+}
+
+export interface PublishAlertCountsResponse {
+  open_count: number;
+  acknowledged_count: number;
+  resolved_count: number;
+  critical_open_count: number;
+  warning_open_count: number;
+  info_open_count: number;
+  unread_open_count: number;
+}
+
+export interface PublishAlertAcknowledgeResponse {
+  id: string;
+  state: PublishAlertState;
+  acknowledged_at?: string | null;
+}
+
+export interface PublishAlertResolveResponse {
+  id: string;
+  state: PublishAlertState;
+  resolved_at?: string | null;
+  resolve_note?: string | null;
+}
+
+export interface TelegramAlertSettings {
+  configured: boolean;
+  enabled: boolean;
+  global_telegram_enabled: boolean;
+  delivery_effective: boolean;
+  recipient_chat_id?: number | null;
+  recipient_chat_id_masked?: string | null;
+  recipient_label?: string | null;
+  allowed_chat_ids: number[];
+  allowed_chat_ids_masked: string[];
+  severity_threshold: string;
+  alert_types?: string[] | null;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  quiet_hours_timezone?: string | null;
+  recovery_messages_enabled: boolean;
+  updated_at?: string | null;
+}
+
+export interface TelegramAlertSettingsUpdate {
+  enabled?: boolean;
+  recipient_chat_id?: number | string | null;
+  recipient_label?: string | null;
+  allowed_chat_ids?: Array<number | string> | null;
+  severity_threshold?: PublishAlertSeverity;
+  alert_types?: PublishAlertType[] | null;
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start?: string | null;
+  quiet_hours_end?: string | null;
+  quiet_hours_timezone?: string | null;
+  recovery_messages_enabled?: boolean;
+}
+
+export type TelegramEnrollmentState =
+  | "pending_start"
+  | "candidate_received"
+  | "confirmed"
+  | "expired"
+  | "revoked"
+  | "rejected";
+
+export interface TelegramEnrollmentStatus {
+  id?: string | null;
+  tenant_id?: string | null;
+  status?: TelegramEnrollmentState | null;
+  purpose?: string | null;
+  expires_at?: string | null;
+  consumed_at?: string | null;
+  telegram_chat_id_masked?: string | null;
+  telegram_display_name?: string | null;
+  telegram_username?: string | null;
+  telegram_chat_type?: string | null;
+  bot_username?: string | null;
+  rejection_reason_code?: string | null;
+  confirmed_at?: string | null;
+  revoked_at?: string | null;
+  rejected_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  deep_link?: string | null;
+  start_token?: string | null;
+  enrollment_enabled?: boolean;
+  max_confirmed_recipients?: number;
+  poll_interval_seconds?: number;
+  delivery_still_disabled_note?: string | null;
+}
+
+export interface TelegramRecipientItem {
+  id: string;
+  tenant_id: string;
+  status: string;
+  telegram_chat_id?: number | null;
+  telegram_chat_id_masked?: string | null;
+  telegram_display_name?: string | null;
+  telegram_username?: string | null;
+  confirmed_at?: string | null;
+  confirmed_by?: string | null;
+  revoked_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface TelegramRecipientListResponse {
+  items: TelegramRecipientItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  pages: number;
+  max_confirmed_recipients: number;
+}
+
+export interface TelegramDeliveryItem {
+  id: string;
+  tenant_id: string;
+  alert_id: string;
+  status: string;
+  message_kind: string;
+  channel: string;
+  alert_version: number;
+  recipient_chat_id?: number | null;
+  recipient_chat_id_masked?: string | null;
+  recipient_label?: string | null;
+  attempt_number: number;
+  max_attempts: number;
+  next_attempt_at?: string | null;
+  telegram_message_id?: number | null;
+  failure_code?: string | null;
+  failure_message?: string | null;
+  delivered_at?: string | null;
+  cancelled_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface TelegramDeliveryListResponse {
+  items: TelegramDeliveryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+}
 
 export const metaPublishingApi = {
   oauthStart: (params?: { tenant_id?: string }) =>
@@ -10032,6 +10360,16 @@ export interface PublishingQueueItem {
   block_reason_label?: string | null;
   queue_category: PublishingQueueCategory;
   is_due: boolean;
+  latest_attempt?: {
+    id: string;
+    status: string;
+    attempt_number?: number | null;
+    failure_code?: string | null;
+    retryable?: boolean | null;
+    next_retry_at?: string | null;
+    error?: string | null;
+    manual_retry_allowed?: boolean;
+  } | null;
 }
 
 export interface PublishingQueueResponse {
@@ -10048,6 +10386,16 @@ export interface PublishingQueueActionResponse {
   status?: string;
   safety_status?: string;
   block_reason?: string;
+}
+
+export interface PublishAttemptActionResponse {
+  ok: boolean;
+  message: string;
+  attempt_id: string;
+  content_id: string;
+  status?: string;
+  retry_blocked_reason?: string | null;
+  existing_post_id?: string | null;
 }
 
 // ─── Analytics API ──────────────────────────────────────────────────────────────
@@ -16295,6 +16643,21 @@ export interface ListeningIngestionRun {
   created_at: string;
 }
 
+export interface ListeningWebhookEvent {
+  id: string;
+  project_id: string;
+  source_id: string;
+  provider_object_ref: string;
+  provider_field?: string | null;
+  status: "pending" | "processing" | "succeeded" | "retry" | "dead_letter";
+  attempt_count: number;
+  next_attempt_at?: string | null;
+  last_error_code?: string | null;
+  payload_summary?: Record<string, unknown> | null;
+  received_at: string;
+  processed_at?: string | null;
+}
+
 export interface ListeningOverview {
   schema_version: string;
   coverage_notice: string;
@@ -16454,6 +16817,16 @@ export const listeningApi = {
     }),
   getRun: (runId: string) =>
     api.get<ListeningIngestionRun>(`/listening/ingestion-runs/${runId}`),
+  listWebhookEvents: (params?: { limit?: number }) =>
+    api.get<{ items: ListeningWebhookEvent[] }>("/listening/ops/webhook-events", { params }),
+  replayWebhookEvent: (eventId: string) =>
+    api.post<ListeningWebhookEvent>(`/listening/ops/webhook-events/${eventId}/replay`),
+  processWebhookEvents: (limit = 20) =>
+    api.post<{ items: Array<{ event_id: string; status: string; run_id?: string }> }>(
+      "/listening/ops/webhook-events/process",
+      undefined,
+      { params: { limit } },
+    ),
   importMentions: (
     projectId: string,
     body: { items: Record<string, unknown>[]; source_id?: string | null },

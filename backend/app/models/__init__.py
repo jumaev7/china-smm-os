@@ -3,7 +3,7 @@ from app.models.media import MediaFile
 from app.models.content import ContentItem
 from app.models.calendar import CalendarEntry
 from app.models.telegram_buffer import TelegramGroupBufferMessage, TelegramProcessedUpdate
-from app.models.telegram_ingestion import TelegramIngestionSettings, TelegramAlbumPending
+from app.models.telegram_ingestion import TelegramIngestionSettings, TelegramAlbumPending, TelegramWebhookEvent
 from app.models.content_plan import ContentPlan, ContentPlanItem
 from app.models.client_knowledge_base import ClientKnowledgeBaseEntry
 from app.models.operator_task import OperatorTask
@@ -38,6 +38,12 @@ from app.models.sales_playbook import SalesPlaybook, SalesPlaybookStep
 from app.models.operator_user import OperatorUser
 from app.models.publishing_account import PublishingAccount
 from app.models.publish_attempt import PublishAttempt
+from app.models.publish_operator_alert import PublishOperatorAlert
+from app.models.publish_alert_telegram import (
+    PublishAlertTelegramDelivery,
+    PublishAlertTelegramEnrollment,
+    TenantPublishAlertTelegramSettings,
+)
 from app.models.landing_page import LandingPage, LandingLead
 from app.models.ai_command import AiCommand, AiCommandAction
 from app.models.buyer_recommendation import BuyerRecommendation
@@ -183,6 +189,7 @@ from app.models.listening import (
     TenantMentionReview,
     TenantListeningInsightReview,
     TenantListeningIngestionRun,
+    TenantListeningWebhookEvent,
 )
 from app.models.advertising_decision_support import (
     TenantAdBudgetSimulation,
@@ -198,8 +205,10 @@ from app.models.advertising_decision_support import (
 __all__ = [
     "Client", "MediaFile", "ContentItem", "CalendarEntry",
     "TelegramGroupBufferMessage", "TelegramProcessedUpdate",
-    "TelegramIngestionSettings", "TelegramAlbumPending",
-    "PublishingAccount", "PublishAttempt",
+    "TelegramIngestionSettings", "TelegramAlbumPending", "TelegramWebhookEvent",
+    "PublishingAccount", "PublishAttempt", "PublishOperatorAlert",
+    "PublishAlertTelegramDelivery", "PublishAlertTelegramEnrollment",
+    "TenantPublishAlertTelegramSettings",
     "ContentPlan", "ContentPlanItem",
     "ClientKnowledgeBaseEntry",
     "ClientBrief",
@@ -383,4 +392,5 @@ __all__ = [
     "TenantMentionReview",
     "TenantListeningInsightReview",
     "TenantListeningIngestionRun",
+    "TenantListeningWebhookEvent",
 ]

@@ -1,0 +1,9 @@
+node_modules
+.next
+.env*
+!.env.example
+npm-debug.log*
+Dockerfile*
+docs
+media_storage
+tsconfig.tsbuildinfo

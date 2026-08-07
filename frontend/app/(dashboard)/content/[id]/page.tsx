@@ -946,18 +946,34 @@ export default function ContentDetailPage() {
                               "text-[10px] px-1.5 py-0.5 rounded-full font-medium",
                               attempt.status === "success"
                                 ? "bg-emerald-100 text-emerald-700"
-                                : "bg-red-100 text-red-700",
+                                : attempt.status === "retrying"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : attempt.status === "operator_review"
+                                    ? "bg-violet-100 text-violet-800"
+                                    : attempt.status === "in_progress"
+                                      ? "bg-sky-100 text-sky-800"
+                                      : "bg-red-100 text-red-700",
                             )}
                           >
                             {attempt.status}
+                            {attempt.attempt_number ? ` #${attempt.attempt_number}` : ""}
                           </span>
                         </div>
                         {attempt.account_name && (
                           <p className="text-gray-500 mt-0.5">{attempt.account_name}</p>
                         )}
-                        {attempt.status === "success" && attempt.platform_post_id && (
+                        {attempt.failure_code && (
+                          <p className="text-gray-500 mt-0.5">{attempt.failure_code}</p>
+                        )}
+                        {attempt.next_retry_at && (
+                          <p className="text-amber-700 mt-0.5">
+                            Next retry {formatScheduledLocal(attempt.next_retry_at)}
+                          </p>
+                        )}
+                        {(attempt.status === "success" || attempt.external_post_id) &&
+                          (attempt.platform_post_id || attempt.external_post_id) && (
                           <p className="text-gray-500 mt-0.5 font-mono text-[10px]">
-                            Post ID: {attempt.platform_post_id}
+                            Post ID: {attempt.external_post_id || attempt.platform_post_id}
                           </p>
                         )}
                         {attempt.error && (
@@ -967,16 +983,46 @@ export default function ContentDetailPage() {
                           <p className="text-gray-400">
                             {format(parseISO(attempt.created_at), "MMM d, HH:mm")}
                           </p>
-                          {attempt.status === "success" && attempt.post_url && (
-                            <a
-                              href={attempt.post_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] font-medium text-sky-600 hover:text-sky-800 underline shrink-0"
-                            >
-                              Open post
-                            </a>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {attempt.manual_retry_allowed && (
+                              <button
+                                type="button"
+                                className="text-[10px] font-medium text-brand-600 hover:text-brand-800"
+                                onClick={async () => {
+                                  if (
+                                    attempt.status === "operator_review" &&
+                                    !confirm(
+                                      "Operator review required. Confirm no live post exists before retrying.",
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                  try {
+                                    const res = await publishingApi.retryAttempt(attempt.id);
+                                    if (res.data.ok) toast.success(res.data.message);
+                                    else toast.error(res.data.message || "Retry blocked");
+                                    qc.invalidateQueries({ queryKey: ["publish-history", id] });
+                                    qc.invalidateQueries({ queryKey: ["content", id] });
+                                  } catch {
+                                    toast.error("Retry failed");
+                                  }
+                                }}
+                              >
+                                Retry
+                              </button>
+                            )}
+                            {attempt.status === "success" &&
+                              (attempt.post_url || attempt.external_post_url) && (
+                              <a
+                                href={attempt.post_url || attempt.external_post_url || "#"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[10px] font-medium text-sky-600 hover:text-sky-800 underline shrink-0"
+                              >
+                                Open post
+                              </a>
+                            )}
+                          </div>
                         </div>
                       </li>
                     ))}

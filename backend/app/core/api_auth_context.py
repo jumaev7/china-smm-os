@@ -33,6 +33,7 @@ PUBLIC_API_PREFIXES: tuple[str, ...] = (
     "/api/v1/telegram/webhook",
     "/api/v1/publishing/meta/oauth/callback",
     "/api/webhooks/whatsapp",
+    "/api/webhooks/meta-listening",
     "/api/v1/system/health",
     "/public/",
 )

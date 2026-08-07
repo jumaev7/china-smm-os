@@ -552,7 +552,9 @@ class ContentService:
             else None
         )
         d["media_file_type"] = item.media_file.file_type if item.media_file else None
-        if item.media_file:
+        # Subtitle, dubbing, and final-render derivatives only exist for videos.
+        # Avoid dozens of synchronous S3 HEAD requests while serializing images.
+        if item.media_file and item.media_file.file_type == "video":
             sp = item.media_file.storage_path
             sub_path = subtitle_path_for(sp)
             d["subtitle_url"] = storage.get_url(sub_path) if storage.exists(sub_path) else None

@@ -32,7 +32,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
-LISTENING_SCHEMA_VERSION = "1.2.0"
+LISTENING_SCHEMA_VERSION = "1.3.0"
 DEDUPE_VERSION = "listening_dedupe_v1"
 MATCHER_VERSION = "listening_matcher_v1"
 NORMALIZATION_VERSION = "listening_norm_v1"
@@ -106,6 +106,10 @@ INGESTION_TRIGGER_TYPES = frozenset({
     "import",
     "fixture",
     "sync",
+    "webhook",
+})
+WEBHOOK_EVENT_STATUSES = frozenset({
+    "pending", "processing", "succeeded", "retry", "dead_letter",
 })
 FRESHNESS_STATUSES = frozenset({
     "fresh",
@@ -515,6 +519,42 @@ class TenantListeningIngestionRun(Base):
     )
 
 
+class TenantListeningWebhookEvent(Base):
+    """Signed notification routed to one tenant-owned listening source."""
+
+    __tablename__ = "tenant_listening_webhook_events"
+    __table_args__ = (
+        UniqueConstraint("source_id", "event_key", name="uq_listening_webhook_source_event"),
+        Index("ix_listening_webhook_events_status_due", "status", "next_attempt_at"),
+        Index("ix_listening_webhook_events_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False,
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenant_listening_projects.id", ondelete="CASCADE"), nullable=False,
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenant_listening_sources.id", ondelete="CASCADE"), nullable=False,
+    )
+    event_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider_object_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_field: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, server_default="pending")
+    attempt_count: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0")
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    payload_summary_json: Mapped[dict | None] = mapped_column(JSONB(), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False,
+    )
+
+
 __all__ = [
     "LISTENING_SCHEMA_VERSION",
     "DEDUPE_VERSION",
@@ -531,6 +571,7 @@ __all__ = [
     "MATCH_TYPES",
     "INGESTION_RUN_STATUSES",
     "INGESTION_TRIGGER_TYPES",
+    "WEBHOOK_EVENT_STATUSES",
     "FRESHNESS_STATUSES",
     "TenantListeningProject",
     "TenantListeningSubject",
@@ -541,5 +582,6 @@ __all__ = [
     "TenantMentionReview",
     "TenantListeningInsightReview",
     "TenantListeningIngestionRun",
+    "TenantListeningWebhookEvent",
     "INSIGHT_REVIEW_STATES",
 ]

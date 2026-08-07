@@ -1,0 +1,192 @@
+name: china-smm-os-production
+
+x-backend-common: &backend-common
+  image: china-smm-os-production-backend:latest
+  build:
+    context: ./backend
+  restart: unless-stopped
+  environment: &backend-environment
+    APP_ENV: production
+    DEMO_MODE: "false"
+    DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env.production}
+    SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env.production}
+    ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:?Set ADMIN_SECRET_KEY in .env.production}
+    TENANT_SECRET_KEY: ${TENANT_SECRET_KEY:?Set TENANT_SECRET_KEY in .env.production}
+    PUBLIC_APP_URL: https://app.chinasmmos.com
+    CORS_ORIGINS: https://app.chinasmmos.com,https://chinasmmos.com
+    MEDIA_BASE_URL: https://api.chinasmmos.com
+    USE_S3: "true"
+    S3_BUCKET: ${S3_BUCKET:?Set S3_BUCKET in .env.production}
+    S3_ENDPOINT_URL: ${S3_ENDPOINT_URL:?Set S3_ENDPOINT_URL in .env.production}
+    S3_PUBLIC_BASE_URL: https://media.chinasmmos.com
+    S3_ACCESS_KEY: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env.production}
+    S3_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env.production}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env.production}
+    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:?Set TELEGRAM_BOT_TOKEN in .env.production}
+    TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID:?Set TELEGRAM_ADMIN_ID in .env.production}
+    TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:?Set TELEGRAM_WEBHOOK_SECRET in .env.production}
+    META_APP_ID: ${META_APP_ID:?Set META_APP_ID in .env.production}
+    META_APP_SECRET: ${META_APP_SECRET:?Set META_APP_SECRET in .env.production}
+    META_OAUTH_REDIRECT_URI: https://api.chinasmmos.com/api/v1/publishing/meta/oauth/callback
+    LISTENING_META_WEBHOOK_VERIFY_TOKEN: ${LISTENING_META_WEBHOOK_VERIFY_TOKEN:?Set LISTENING_META_WEBHOOK_VERIFY_TOKEN in .env.production}
+    ENABLE_FACEBOOK_LIVE_SMOKE: "false"
+    ENABLE_INSTAGRAM_LIVE_SMOKE: "false"
+    ADMIN_BOOTSTRAP_EMAIL: ""
+    ADMIN_BOOTSTRAP_PASSWORD: ""
+    HEALTH_SNAPSHOT_ENABLED: "false"
+    PUBLISH_ALERT_REPEATED_FAILURE_THRESHOLD: ${PUBLISH_ALERT_REPEATED_FAILURE_THRESHOLD:-3}
+    PUBLISH_ALERT_REPEATED_FAILURE_WINDOW_MINUTES: ${PUBLISH_ALERT_REPEATED_FAILURE_WINDOW_MINUTES:-60}
+    PUBLISH_ALERT_TELEGRAM_ENABLED: ${PUBLISH_ALERT_TELEGRAM_ENABLED:-false}
+    PUBLISH_ALERT_EMAIL_ENABLED: ${PUBLISH_ALERT_EMAIL_ENABLED:-false}
+    PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: ${PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS:-300}
+    PUBLISH_ALERT_TELEGRAM_WORKER_ENABLED: ${PUBLISH_ALERT_TELEGRAM_WORKER_ENABLED:-false}
+    PUBLISH_ALERT_TELEGRAM_WORKER_POLL_SECONDS: ${PUBLISH_ALERT_TELEGRAM_WORKER_POLL_SECONDS:-5}
+    PUBLISH_ALERT_TELEGRAM_WORKER_BATCH_SIZE: ${PUBLISH_ALERT_TELEGRAM_WORKER_BATCH_SIZE:-10}
+    PUBLISH_ALERT_TELEGRAM_MAX_ATTEMPTS: ${PUBLISH_ALERT_TELEGRAM_MAX_ATTEMPTS:-8}
+    PUBLISH_ALERT_TELEGRAM_RETRY_BASE_SECONDS: ${PUBLISH_ALERT_TELEGRAM_RETRY_BASE_SECONDS:-30}
+    PUBLISH_ALERT_TELEGRAM_RETRY_MAX_SECONDS: ${PUBLISH_ALERT_TELEGRAM_RETRY_MAX_SECONDS:-3600}
+    PUBLISH_ALERT_TELEGRAM_LEASE_SECONDS: ${PUBLISH_ALERT_TELEGRAM_LEASE_SECONDS:-120}
+    PUBLISH_ALERT_TELEGRAM_RECOVERY_ENABLED: ${PUBLISH_ALERT_TELEGRAM_RECOVERY_ENABLED:-false}
+    PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED: ${PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED:-false}
+    PUBLISH_ALERT_TELEGRAM_ENROLLMENT_TOKEN_TTL_SECONDS: ${PUBLISH_ALERT_TELEGRAM_ENROLLMENT_TOKEN_TTL_SECONDS:-600}
+    PUBLISH_ALERT_TELEGRAM_ENROLLMENT_POLL_SECONDS: ${PUBLISH_ALERT_TELEGRAM_ENROLLMENT_POLL_SECONDS:-3}
+    PUBLISH_ALERT_TELEGRAM_MAX_CONFIRMED_RECIPIENTS: ${PUBLISH_ALERT_TELEGRAM_MAX_CONFIRMED_RECIPIENTS:-1}
+    TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+    PUBLISH_ALERT_APP_BASE_URL: ${PUBLISH_ALERT_APP_BASE_URL:-https://app.chinasmmos.com}
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - app-internal
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-china_smm_os}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    command: postgres -c max_connections=200
+    volumes:
+      - production_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - app-internal
+
+  migrate:
+    <<: *backend-common
+    restart: "no"
+    profiles: ["tools"]
+    command: alembic upgrade head
+
+  backend:
+    <<: *backend-common
+    expose:
+      - "8000"
+    environment:
+      <<: *backend-environment
+      SCHEDULED_PUBLISH_ENABLED: "true"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  automation-worker:
+    <<: *backend-common
+    environment:
+      <<: *backend-environment
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "true"
+      AUTOMATION_SCHEDULER_POLL_SECONDS: "2"
+      AUTOMATION_SCHEDULER_BATCH_SIZE: "10"
+      AUTOMATION_SCHEDULER_LEASE_SECONDS: "300"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+    command: python scripts/run_automation_worker.py
+
+  telegram-webhook-worker:
+    <<: *backend-common
+    environment:
+      <<: *backend-environment
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      TELEGRAM_WEBHOOK_WORKER_POLL_SECONDS: "0.5"
+      TELEGRAM_WEBHOOK_WORKER_BATCH_SIZE: "5"
+      TELEGRAM_WEBHOOK_WORKER_LEASE_SECONDS: "180"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+    command: python scripts/run_telegram_webhook_worker.py
+
+  listening-worker:
+    <<: *backend-common
+    environment:
+      <<: *backend-environment
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      LISTENING_WORKER_ENABLED: "true"
+      LISTENING_WORKER_POLL_SECONDS: "30"
+      LISTENING_WORKER_BATCH_SIZE: "20"
+      DB_POOL_SIZE: "5"
+      DB_MAX_OVERFLOW: "5"
+    command: python scripts/run_listening_worker.py
+
+  # Idle when PUBLISH_ALERT_TELEGRAM_WORKER_ENABLED=false (default). Does not send.
+  publish-alert-telegram-worker:
+    <<: *backend-common
+    environment:
+      <<: *backend-environment
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
+      PUBLISH_ALERT_TELEGRAM_WORKER_ENABLED: ${PUBLISH_ALERT_TELEGRAM_WORKER_ENABLED:-false}
+      DB_POOL_SIZE: "3"
+      DB_MAX_OVERFLOW: "2"
+    command: python scripts/run_publish_alert_telegram_worker.py
+
+  frontend:
+    build:
+      context: ./frontend
+      target: runner
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.chinasmmos.com/api/v1}
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.chinasmmos.com/api/v1}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app-internal
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env.production}
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - app-internal
+
+networks:
+  app-internal:
+    driver: bridge
+
+volumes:
+  production_pgdata:
+    name: china-smm-os-production-pgdata

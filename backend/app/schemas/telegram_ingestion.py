@@ -12,6 +12,7 @@ class TelegramIngestionSettingsResponse(BaseModel):
     auto_classification: bool = True
     auto_enrichment: bool = True
     quality_checks_enabled: bool = True
+    auto_publishing_review: bool = True
     updated_at: Optional[str] = None
     env_bot_configured: bool = False
 
@@ -25,6 +26,7 @@ class TelegramIngestionSettingsUpdate(BaseModel):
     auto_classification: Optional[bool] = None
     auto_enrichment: Optional[bool] = None
     quality_checks_enabled: Optional[bool] = None
+    auto_publishing_review: Optional[bool] = None
 
 
 class ContentSuggestionCaptions(BaseModel):

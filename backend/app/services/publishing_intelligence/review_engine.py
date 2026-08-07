@@ -276,6 +276,7 @@ class PublishingReviewEngine:
         content_id: UUID,
         *,
         created_by: UUID | None = None,
+        emit_signals: bool = True,
     ) -> ReviewEngineResult:
         item = await PublishingReviewEngine._load_content_for_tenant(db, tenant_id, content_id)
         ctx = PublishingReviewEngine.build_context(item, tenant_id)
@@ -386,15 +387,16 @@ class PublishingReviewEngine:
             )
         await db.flush()
 
-        await PublishingReviewEngine._emit_intelligence_signals(
-            db,
-            tenant_id=tenant_id,
-            review=review,
-            platform_reviews=platform_reviews,
-            warning_count=warning_count,
-            failure_count=failure_count,
-            critical_count=critical_count,
-        )
+        if emit_signals:
+            await PublishingReviewEngine._emit_intelligence_signals(
+                db,
+                tenant_id=tenant_id,
+                review=review,
+                platform_reviews=platform_reviews,
+                warning_count=warning_count,
+                failure_count=failure_count,
+                critical_count=critical_count,
+            )
 
         return PublishingReviewEngine._to_result(
             review,

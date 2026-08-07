@@ -42,6 +42,7 @@ class ClientBrandFields(BaseModel):
     telegram_group_title: Optional[str] = Field(None, max_length=255)
     telegram_workflow_mode: str = Field(default="auto_create_from_media")
     operator_auto_draft_enabled: bool = Field(default=False)
+    auto_publish_after_client_approval: bool = Field(default=False)
     telegram_publish_chat_id: Optional[str] = Field(None, max_length=255)
     telegram_publish_title: Optional[str] = Field(None, max_length=255)
     telegram_publish_type: Optional[str] = Field(None, max_length=20)
@@ -80,6 +81,7 @@ class ClientCreate(BaseModel):
     telegram_group_title: Optional[str] = Field(None, max_length=255)
     telegram_workflow_mode: str = Field(default="auto_create_from_media")
     operator_auto_draft_enabled: bool = Field(default=False)
+    auto_publish_after_client_approval: bool = Field(default=False)
     telegram_publish_chat_id: Optional[str] = Field(None, max_length=255)
     telegram_publish_title: Optional[str] = Field(None, max_length=255)
     telegram_publish_type: Optional[str] = Field(None, max_length=20)
@@ -119,6 +121,7 @@ class ClientUpdate(BaseModel):
     telegram_group_title: Optional[str] = Field(None, max_length=255)
     telegram_workflow_mode: Optional[str] = None
     operator_auto_draft_enabled: Optional[bool] = None
+    auto_publish_after_client_approval: Optional[bool] = None
     telegram_publish_chat_id: Optional[str] = Field(None, max_length=255)
     telegram_publish_title: Optional[str] = Field(None, max_length=255)
     telegram_publish_type: Optional[str] = Field(None, max_length=20)
@@ -159,6 +162,7 @@ class ClientResponse(BaseModel):
     telegram_group_title: Optional[str] = None
     telegram_workflow_mode: str = "auto_create_from_media"
     operator_auto_draft_enabled: bool = False
+    auto_publish_after_client_approval: bool = False
     telegram_publish_chat_id: Optional[str] = None
     telegram_publish_title: Optional[str] = None
     telegram_publish_type: Optional[str] = None

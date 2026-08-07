@@ -18,6 +18,7 @@ from app.api.public.review import router as public_review_router
 from app.api.public.redirect import router as public_redirect_router
 from app.api.public.landing import router as public_landing_router
 from app.api.webhooks.whatsapp import router as whatsapp_webhook_router
+from app.api.webhooks.meta_listening import router as meta_listening_webhook_router
 from app.services.scheduled_publish_service import ScheduledPublishService
 from app.services.health_snapshot_service import HealthSnapshotService
 from app.services.schema_guard import SchemaGuard
@@ -26,6 +27,9 @@ from app.services.event_handlers.registration import register_event_bus_subscrib
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+# httpx includes full query strings in INFO logs; Meta tokens are query parameters.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def _log_database_target() -> None:
@@ -112,6 +116,7 @@ if not settings.USE_S3:
 # API routes
 app.include_router(api_router)
 app.include_router(whatsapp_webhook_router, prefix="/api/webhooks")
+app.include_router(meta_listening_webhook_router, prefix="/api/webhooks")
 app.include_router(public_review_router, prefix="/public")
 app.include_router(public_landing_router, prefix="/public")
 app.include_router(public_redirect_router)

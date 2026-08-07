@@ -37,6 +37,40 @@ ALBUM_ASSEMBLY_DELAY_SEC = 2.0
 _album_tasks: dict[str, asyncio.Task] = {}
 
 
+def _short_caption(text: str, limit: int = 150) -> str:
+    """Shorten generated copy at a word boundary without breaking Unicode words."""
+    clean = " ".join(text.split())
+    if len(clean) <= limit:
+        return clean
+    target = max(1, limit - 1)
+    candidate = clean[: target + 1]
+    boundary = candidate.rfind(" ")
+    if boundary > max(0, target // 2):
+        candidate = candidate[:boundary]
+    else:
+        candidate = candidate[:target]
+    return candidate.rstrip(" ,;:-") + "…"
+
+
+def apply_suggestions_to_content(content_item: ContentItem, suggestions: dict[str, Any]) -> None:
+    """Materialize generated suggestions into the fields used by review and publishing."""
+    if suggestions.get("target_platforms"):
+        content_item.platforms = list(suggestions["target_platforms"])
+    captions = suggestions.get("captions") or {}
+    for lang in ("ru", "uz", "en"):
+        generated = str(captions.get(lang) or "").strip()
+        if not generated:
+            continue
+        short_field = f"caption_short_{lang}"
+        long_field = f"caption_long_{lang}"
+        if not getattr(content_item, short_field, None):
+            setattr(content_item, short_field, _short_caption(generated))
+        if not getattr(content_item, long_field, None):
+            setattr(content_item, long_field, generated)
+    if not (content_item.hashtags or "").strip() and suggestions.get("hashtags"):
+        content_item.hashtags = str(suggestions["hashtags"]).strip()
+
+
 def _group_id_variants(chat_id: int | str) -> list[str]:
     primary = str(chat_id)
     variants = [primary]
@@ -111,6 +145,7 @@ class TelegramIngestionService:
             "auto_classification": row.auto_classification,
             "auto_enrichment": row.auto_enrichment,
             "quality_checks_enabled": row.quality_checks_enabled,
+            "auto_publishing_review": row.auto_publishing_review,
             "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             "env_bot_configured": bool(settings.TELEGRAM_BOT_TOKEN),
         }
@@ -296,6 +331,7 @@ class TelegramIngestionService:
             ai_class = await classify_with_ai(
                 caption=original_caption,
                 internal_notes=content_item.internal_notes,
+                tenant_id=str(client.tenant_id) if client.tenant_id else None,
             )
             classification_result = ai_class or classify_content(
                 caption=original_caption,
@@ -323,8 +359,7 @@ class TelegramIngestionService:
                 target_languages=target_langs,
             )
             content_item.suggestions_json = suggestions_to_json(suggestions)
-            if suggestions.get("target_platforms"):
-                content_item.platforms = list(suggestions["target_platforms"])
+            apply_suggestions_to_content(content_item, suggestions)
 
         default_status = settings_row.default_status or "needs_review"
         if not content_item.status or content_item.status == "draft":
@@ -347,11 +382,36 @@ class TelegramIngestionService:
             content_item.quality_warnings_json = warnings_to_json(warnings)
 
         await db.flush()
+        publishing_review: dict[str, Any] | None = None
+        if settings_row.auto_publishing_review and client.tenant_id:
+            try:
+                from app.services.publishing_intelligence.review_engine import PublishingReviewEngine
+
+                review = await PublishingReviewEngine.create_review(
+                    db,
+                    client.tenant_id,
+                    content_item.id,
+                    emit_signals=False,
+                )
+                publishing_review = {
+                    "review_id": str(review.review_id),
+                    "overall_score": review.overall_score,
+                    "critical_issue_count": int(review.summary.get("critical_issue_count", 0)),
+                    "warning_count": int(review.summary.get("warning_count", 0)),
+                    "publish_readiness": review.publish_readiness,
+                }
+            except Exception as exc:
+                logger.exception(
+                    "[Telegram Ingestion] automatic publishing review failed content=%s: %s",
+                    content_item.id,
+                    exc,
+                )
         return {
             "classification": classification_result,
             "suggestions": suggestions,
             "warnings": warnings,
             "status": content_item.status,
+            "publishing_review": publishing_review,
         }
 
     @staticmethod
@@ -381,6 +441,7 @@ class TelegramIngestionService:
         caption_detected: bool,
         warnings: list[dict[str, Any]],
         dashboard_url: str | None = None,
+        publishing_review_score: int | None = None,
     ) -> str:
         status_label = TelegramIngestionService.status_display_label(content_item.status)
         has_warnings = bool(warnings)
@@ -392,6 +453,8 @@ class TelegramIngestionService:
             lines.append("Warnings:")
             for w in warnings[:6]:
                 lines.append(f"• {w.get('message', w.get('id', 'issue'))}")
+            if publishing_review_score is not None:
+                lines.append(f"Publishing Score: {publishing_review_score}/100")
             if dashboard_url:
                 lines.append(f"Open in dashboard: {dashboard_url}")
             return "\n".join(lines)
@@ -399,6 +462,8 @@ class TelegramIngestionService:
         lines = ["Content received ✅", f"Status: {status_label}"]
         lines.append(f"Media: {media_count} file{'s' if media_count != 1 else ''}")
         lines.append(f"Caption: {'detected' if caption_detected else 'missing'}")
+        if publishing_review_score is not None:
+            lines.append(f"Publishing Score: {publishing_review_score}/100")
         if dashboard_url:
             lines.append(f"Open in dashboard: {dashboard_url}")
         return "\n".join(lines)

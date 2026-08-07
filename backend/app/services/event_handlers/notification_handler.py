@@ -38,6 +38,7 @@ _ACTION_URL_BY_RESOURCE = {
     "buyer": "/buyers",
     "integration": "/integrations",
     "publishing": "/publishing",
+    "publish_alert": "/publishing/alerts",
 }
 
 

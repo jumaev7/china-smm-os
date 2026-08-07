@@ -77,6 +77,61 @@ class ScheduledPublishService:
         for content_id in due_ids:
             await cls._publish_due_item(content_id, now)
 
+        await cls._process_due_retries()
+
+    @classmethod
+    async def _process_due_retries(cls) -> None:
+        """Re-run publish for content with due retrying attempts."""
+        from app.services.publish_attempt_ops_service import PublishAttemptOpsService
+
+        async with AsyncSessionLocal() as db:
+            content_ids = await PublishAttemptOpsService.due_retry_content_ids(db, limit=MAX_BATCH)
+
+        if not content_ids:
+            return
+        logger.info("[Scheduler Publish] due retries: %s", len(content_ids))
+
+        for content_id in content_ids:
+            async with AsyncSessionLocal() as db:
+                item = await PublishService._get_content(db, content_id)
+                if item.status == "publishing":
+                    logger.info(
+                        "[Scheduler Publish] retry skipped: content=%s reason=already publishing",
+                        content_id,
+                    )
+                    continue
+                if item.status not in ("failed", "partial_failed", "approved", "scheduled"):
+                    logger.info(
+                        "[Scheduler Publish] retry skipped: content=%s status=%s",
+                        content_id,
+                        item.status,
+                    )
+                    continue
+                try:
+                    result = await PublishService.publish_content(
+                        db,
+                        content_id,
+                        request=PublishContentRequest(test=False, mode="manual_publish"),
+                        from_scheduler=False,
+                    )
+                    logger.info(
+                        "[Scheduler Publish] retry finished: content=%s success=%s status=%s",
+                        content_id,
+                        result.get("all_success"),
+                        result.get("status"),
+                    )
+                except HTTPException as exc:
+                    logger.info(
+                        "[Scheduler Publish] retry blocked: content=%s error=%s",
+                        content_id,
+                        exc.detail,
+                    )
+                except Exception:
+                    logger.exception(
+                        "[Scheduler Publish] retry failed: content=%s",
+                        content_id,
+                    )
+
     @staticmethod
     async def _find_due_content_ids(now: datetime) -> list[UUID]:
         async with AsyncSessionLocal() as db:

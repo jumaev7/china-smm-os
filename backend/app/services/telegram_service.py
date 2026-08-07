@@ -104,7 +104,16 @@ def _is_allowed_sender(telegram_user_id: int) -> bool:
 
 
 def _is_group_chat(chat: dict) -> bool:
-    return chat.get("type") in ("group", "supergroup")
+    # Telegram publishes posts from broadcast channels as ``channel_post`` and
+    # identifies the sender as the channel itself.  Treat channels like linked
+    # group sources so they use the tenant/group mapping instead of the private
+    # sender allow-list.
+    return chat.get("type") in ("group", "supergroup", "channel")
+
+
+def _strip_post_command(text: str) -> str:
+    """Remove the optional Telegram ingestion command from publishable copy."""
+    return re.sub(r"^/post(?:@[A-Za-z0-9_]+)?(?:\s+|$)", "", text, count=1).strip()
 
 
 def _detect_update_type(update: dict) -> str:
@@ -149,13 +158,24 @@ def _extract_debug_context(update: dict) -> dict:
 
 
 def log_telegram_debug_update(update: dict) -> None:
+    from app.services.publish_alert_telegram_enrollment_service import redact_start_token_for_logs
+    from app.utils.operator_telegram_chat import mask_chat_id
+
     ctx = _extract_debug_context(update)
+    chat_id = ctx["chat_id"]
+    from_id = ctx["from_id"]
     logger.info("[Telegram Debug] update_type: %s", ctx["update_type"])
-    logger.info("[Telegram Debug] chat_id: %s", ctx["chat_id"])
+    logger.info(
+        "[Telegram Debug] chat_id: %s",
+        mask_chat_id(int(chat_id)) if isinstance(chat_id, int) else chat_id,
+    )
     logger.info("[Telegram Debug] chat_type: %s", ctx["chat_type"])
     logger.info("[Telegram Debug] chat_title: %s", ctx["chat_title"])
-    logger.info("[Telegram Debug] from_id: %s", ctx["from_id"])
-    logger.info("[Telegram Debug] text: %s", ctx["text"])
+    logger.info(
+        "[Telegram Debug] from_id: %s",
+        mask_chat_id(int(from_id)) if isinstance(from_id, int) else from_id,
+    )
+    logger.info("[Telegram Debug] text: %s", redact_start_token_for_logs(str(ctx["text"] or "")))
 
 
 def _is_chat_id_command(message: dict) -> bool:
@@ -184,6 +204,7 @@ async def _send_ingestion_feedback(
     media_count: int,
     caption_detected: bool,
     warnings: list[dict],
+    publishing_review_score: int | None = None,
     reply_to_message_id: int | None = None,
 ) -> None:
     dashboard_url = TelegramIngestionService.build_dashboard_url(content_item.id)
@@ -193,6 +214,7 @@ async def _send_ingestion_feedback(
         caption_detected=caption_detected,
         warnings=warnings,
         dashboard_url=dashboard_url,
+        publishing_review_score=publishing_review_score,
     )
     await _send_telegram_message(chat_id, text, reply_to_message_id=reply_to_message_id)
 
@@ -267,6 +289,7 @@ async def _assemble_album_content(
         media_count=len(refs),
         caption_detected=bool(caption.strip()),
         warnings=pipeline.get("warnings") or [],
+        publishing_review_score=(pipeline.get("publishing_review") or {}).get("overall_score"),
         reply_to_message_id=parts[-1].message_id,
     )
     return {
@@ -274,6 +297,7 @@ async def _assemble_album_content(
         "album": True,
         "media_count": len(refs),
         "status": content_item.status,
+        "publishing_review": pipeline.get("publishing_review"),
     }
 
 
@@ -597,6 +621,10 @@ async def _create_content_from_telegram_message(
         raise RuntimeError("admin_controlled_buffer blocks immediate ContentItem creation")
 
     caption: str = message.get("caption", "") or message.get("text", "") or ""
+    # /post is an operator command, not customer-facing copy.  Channels do not
+    # need the command for bot privacy, but accepting and stripping it keeps the
+    # workflow consistent with groups.
+    caption = _strip_post_command(caption)
     photo_list = message.get("photo")
     video = message.get("video")
     video_note = message.get("video_note")
@@ -800,6 +828,7 @@ async def _create_content_from_telegram_message(
         "status": content_item.status,
         "classification": pipeline.get("classification"),
         "warnings": pipeline.get("warnings") or [],
+        "publishing_review": pipeline.get("publishing_review"),
         "content_item": content_item,
     }
 
@@ -1145,6 +1174,7 @@ async def _process_group_message_auto(
                 media_count=max(media_count, 1 if result.get("has_media") else 0),
                 caption_detected=bool(result.get("caption")),
                 warnings=result.get("warnings") or [],
+                publishing_review_score=(result.get("publishing_review") or {}).get("overall_score"),
                 reply_to_message_id=message.get("message_id"),
             )
         else:
@@ -1171,6 +1201,7 @@ async def _process_group_message_auto(
                     media_count=0,
                     caption_detected=True,
                     warnings=result.get("warnings") or [],
+                    publishing_review_score=(result.get("publishing_review") or {}).get("overall_score"),
                     reply_to_message_id=message.get("message_id"),
                 )
             _log_group_intent(role, "CLIENT_CONTENT", "create_text_content", result.get("content_id"))
@@ -1263,7 +1294,12 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
             logger.error("Telegram: callback_query failed — %s", exc, exc_info=True)
             return {"callback_error": str(exc)[:200]}
 
-    message = update.get("message") or update.get("channel_post")
+    message = (
+        update.get("message")
+        or update.get("edited_message")
+        or update.get("channel_post")
+        or update.get("edited_channel_post")
+    )
     if not message:
         logger.debug("Telegram: update has no message — skipping")
         return None
@@ -1296,6 +1332,28 @@ async def process_update(db: AsyncSession, update: dict) -> dict | None:
             except Exception as exc:
                 await db.rollback()
                 logger.error("Telegram: client feedback failed — %s", exc, exc_info=True)
+
+    # Operator-alert recipient enrollment: private `/start <token>` only.
+    # Must run before /chat_id and content ingestion so tokens never become content.
+    try:
+        from app.services.publish_alert_telegram_enrollment_service import (
+            PublishAlertTelegramEnrollmentService,
+            parse_enrollment_start_payload,
+        )
+
+        if parse_enrollment_start_payload(feedback_text):
+            enrollment_result = await PublishAlertTelegramEnrollmentService.try_handle_start_message(
+                db,
+                update_id=update_id,
+                message=message,
+            )
+            if enrollment_result is not None:
+                await db.commit()
+                return enrollment_result
+    except Exception as exc:
+        await db.rollback()
+        logger.error("Telegram: enrollment handling failed — %s", type(exc).__name__, exc_info=True)
+        return {"enrollment": True, "ok": False, "reason": "handler_error"}
 
     if _is_chat_id_command(message):
         await _reply_chat_id_info(chat_id, chat)

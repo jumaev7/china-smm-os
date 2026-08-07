@@ -2,7 +2,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,6 +29,7 @@ class TelegramIngestionSettings(Base):
     auto_classification: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     auto_enrichment: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     quality_checks_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    auto_publishing_review: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
     )
@@ -57,4 +58,24 @@ class TelegramAlbumPending(Base):
     refs_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(),
+    )
+
+
+class TelegramWebhookEvent(Base):
+    """Durable inbox for fast Telegram webhook acknowledgement and async work."""
+    __tablename__ = "telegram_webhook_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    update_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True, index=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    available_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    lease_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(),
     )

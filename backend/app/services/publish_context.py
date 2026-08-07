@@ -21,6 +21,7 @@ class PublishContext:
     account_status: str = "mock"
     selected_media: list[dict] = field(default_factory=list)
     facebook_page_id: str | None = None
+    instagram_business_account_id: str | None = None
     page_access_token: str | None = None
     permissions: list[str] = field(default_factory=list)
     token_expired: bool = False

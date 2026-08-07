@@ -22,8 +22,9 @@ from app.core.admin_access import require_admin_permission
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.admin_rbac_service import CurrentAdminUser
-from app.services.telegram_service import process_update, log_telegram_debug_update
+from app.services.telegram_service import log_telegram_debug_update
 from app.services.telegram_ingestion_service import TelegramIngestionService
+from app.services.telegram_webhook_queue_service import TelegramWebhookQueueService
 from app.schemas.telegram_ingestion import (
     TelegramIngestionSettingsResponse,
     TelegramIngestionSettingsUpdate,
@@ -78,17 +79,21 @@ async def telegram_webhook(
     logger.debug("Telegram update received: update_id=%s", update.get("update_id"))
 
     try:
-        result = await process_update(db, update)
-    except Exception as exc:
-        # Log but never crash — Telegram must get 200 or it retries forever
-        logger.error("Telegram: unhandled error processing update — %s", exc, exc_info=True)
-        return {"ok": True, "error": "internal error, draft may not have been created"}
+        event_id, created = await TelegramWebhookQueueService.enqueue(db, update)
+        await db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        logger.exception("Telegram webhook queue failed")
+        # Telegram should retry because durable acceptance was not established.
+        raise HTTPException(status_code=503, detail="Webhook queue unavailable")
 
-    if result:
-        logger.info("Telegram: processed → %s", result)
-        return {"ok": True, "created": result}
-
-    return {"ok": True, "skipped": True}
+    logger.info(
+        "Telegram webhook queued: update_id=%s event_id=%s created=%s",
+        update.get("update_id"), event_id, created,
+    )
+    return {"ok": True, "queued": created, "duplicate": not created}
 
 
 @router.get("/status")

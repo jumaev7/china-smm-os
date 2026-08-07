@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.services.meta_graph_client import (
     meta_oauth_configured,
     missing_facebook_publish_permissions,
+    missing_instagram_publish_permissions,
     token_is_expired,
 )
 
@@ -36,12 +37,14 @@ DESTINATION_TRUTH: dict[str, dict[str, Any]] = {
         ],
     },
     "instagram": {
-        "global_status": "mock",
+        "global_status": "live",
         "adapter": "instagram_publisher",
-        "api": "Mock publish only — Instagram Content Publishing API not implemented yet",
+        "api": "Meta Graph API (/{ig-user-id}/media, /{ig-user-id}/media_publish)",
         "blockers_for_real": [
-            "Graph API Instagram content publish not implemented in this milestone",
-            "Publisher always sets mock=True until live adapter ships",
+            "instagram_content_publish permission required",
+            "Instagram Business ID and non-expired Page access token required",
+            "ENABLE_INSTAGRAM_LIVE_SMOKE=true required to create real posts",
+            "Single-image posts require a publicly reachable HTTPS media URL",
         ],
         "connection": "Meta OAuth — Facebook Page + Instagram Business account",
     },
@@ -84,6 +87,10 @@ def facebook_live_smoke_enabled() -> bool:
     return bool(settings.ENABLE_FACEBOOK_LIVE_SMOKE)
 
 
+def instagram_live_smoke_enabled() -> bool:
+    return bool(settings.ENABLE_INSTAGRAM_LIVE_SMOKE)
+
+
 def scheduled_worker_enabled() -> bool:
     return bool(settings.SCHEDULED_PUBLISH_ENABLED)
 
@@ -114,14 +121,31 @@ def facebook_account_live_ready(
     return True
 
 
+def instagram_account_live_ready(
+    *,
+    account_status: str | None,
+    instagram_business_account_id: str | None,
+    permissions: list[str] | None,
+    token_expired: bool,
+    has_page_token: bool,
+    is_demo: bool = False,
+) -> bool:
+    return bool(
+        not is_demo
+        and account_status == "connected"
+        and has_page_token
+        and (instagram_business_account_id or "").strip()
+        and not token_expired
+        and not missing_instagram_publish_permissions(permissions or [])
+    )
+
+
 def global_destination_status(platform: str) -> DestinationGlobalStatus:
     truth = DESTINATION_TRUTH.get(platform)
     if not truth:
         return "not_configured"
     status = truth["global_status"]
     if platform == "telegram" and status == "live" and not telegram_bot_configured():
-        return "partial"
-    if platform == "instagram" and meta_connection_configured():
         return "partial"
     return status  # type: ignore[return-value]
 
@@ -136,6 +160,7 @@ def platform_implementation(
     dest_status: TenantDestinationStatus,
     account_status: str | None = None,
     facebook_page_id: str | None = None,
+    instagram_business_account_id: str | None = None,
     permissions: list[str] | None = None,
     token_expired: bool = False,
     has_page_token: bool = False,
@@ -148,9 +173,20 @@ def platform_implementation(
     if dest_status == "blocked":
         return "blocked"
     if platform == "instagram":
+        if account_status == "mock":
+            return "mock"
         if _meta_account_blocked(account_status):
             return "blocked"
-        return "mock"
+        if instagram_account_live_ready(
+            account_status=account_status,
+            instagram_business_account_id=instagram_business_account_id,
+            permissions=permissions,
+            token_expired=token_expired,
+            has_page_token=has_page_token,
+            is_demo=is_demo,
+        ):
+            return "live"
+        return "blocked"
     if platform == "facebook":
         if account_status == "mock":
             return "mock"
@@ -188,6 +224,7 @@ def tenant_destination_status(
     account_status: str | None = None,
     telegram_publish_chat_id: str | None = None,
     facebook_page_id: str | None = None,
+    instagram_business_account_id: str | None = None,
     permissions: list[str] | None = None,
     token_expired: bool = False,
     has_page_token: bool = False,
@@ -219,6 +256,15 @@ def tenant_destination_status(
         if platform == "facebook" and facebook_account_live_ready(
             account_status=account_status,
             facebook_page_id=facebook_page_id,
+            permissions=permissions,
+            token_expired=token_expired,
+            has_page_token=has_page_token,
+            is_demo=is_demo,
+        ):
+            return "live"
+        if platform == "instagram" and instagram_account_live_ready(
+            account_status=account_status,
+            instagram_business_account_id=instagram_business_account_id,
             permissions=permissions,
             token_expired=token_expired,
             has_page_token=has_page_token,

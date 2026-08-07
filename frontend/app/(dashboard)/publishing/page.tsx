@@ -308,8 +308,7 @@ export default function PublishingPage() {
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Connect Meta (Facebook + Instagram)</h3>
             <p className="text-xs text-indigo-900/80 mt-0.5">
-              Facebook Page publishing is live-ready when connected with publish permissions.
-              Instagram remains mock-only in this milestone.
+              Facebook Page and Instagram Business publishing are live-ready when connected with publish permissions.
             </p>
           </div>
           <span className={cn("text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0", HEALTH_BADGE[metaHealth] ?? "bg-gray-100 text-gray-600")}>
@@ -347,9 +346,9 @@ export default function PublishingPage() {
                     </p>
                     <span className={cn(
                       "text-[10px] px-2 py-0.5 rounded-full font-medium",
-                      IMPLEMENTATION_BADGE.mock,
+                      IMPLEMENTATION_BADGE[metaConnection.instagram.implementation ?? "blocked"] ?? "bg-gray-100 text-gray-600",
                     )}>
-                      Instagram: mock
+                      Instagram: {implementationLabel(metaConnection.instagram.implementation)}
                     </span>
                   </div>
                 )}
@@ -603,7 +602,19 @@ export default function PublishingPage() {
                       )}
                       {account.platform === "instagram" && (
                         <p>
-                          Publish: <span className="font-medium text-amber-700">mock</span>
+                          Publish:{" "}
+                          <span className={cn(
+                            "font-medium px-1.5 py-0.5 rounded",
+                            IMPLEMENTATION_BADGE[
+                              (account.account_metadata as { demo?: boolean } | undefined)?.demo
+                                ? "blocked"
+                                : metaConnection?.instagram?.implementation ?? "blocked"
+                            ] ?? "bg-gray-100 text-gray-600",
+                          )}>
+                            {(account.account_metadata as { demo?: boolean } | undefined)?.demo
+                              ? "blocked (demo)"
+                              : implementationLabel(metaConnection?.instagram?.implementation)}
+                          </span>
                         </p>
                       )}
                       {account.expires_at && (

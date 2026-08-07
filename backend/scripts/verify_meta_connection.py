@@ -215,8 +215,8 @@ def main() -> int:
             print("FAIL publish_implementation unexpected value", health.get("publish_implementation"))
             return 1
         ig_impl = (health.get("instagram") or {}).get("implementation")
-        if ig_impl == "live":
-            print("FAIL instagram implementation must remain mock")
+        if ig and not (ig.get("metadata") or {}).get("demo") and ig_impl != "live":
+            print("FAIL connected Instagram Business account is not live-ready:", ig_impl)
             return 1
         fb_impl = (health.get("facebook") or {}).get("implementation") or health.get("publish_implementation")
         print("OK health_endpoint facebook_implementation=", fb_impl, "instagram_implementation=", ig_impl or "mock")
