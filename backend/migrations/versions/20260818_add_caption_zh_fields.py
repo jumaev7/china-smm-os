@@ -32,4 +32,3 @@ def downgrade() -> None:
     # Destructive downgrade (dropping columns) is intentionally left to operator choice.
     drop_column_if_exists("content_items", "caption_short_zh")
     drop_column_if_exists("content_items", "caption_long_zh")
-
