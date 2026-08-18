@@ -569,9 +569,11 @@ class ClientBriefService:
                     caption_short_ru=captions["ru"][:500] or None,
                     caption_short_uz=captions["uz"][:500] or None,
                     caption_short_en=captions["en"][:500] or None,
+                    caption_short_zh=captions["zh"][:500] or None,
                     caption_long_ru=captions["ru"] or None,
                     caption_long_uz=captions["uz"] or None,
                     caption_long_en=captions["en"] or None,
+                    caption_long_zh=captions["zh"] or None,
                     hashtags=hashtags or None,
                 ),
             )

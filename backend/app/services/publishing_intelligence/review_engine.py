@@ -133,6 +133,7 @@ class PublishingReviewEngine:
             ("ru", "caption_short_ru", "caption_long_ru"),
             ("uz", "caption_short_uz", "caption_long_uz"),
             ("en", "caption_short_en", "caption_long_en"),
+            ("zh", "caption_short_zh", "caption_long_zh"),
         ):
             long_val = getattr(item, long_attr, None) or ""
             short_val = getattr(item, short_attr, None) or ""

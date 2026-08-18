@@ -121,7 +121,7 @@ export default function RepurposePage() {
     if (sourceType === "content_item") {
       return normalizeList(contentData).map((c) => ({
         id: c.id,
-        label: (c.caption_short_en || c.caption_short_ru || c.internal_notes || "Content").slice(0, 60),
+        label: (c.caption_short_en || c.caption_short_ru || c.caption_short_zh || c.internal_notes || "Content").slice(0, 60),
       }));
     }
     return normalizeList(campaignsData).map((c) => ({

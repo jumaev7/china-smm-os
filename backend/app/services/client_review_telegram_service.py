@@ -81,6 +81,7 @@ def _primary_caption(item: ContentItem) -> str:
         ("caption_short_ru", "caption_long_ru"),
         ("caption_short_uz", "caption_long_uz"),
         ("caption_short_en", "caption_long_en"),
+        ("caption_short_zh", "caption_long_zh"),
     ):
         body = (getattr(item, long_attr) or getattr(item, short_attr) or "").strip()
         if body:

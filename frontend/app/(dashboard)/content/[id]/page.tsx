@@ -1839,7 +1839,7 @@ export default function ContentDetailPage() {
                 ? "Generating…"
                 : justGenerated
                 ? "Generated ✓"
-                : item.caption_short_ru
+                : item.caption_short_ru || item.caption_short_en || item.caption_short_uz || item.caption_short_zh
                 ? "Regenerate"
                 : "Generate content"
               }
@@ -1874,6 +1874,7 @@ export default function ContentDetailPage() {
           <CaptionSection lang="🇷🇺 Russian" short={field("caption_short_ru")} long={field("caption_long_ru")} hasContent={!!merged.caption_short_ru} />
           <CaptionSection lang="🇺🇿 Uzbek"  short={field("caption_short_uz")} long={field("caption_long_uz")} hasContent={!!merged.caption_short_uz} />
           <CaptionSection lang="🇬🇧 English" short={field("caption_short_en")} long={field("caption_long_en")} hasContent={!!merged.caption_short_en} />
+          <CaptionSection lang="🇨🇳 Simplified Chinese" short={field("caption_short_zh")} long={field("caption_long_zh")} hasContent={!!merged.caption_short_zh} />
 
           <div className="card p-4">
             <label className="label text-xs">Hashtags</label>

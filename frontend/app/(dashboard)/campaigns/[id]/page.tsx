@@ -243,7 +243,7 @@ export default function CampaignDetailPage() {
                         {STATUS_CONFIG[item.status as keyof typeof STATUS_CONFIG]?.label ?? item.status}
                       </span>
                       <span className="text-gray-800 truncate flex-1">
-                        {item.caption_short_en || item.caption_short_ru || item.internal_notes || item.id.slice(0, 8)}
+                        {item.caption_short_en || item.caption_short_ru || item.caption_short_zh || item.internal_notes || item.id.slice(0, 8)}
                       </span>
                     </label>
                   </li>

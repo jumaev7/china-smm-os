@@ -169,7 +169,9 @@ def _ensure_generated_payload(raw: dict[str, Any], *, fallback_title: str) -> di
     fb = fallback_title[:120]
     fields = (
         "caption_short_ru", "caption_short_uz", "caption_short_en",
+        "caption_short_zh",
         "caption_long_ru", "caption_long_uz", "caption_long_en",
+        "caption_long_zh",
         "hashtags",
     )
     out: dict[str, str] = {}
@@ -178,6 +180,9 @@ def _ensure_generated_payload(raw: dict[str, Any], *, fallback_title: str) -> di
         if not val:
             if field == "hashtags":
                 val = "#export #manufacturing #quality"
+            # For zh: don't fabricate if Content Factory didn't generate it.
+            elif field.endswith("_zh"):
+                continue
             elif field.startswith("caption_short"):
                 val = fb[:150]
             else:

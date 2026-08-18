@@ -168,7 +168,9 @@ export default function ClientDetailPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 max-w-xs">
-                      <p className="truncate text-xs">{item.caption_short_ru || <span className="text-gray-300 italic">No caption</span>}</p>
+                      <p className="truncate text-xs">
+                        {item.caption_short_ru || item.caption_short_zh || <span className="text-gray-300 italic">No caption</span>}
+                      </p>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-400">
                       {new Date(item.created_at).toLocaleDateString()}

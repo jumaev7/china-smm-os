@@ -202,6 +202,7 @@ function CalendarCard({ entry, onClick }: { entry: CalendarEntry; onClick: () =>
     entry.content_item?.caption_short_ru ||
     entry.content_item?.caption_short_en ||
     entry.content_item?.caption_short_uz ||
+    entry.content_item?.caption_short_zh ||
     entry.note ||
     "Post";
 
@@ -277,6 +278,7 @@ function EntryActionPanel({
   const caption =
     entry.content_item?.caption_short_ru ||
     entry.content_item?.caption_short_en ||
+    entry.content_item?.caption_short_zh ||
     entry.note ||
     "Post";
 

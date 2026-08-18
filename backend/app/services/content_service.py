@@ -195,6 +195,7 @@ class ContentService:
             "caption_short_ru", "caption_long_ru",
             "caption_short_uz", "caption_long_uz",
             "caption_short_en", "caption_long_en",
+            "caption_short_zh", "caption_long_zh",
             "hashtags", "platforms", "internal_notes",
         }
         if optimizer_fields.intersection(dirty.keys()):
@@ -258,7 +259,9 @@ class ContentService:
     async def apply_generated(db: AsyncSession, content_id: UUID, generated) -> ContentItem:
         """Write AI-generated content back to the content item."""
         item = await ContentService.get(db, content_id)
-        for field, value in generated.model_dump().items():
+        # Important: do not overwrite existing canonical fields with `None` when the
+        # generator didn't include them (e.g. older RU/UZ/EN-only generation runs).
+        for field, value in generated.model_dump(exclude_none=True).items():
             setattr(item, field, value)
         if item.status in ("draft", "needs_caption", "needs_review"):
             item.status = "ready"
@@ -784,6 +787,7 @@ class CalendarService:
                 "caption_short_ru": ci.caption_short_ru,
                 "caption_short_en": ci.caption_short_en,
                 "caption_short_uz": ci.caption_short_uz,
+                "caption_short_zh": ci.caption_short_zh,
                 "media_url": (
                     storage.get_url(ci.media_file.storage_path)
                     if ci.media_file

@@ -57,7 +57,9 @@ def apply_suggestions_to_content(content_item: ContentItem, suggestions: dict[st
     if suggestions.get("target_platforms"):
         content_item.platforms = list(suggestions["target_platforms"])
     captions = suggestions.get("captions") or {}
-    for lang in ("ru", "uz", "en"):
+    # Materialize all supported text-canonical languages (captions).
+    # Note: CN "subtitles/video subtitles" are separate capability via *_cn subtitle fields.
+    for lang in ("ru", "uz", "en", "zh"):
         generated = str(captions.get(lang) or "").strip()
         if not generated:
             continue

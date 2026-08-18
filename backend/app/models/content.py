@@ -54,11 +54,15 @@ class ContentItem(Base):
     caption_short_ru: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_short_uz: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_short_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Simplified Chinese captions (≤150 chars each, for caption line)
+    caption_short_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Long captions (full post body)
     caption_long_ru: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_long_uz: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_long_en: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Simplified Chinese captions (full post body)
+    caption_long_zh: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Hashtags (comma-separated or raw string)
     hashtags: Mapped[str | None] = mapped_column(Text, nullable=True)

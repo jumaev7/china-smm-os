@@ -41,6 +41,7 @@ function buildSummary(content?: ContentItem | null, clientName?: string): string
     parts.push(`Content ${content.status}`);
     if (content.media_file_type) parts.push(content.media_file_type);
     if (content.caption_short_ru) parts.push("has RU caption");
+    if (content.caption_short_zh) parts.push("has ZH caption");
   }
   return parts.length ? parts.join(" · ") : undefined;
 }

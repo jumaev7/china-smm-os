@@ -11,7 +11,9 @@ from app.services.content_service import ContentService
 
 _CAPTION_FIELDS = (
     "caption_short_ru", "caption_short_uz", "caption_short_en",
+    "caption_short_zh",
     "caption_long_ru", "caption_long_uz", "caption_long_en",
+    "caption_long_zh",
 )
 _SUBTITLE_URL_KEYS = (
     "subtitle_url", "subtitle_url_cn", "subtitle_url_ru", "subtitle_url_uz", "subtitle_url_en",

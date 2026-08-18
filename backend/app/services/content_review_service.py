@@ -340,6 +340,7 @@ class ContentReviewService:
             ("RU", "caption_short_ru", "caption_long_ru"),
             ("UZ", "caption_short_uz", "caption_long_uz"),
             ("EN", "caption_short_en", "caption_long_en"),
+            ("ZH", "caption_short_zh", "caption_long_zh"),
         ):
             short = payload.get(short_key)
             long = payload.get(long_key)

@@ -20,9 +20,11 @@ _PATCHABLE_FIELDS = frozenset({
     "caption_short_ru",
     "caption_short_uz",
     "caption_short_en",
+    "caption_short_zh",
     "caption_long_ru",
     "caption_long_uz",
     "caption_long_en",
+    "caption_long_zh",
     "hashtags",
     "internal_notes",
 })
@@ -40,13 +42,13 @@ _BLOCKED_PATCH_FIELDS = frozenset({
 
 _SYSTEM_PROMPT = """\
 You are the in-app AI assistant for China SMM OS — an internal tool for Chinese \
-businesses marketing in Uzbekistan (captions in RU / UZ / EN).
+businesses marketing in Uzbekistan (captions in RU / UZ / EN / ZH).
 
 You help operators with:
 - Rewriting captions
 - Making text shorter or more formal
 - Making copy more sales-focused
-- Translating captions (Russian, Uzbek Latin, English)
+- Translating captions (Russian, Uzbek Latin, English, Simplified Chinese)
 - Improving hashtags
 - Suggesting posting times for Instagram/TikTok in Uzbekistan (Tashkent timezone)
 - Explaining what the current media/content is about
@@ -59,7 +61,7 @@ the user confirms before Apply
 - When the user asks to edit captions/hashtags/subtitle text AND a content item is in context, \
 include a suggested_patch object with ONLY changed fields
 - suggested_patch keys allowed: caption_short_ru, caption_short_uz, caption_short_en, \
-caption_long_ru, caption_long_uz, caption_long_en, hashtags, internal_notes (transcript/subtitle text)
+caption_short_zh, caption_long_ru, caption_long_uz, caption_long_en, caption_long_zh, hashtags, internal_notes (transcript/subtitle text)
 - NEVER include status, platforms, scheduled_for, or media_file_id in suggested_patch
 - If no content item is in context, give advice only (no suggested_patch)
 - ALWAYS respond with valid JSON only:
@@ -145,7 +147,9 @@ def _build_context_block(
             lines.append(f"- Media: {content_data['media_file_type']}")
         for key in (
             "caption_short_ru", "caption_short_uz", "caption_short_en",
+            "caption_short_zh",
             "caption_long_ru", "caption_long_uz", "caption_long_en",
+            "caption_long_zh",
         ):
             val = content_data.get(key)
             if val:

@@ -169,9 +169,11 @@ Return ONLY valid JSON:
     "caption_short_ru": "optional full replacement",
     "caption_short_uz": "optional",
     "caption_short_en": "optional",
+    "caption_short_zh": "optional",
     "caption_long_ru": "optional",
     "caption_long_uz": "optional",
     "caption_long_en": "optional",
+    "caption_long_zh": "optional",
     "hashtags": "optional",
     "append_internal_notes": "text to append to operator notes",
     "replace_source_text": "optional replacement for human source/caption line in notes"
@@ -587,7 +589,9 @@ def _build_context_block(item: ContentItem, client: Client) -> str:
         lines.append(f"Media type: {item.media_file.file_type}")
     for key in (
         "caption_short_ru", "caption_short_uz", "caption_short_en",
+        "caption_short_zh",
         "caption_long_ru", "caption_long_uz", "caption_long_en",
+        "caption_long_zh",
     ):
         val = getattr(item, key, None)
         if val:

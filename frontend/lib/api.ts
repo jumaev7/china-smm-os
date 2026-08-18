@@ -381,9 +381,11 @@ export interface ContentItem {
   caption_short_ru?: string;
   caption_short_uz?: string;
   caption_short_en?: string;
+  caption_short_zh?: string;
   caption_long_ru?: string;
   caption_long_uz?: string;
   caption_long_en?: string;
+  caption_long_zh?: string;
   hashtags?: string;
   internal_notes?: string;
   scheduled_for?: string;
@@ -484,6 +486,7 @@ export interface CalendarContentInfo {
   caption_short_ru?: string;
   caption_short_en?: string;
   caption_short_uz?: string;
+  caption_short_zh?: string;
   media_url?: string;
 }
 
@@ -10545,9 +10548,11 @@ export type AssistantSuggestedPatch = Partial<
     | "caption_short_ru"
     | "caption_short_uz"
     | "caption_short_en"
+    | "caption_short_zh"
     | "caption_long_ru"
     | "caption_long_uz"
     | "caption_long_en"
+    | "caption_long_zh"
     | "hashtags"
     | "internal_notes"
   >

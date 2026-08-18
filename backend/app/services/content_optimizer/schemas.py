@@ -23,7 +23,7 @@ MAX_TEMPLATE_COUNT = 100
 
 # Locales with ContentItem caption columns. Chinese (zh) punctuation is still
 # handled by the sentence segmenter inside any of these caption bodies.
-SUPPORTED_LOCALES = ("en", "ru", "uz")
+SUPPORTED_LOCALES = ("en", "ru", "uz", "zh")
 LENGTH_PROFILES = ("short", "standard", "extended")
 
 # Minimum lexical signal required to optimize at all.
@@ -35,6 +35,7 @@ LOCALE_CAPTION_FIELDS: dict[str, tuple[str, str]] = {
     "ru": ("caption_short_ru", "caption_long_ru"),
     "uz": ("caption_short_uz", "caption_long_uz"),
     "en": ("caption_short_en", "caption_long_en"),
+    "zh": ("caption_short_zh", "caption_long_zh"),
 }
 
 

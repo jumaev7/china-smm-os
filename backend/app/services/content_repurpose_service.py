@@ -59,9 +59,11 @@ Return ONLY JSON:
       "caption_short_ru": "≤150 chars",
       "caption_short_uz": "≤150 chars",
       "caption_short_en": "≤150 chars",
+      "caption_short_zh": "≤150 chars",
       "caption_long_ru": "platform-appropriate length with CTA",
       "caption_long_uz": "platform-appropriate length with CTA",
       "caption_long_en": "platform-appropriate length with CTA",
+      "caption_long_zh": "platform-appropriate length with CTA",
       "hashtags": "#tag1 #tag2 ...",
       "extra_notes": "carousel slide bullets or video script beats when relevant"
     }
@@ -76,6 +78,7 @@ Rules:
 - distributor_recruitment_post: emphasize partnership benefits and MOQ/export angle
 - Use client KB, campaign objective, and product catalog — no invented claims
 - Never mention AI or internal tools in captions
+- Generate and preserve multilingual captions for RU, UZ, EN, ZH where possible
 """
 
 _SUGGEST_SYSTEM = """\
@@ -123,7 +126,11 @@ def _normalize_formats(raw: list[str]) -> list[str]:
 
 
 def _preview_from_payload(raw: dict[str, Any], *, fmt: str) -> str:
-    for field in ("caption_long_en", "caption_short_en", "caption_long_ru", "caption_short_ru"):
+    for field in (
+        "caption_long_zh", "caption_short_zh",
+        "caption_long_en", "caption_short_en",
+        "caption_long_ru", "caption_short_ru",
+    ):
         val = str(raw.get(field) or "").strip()
         if val:
             return val[:160] + ("…" if len(val) > 160 else "")
@@ -137,7 +144,9 @@ def _ensure_caption_payload(raw: dict[str, Any], *, fmt: str) -> dict[str, str]:
     fb = REPURPOSE_FORMAT_LABELS.get(fmt, fmt)[:120]
     fields = (
         "caption_short_ru", "caption_short_uz", "caption_short_en",
+        "caption_short_zh",
         "caption_long_ru", "caption_long_uz", "caption_long_en",
+        "caption_long_zh",
         "hashtags",
     )
     out: dict[str, str] = {}
@@ -146,6 +155,9 @@ def _ensure_caption_payload(raw: dict[str, Any], *, fmt: str) -> dict[str, str]:
         if not val:
             if field == "hashtags":
                 val = "#content #marketing"
+            # For zh: don't fabricate captions if the repurpose engine didn't provide them.
+            elif field.endswith("_zh"):
+                continue
             elif field.startswith("caption_short"):
                 val = fb[:150]
             else:
@@ -177,9 +189,11 @@ def _heuristic_outputs(
             "caption_short_ru": base[:150],
             "caption_short_uz": base[:150],
             "caption_short_en": base[:150],
+            "caption_short_zh": f"{company}：{label} — 了解更多！"[:150],
             "caption_long_ru": base[:400],
             "caption_long_uz": base[:400],
             "caption_long_en": base[:400],
+            "caption_long_zh": f"{company}——我们为您提供可靠的出口合作与优质服务。欢迎咨询。"[:400],
             "hashtags": f"#{company.replace(' ', '')} #B2B",
             "extra_notes": extra,
         })
@@ -393,8 +407,10 @@ async def _build_context_block(
         sc = resolved.source_content
         parts.append("EXISTING CONTENT CONTEXT:")
         for field in (
+            "caption_long_zh", "caption_short_zh",
             "caption_long_en", "caption_long_ru", "caption_short_en",
-            "caption_short_ru", "hashtags", "internal_notes",
+            "caption_short_ru", "caption_short_uz", "caption_long_uz",
+            "hashtags", "internal_notes",
         ):
             val = getattr(sc, field, None)
             if val:
@@ -417,8 +433,10 @@ def _source_label(resolved: _ResolvedSource) -> str:
         return resolved.assets[0].title
     if resolved.source_type == "content_item" and resolved.source_content:
         preview = (
-            resolved.source_content.caption_short_en
+            resolved.source_content.caption_short_zh
+            or resolved.source_content.caption_short_en
             or resolved.source_content.caption_short_ru
+            or resolved.source_content.caption_short_uz
             or "content item"
         )
         return str(preview)[:80]

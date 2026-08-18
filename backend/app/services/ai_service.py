@@ -59,6 +59,8 @@ OUTPUT_LANG_LABELS = {
     "ru": "Russian",
     "uz": "Uzbek (Latin script)",
     "en": "English",
+    "zh": "Simplified Chinese",
+    # Backward-compat: some older prompt code may still use "cn".
     "cn": "Simplified Chinese",
 }
 
@@ -153,7 +155,7 @@ def _build_prompt(
         if preferred_set >= {"ru", "uz", "en"}
         else f"Prioritize captions for: {', '.join(OUTPUT_LANG_LABELS.get(c, c.upper()) for c in preferred)}."
     )
-    if "cn" in preferred_set:
+    if "zh" in preferred_set or "cn" in preferred_set:
         lang_instruction += " Include Simplified Chinese where relevant."
 
     source_block = ""
@@ -209,9 +211,11 @@ Generate social media captions for ONE post. Return ONLY this JSON (no other tex
   "caption_short_ru": "Short Russian caption ≤150 chars — punchy, standalone",
   "caption_short_uz": "Short Uzbek caption ≤150 chars — punchy, standalone",
   "caption_short_en": "Short English caption ≤150 chars — punchy, standalone",
+  "caption_short_zh": "Short Simplified Chinese caption ≤150 chars — punchy, standalone",
   "caption_long_ru": "Full Russian post 200-400 chars with call-to-action",
   "caption_long_uz": "Full Uzbek post 200-400 chars with call-to-action",
   "caption_long_en": "Full English post 200-400 chars with call-to-action",
+  "caption_long_zh": "Full Simplified Chinese post 200-400 chars with call-to-action",
   "hashtags": "#tag1 #tag2 ... (10-15 tags, mix of UZ/RU/EN)"
 }}"""
 
@@ -250,6 +254,12 @@ def _make_demo_content(company_name: str, business_category: str) -> GeneratedCo
             f"Discover the best of {company_name}! "
             f"We specialize in {business_category} and bring premium quality "
             f"to Tashkent. Visit us today and see the difference! 👉"
+        ),
+        caption_short_zh=f"🌟 {company_name} — 可靠品质，值得信赖！",
+        caption_long_zh=(
+            f"欢迎了解 {company_name}！我们专注于 {business_category} ，"
+            f"为塔什干客户提供经过验证的优质产品与服务。"
+            f"欢迎咨询合作，共同开启更稳的出口之旅！👉"
         ),
         hashtags=(
             f"#{company_name.replace(' ', '')} #Ташкент #Toshkent #Tashkent "

@@ -47,9 +47,11 @@ class ContentUpdate(BaseModel):
     caption_short_ru: Optional[str] = None
     caption_short_uz: Optional[str] = None
     caption_short_en: Optional[str] = None
+    caption_short_zh: Optional[str] = None
     caption_long_ru: Optional[str] = None
     caption_long_uz: Optional[str] = None
     caption_long_en: Optional[str] = None
+    caption_long_zh: Optional[str] = None
     hashtags: Optional[str] = None
     internal_notes: Optional[str] = None
     context_ai_override: Optional[str] = None
@@ -108,9 +110,11 @@ class ContentResponse(BaseModel):
     caption_short_ru: Optional[str]
     caption_short_uz: Optional[str]
     caption_short_en: Optional[str]
+    caption_short_zh: Optional[str]
     caption_long_ru: Optional[str]
     caption_long_uz: Optional[str]
     caption_long_en: Optional[str]
+    caption_long_zh: Optional[str]
     hashtags: Optional[str]
     internal_notes: Optional[str]
     scheduled_for: Optional[datetime]
@@ -334,6 +338,7 @@ class CalendarContentInfo(BaseModel):
     caption_short_ru: Optional[str]
     caption_short_en: Optional[str]
     caption_short_uz: Optional[str]
+    caption_short_zh: Optional[str] = None
     media_url: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -374,7 +379,9 @@ class GeneratedContent(BaseModel):
     caption_short_ru: str
     caption_short_uz: str
     caption_short_en: str
+    caption_short_zh: Optional[str] = None
     caption_long_ru: str
     caption_long_uz: str
     caption_long_en: str
+    caption_long_zh: Optional[str] = None
     hashtags: str

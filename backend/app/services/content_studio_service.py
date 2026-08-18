@@ -48,9 +48,11 @@ Return ONLY JSON:
       "caption_short_ru": "≤150 chars",
       "caption_short_uz": "≤150 chars",
       "caption_short_en": "≤150 chars",
+      "caption_short_zh": "≤150 chars",
       "caption_long_ru": "200-450 chars with CTA",
       "caption_long_uz": "200-450 chars with CTA",
       "caption_long_en": "200-450 chars with CTA",
+      "caption_long_zh": "200-450 chars with CTA",
       "hashtags": "#tag1 #tag2 ... (10-15 tags)"
     }
   ]
@@ -100,7 +102,11 @@ def _normalize_platforms(raw: Any, requested: list[str]) -> list[str]:
 
 
 def _preview_from_captions(captions: dict[str, Any]) -> str:
-    for field in ("caption_long_en", "caption_short_en", "caption_long_ru", "caption_short_ru"):
+    for field in (
+        "caption_long_zh", "caption_short_zh",
+        "caption_long_en", "caption_short_en",
+        "caption_long_ru", "caption_short_ru",
+    ):
         val = str(captions.get(field) or "").strip()
         if val:
             return val[:160] + ("…" if len(val) > 160 else "")
@@ -112,6 +118,8 @@ def _ensure_caption_payload(raw: dict[str, Any], *, fallback_title: str) -> dict
     fields = (
         "caption_short_ru", "caption_short_uz", "caption_short_en",
         "caption_long_ru", "caption_long_uz", "caption_long_en",
+        "caption_short_zh",
+        "caption_long_zh",
         "hashtags",
     )
     out: dict[str, str] = {}
@@ -120,6 +128,9 @@ def _ensure_caption_payload(raw: dict[str, Any], *, fallback_title: str) -> dict
         if not val:
             if field == "hashtags":
                 val = "#content #marketing"
+            elif field.endswith("_zh"):
+                # For zh: don't fabricate if the model didn't provide it.
+                continue
             elif field.startswith("caption_short"):
                 val = fb[:150]
             else:
@@ -153,9 +164,11 @@ def _heuristic_drafts(
             "caption_short_ru": base[:150],
             "caption_short_uz": base[:150],
             "caption_short_en": base[:150],
+            "caption_short_zh": f"{company}：{content_goal} — 了解更多！"[:150],
             "caption_long_ru": base[:400],
             "caption_long_uz": base[:400],
             "caption_long_en": base[:400],
+            "caption_long_zh": f"欢迎了解 {company} 的产品与服务。欢迎咨询合作！"[:400],
             "hashtags": f"#{company.replace(' ', '')} #content",
         })
     return drafts[:count]
@@ -244,7 +257,13 @@ async def _build_context_block(
     recent = list(recent_r.scalars().all())
     recent_lines = []
     for item in recent:
-        preview = item.caption_short_en or item.caption_short_ru or item.internal_notes or ""
+        preview = (
+            item.caption_short_zh
+            or item.caption_short_en
+            or item.caption_short_ru
+            or item.internal_notes
+            or ""
+        )
         if preview:
             recent_lines.append(f"- [{item.status}] {str(preview)[:80]}")
 

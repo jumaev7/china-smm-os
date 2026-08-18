@@ -243,7 +243,7 @@ function ContentCard({
   onGenerate: () => void;
 }) {
   const statusCfg = STATUS_CONFIG[item.status] ?? STATUS_CONFIG.draft;
-  const hasCaption = item.caption_short_ru || item.caption_short_en || item.caption_short_uz;
+  const hasCaption = item.caption_short_ru || item.caption_short_en || item.caption_short_uz || item.caption_short_zh;
   const canSchedule = ["draft", "ready", "approved", "failed", "needs_review", "needs_caption", "new"].includes(item.status);
   const canApprove = ["draft", "ready", "needs_review", "needs_caption", "new"].includes(item.status);
   const statusVariant = STATUS_VARIANT[item.status] ?? "neutral";
@@ -312,7 +312,7 @@ function ContentCard({
 
         {hasCaption ? (
           <p className="text-xs text-gray-600 dark-tenant:text-slate-400 line-clamp-2 leading-relaxed">
-            {item.caption_short_ru || item.caption_short_en || item.caption_short_uz}
+            {item.caption_short_ru || item.caption_short_en || item.caption_short_uz || item.caption_short_zh}
           </p>
         ) : (item.source === "telegram" || item.source === "telegram_group") && item.internal_notes ? (
           <p className="text-xs text-gray-500 dark-tenant:text-slate-500 line-clamp-2 leading-relaxed italic">

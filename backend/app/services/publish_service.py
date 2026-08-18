@@ -70,7 +70,9 @@ ADAPTERS: dict[str, PlatformPublishFn] = {
 def _pick_caption(item: ContentItem) -> str:
     for field in (
         "caption_long_ru", "caption_long_uz", "caption_long_en",
+        "caption_long_zh",
         "caption_short_ru", "caption_short_uz", "caption_short_en",
+        "caption_short_zh",
     ):
         value = getattr(item, field, None)
         if value and str(value).strip():
@@ -494,7 +496,7 @@ class PublishService:
         platform = primary.get("platform") or (item.platforms[0] if item.platforms else "unknown")
         account_id = primary.get("account_id")
         resource_name = (
-            (item.caption_short_en or item.caption_short_ru or item.caption_short_uz or "").strip()
+            (item.caption_short_en or item.caption_short_ru or item.caption_short_uz or item.caption_short_zh or "").strip()
             or f"Content {str(item.id)[:8]}"
         )
         payload = {
@@ -567,7 +569,7 @@ class PublishService:
             )
 
         resource_name = (
-            (item.caption_short_en or item.caption_short_ru or item.caption_short_uz or "").strip()
+            (item.caption_short_en or item.caption_short_ru or item.caption_short_uz or item.caption_short_zh or "").strip()
             or f"Content {str(item.id)[:8]}"
         )
         payload = {
