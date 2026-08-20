@@ -154,6 +154,7 @@
     "inbox": "Входящие",
     "tasks": "Задачи",
     "operatorTasks": "Задачи оператора",
+    "operatorWorkspace": "Сегодня",
     "content": "Контент",
     "pipeline": "Воронка продаж",
     "campaigns": "Кампании",
@@ -1844,6 +1845,88 @@
       "dismissed": "Dismiss",
       "monitoring": "Monitor",
       "resolved": "Resolve"
+    }
+  },
+  "operatorWorkspace": {
+    "title": "Рабочее место оператора",
+    "subtitle": "Что требует вашего внимания сегодня по всем клиентам",
+    "queueTitle": "Очередь внимания",
+    "overdue": "Просрочено",
+    "due": "Срок",
+    "summary": {
+      "needsAction": "Нужны действия",
+      "waitingClient": "Ожидание клиента",
+      "publishing": "Проблемы публикации",
+      "dueToday": "На сегодня",
+      "integrations": "Проблемы интеграций",
+      "automation": "Сбои автоматизации"
+    },
+    "filters": {
+      "category": "Категория",
+      "priority": "Приоритет",
+      "responsible": "Ответственный",
+      "client": "Клиент",
+      "all": "Все",
+      "allClients": "Все клиенты",
+      "clear": "Сбросить фильтры"
+    },
+    "categories": {
+      "content_internal_review": "Внутренняя проверка",
+      "waiting_for_client": "Ожидание клиента",
+      "publishing_issue": "Проблема публикации",
+      "scheduling_issue": "Проблема расписания",
+      "integration_issue": "Проблема интеграции",
+      "telegram_ingestion_issue": "Проблема Telegram",
+      "automation_failure": "Сбой автоматизации"
+    },
+    "priority": {
+      "critical": "Критический",
+      "high": "Высокий",
+      "medium": "Средний",
+      "low": "Низкий"
+    },
+    "responsible": {
+      "operator": "Мои действия",
+      "client": "Ожидание клиента",
+      "system": "Обработка системой",
+      "provider": "Проблема провайдера"
+    },
+    "reasons": {
+      "internal_review": "Контент ожидает внутренней проверки",
+      "client_pending": "Ожидается одобрение клиента",
+      "client_changes": "Клиент запросил правки",
+      "publish_operator_review": "Результат публикации неясен — требуется проверка оператора",
+      "publish_failed": "Попытка публикации не удалась",
+      "publish_exhausted": "Исчерпаны повторы публикации",
+      "publish_stuck": "Контент застрял в публикации",
+      "publish_retrying": "Повторная попытка публикации",
+      "schedule_overdue": "Время публикации прошло, но контент не опубликован",
+      "integration_attention": "Подключение интеграции требует внимания",
+      "telegram_failed": "Ошибка обработки Telegram webhook",
+      "automation_failed": "Задача автоматизации не выполнена",
+      "automation_dead_letter": "Задача автоматизации требует ручного вмешательства",
+      "publish_alert": "Требуется проверка оповещения о публикации",
+      "generic": "Требуется операционное внимание"
+    },
+    "time": {
+      "today": "Сегодня",
+      "yesterday": "Вчера",
+      "daysAgo": "{{count}} дн. назад"
+    },
+    "empty": {
+      "title": "Пока всё в порядке",
+      "subtitle": "Нет задач, требующих вашего внимания. Обновите страницу позже."
+    },
+    "actions": {
+      "review": "Проверить",
+      "reviewContent": "Проверить контент",
+      "reviewPublish": "Проверить попытку публикации",
+      "reviewQueue": "Открыть очередь публикации",
+      "reviewAlert": "Проверить оповещение",
+      "openClientReview": "Открыть статус клиентского ревью",
+      "openIntegrations": "Открыть интеграции",
+      "reviewTelegram": "Проверить настройки Telegram",
+      "openAutomation": "Открыть автоматизацию"
     }
   }
 }

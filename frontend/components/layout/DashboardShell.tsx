@@ -373,6 +373,8 @@ const NAV_SECTIONS: NavSection[] = [
 
     items: [
 
+      { href: "/operator-workspace", icon: LayoutDashboard, labelKey: "nav.operatorWorkspace" },
+
       { href: "/clients", icon: Users, labelKey: "nav.clients" },
 
       { href: "/briefs", icon: ClipboardPen, labelKey: "nav.clientBriefs" },

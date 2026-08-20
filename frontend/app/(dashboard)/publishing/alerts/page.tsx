@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import {
@@ -53,10 +54,18 @@ function formatWhen(value?: string | null) {
 
 export default function PublishingAlertsPage() {
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const focusAlertId = searchParams.get("alert_id");
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [page, setPage] = useState(1);
   const [resolveNote, setResolveNote] = useState<Record<string, string>>({});
   const [confirmResolveId, setConfirmResolveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!focusAlertId) return;
+    // Deep-link from Operator Workspace: show open+acknowledged so the target can appear.
+    setFilters((prev) => ({ ...prev, state: "" }));
+  }, [focusAlertId]);
 
   const countsQuery = useQuery({
     queryKey: ["publishing-alert-counts"],
@@ -259,6 +268,7 @@ export default function PublishingAlertsPage() {
           <AlertCard
             key={alert.id}
             alert={alert}
+            highlighted={focusAlertId === alert.id}
             disabled={isMutating}
             confirmResolve={confirmResolveId === alert.id}
             resolveNote={resolveNote[alert.id] ?? ""}
@@ -307,6 +317,7 @@ export default function PublishingAlertsPage() {
 
 function AlertCard({
   alert,
+  highlighted = false,
   disabled,
   confirmResolve,
   resolveNote,
@@ -317,6 +328,7 @@ function AlertCard({
   onConfirmResolve,
 }: {
   alert: PublishAlert;
+  highlighted?: boolean;
   disabled: boolean;
   confirmResolve: boolean;
   resolveNote: string;
@@ -330,7 +342,13 @@ function AlertCard({
   const canResolve = alert.state === "open" || alert.state === "acknowledged";
 
   return (
-    <article className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+    <article
+      id={`alert-${alert.id}`}
+      className={cn(
+        "rounded-xl border bg-white p-4 space-y-3",
+        highlighted ? "border-indigo-400 ring-2 ring-indigo-100" : "border-gray-200",
+      )}
+    >
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
         <div className="space-y-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">

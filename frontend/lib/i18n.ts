@@ -1,8 +1,9 @@
 import ru from "@/locales/ru.json";
 import en from "@/locales/en.json";
 import zh from "@/locales/zh.json";
+import uz from "@/locales/uz.json";
 
-export const LOCALES = ["ru", "en", "zh"] as const;
+export const LOCALES = ["ru", "en", "zh", "uz"] as const;
 export type Locale = (typeof LOCALES)[number];
 
 export const DEFAULT_LOCALE: Locale = "ru";
@@ -10,7 +11,7 @@ export const LOCALE_STORAGE_KEY = "china-smm-ui-locale";
 
 export type Messages = typeof ru;
 
-const CATALOG: Record<Locale, Messages> = { ru, en: en as Messages, zh: zh as Messages };
+const CATALOG: Record<Locale, Messages> = { ru, en: en as Messages, zh: zh as Messages, uz: uz as Messages };
 
 const loggedMissing = new Set<string>();
 
@@ -23,6 +24,7 @@ export function detectBrowserLocale(): Locale {
   const lang = navigator.language.toLowerCase();
   if (lang.startsWith("zh")) return "zh";
   if (lang.startsWith("en")) return "en";
+  if (lang.startsWith("uz")) return "uz";
   if (lang.startsWith("ru")) return "ru";
   return DEFAULT_LOCALE;
 }

@@ -20,6 +20,7 @@ export const PLATFORM_CONSOLE_PATHS = [
 /** Normal tenant sidebar visibility. Keep this narrower than route access. */
 export const TENANT_NAV_PATHS = [
   "/dashboard",
+  "/operator-workspace",
   "/content",
   "/content-factory",
   "/media-library",
@@ -97,6 +98,7 @@ export const PLATFORM_PILOT_PATHS = [
 /** Tenant-safe business routes (sidebar + access for authenticated tenant users). */
 export const TENANT_BUSINESS_PATHS = [
   "/dashboard",
+  "/operator-workspace",
   "/clients",
   "/content",
   "/calendar",
@@ -193,6 +195,7 @@ export const EXECUTIVE_COPILOT_PATH = "/executive-copilot";
 export const TENANT_ROUTE_ROLE_REQUIREMENTS: Record<string, TenantUserRole[]> = {
   "/billing": ["owner", "manager"],
   "/tenant-users": ["owner", "manager"],
+  "/operator-workspace": ["owner", "manager", "operator"],
 };
 
 export const TENANT_ROUTE_PERMISSION_REQUIREMENTS: Record<string, string[]> = {

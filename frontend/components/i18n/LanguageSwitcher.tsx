@@ -10,6 +10,7 @@ export const LOCALE_OPTIONS: { code: Locale; label: string }[] = [
   { code: "ru", label: "Русский" },
   { code: "en", label: "English" },
   { code: "zh", label: "中文" },
+  { code: "uz", label: "Oʻzbekcha" },
 ];
 
 export function localeNativeLabel(code: Locale): string {

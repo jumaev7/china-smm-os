@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { IntegrationCard } from "@/components/integrations/IntegrationCard";
 import { IntegrationCenterHeader } from "@/components/integrations/IntegrationCenterHeader";
@@ -23,7 +24,14 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function IntegrationsPage() {
-  const [activeCategory, setActiveCategory] = useState<IntegrationCategory>("all");
+  const searchParams = useSearchParams();
+  const platformParam = searchParams.get("platform");
+  const categoryParam = searchParams.get("category");
+  const initialCategory = (
+    INTEGRATION_CATEGORIES.some((c) => c.id === categoryParam) ? categoryParam : "all"
+  ) as IntegrationCategory;
+
+  const [activeCategory, setActiveCategory] = useState<IntegrationCategory>(initialCategory);
   const [selected, setSelected] = useState<ResolvedIntegration | null>(null);
 
   const { integrations, summary, isLoading, isError, error, refetch, isFetching } =
@@ -33,6 +41,12 @@ export default function IntegrationsPage() {
     () => filterIntegrationsByCategory(integrations, activeCategory),
     [integrations, activeCategory],
   );
+
+  useEffect(() => {
+    if (!platformParam || integrations.length === 0) return;
+    const match = integrations.find((item) => item.key === platformParam);
+    if (match) setSelected(match);
+  }, [platformParam, integrations]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

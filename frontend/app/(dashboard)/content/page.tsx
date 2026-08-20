@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { contentApi, clientsApi, Client, normalizeList, ContentItem, tenantOnboardingApi } from "@/lib/api";
 import { STATUS_CONFIG, PLATFORM_CONFIG, cn } from "@/lib/utils";
@@ -53,10 +54,16 @@ const STATUS_VARIANT: Record<string, "success" | "warning" | "danger" | "info" |
 export default function ContentPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const searchParams = useSearchParams();
   const [statusFilter, setStatusFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [clientFilter, setClientFilter] = useState("");
   const [showNew, setShowNew] = useState(false);
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("client_id");
+    if (fromUrl) setClientFilter(fromUrl);
+  }, [searchParams]);
   const [schedulingItemId, setSchedulingItemId] = useState<string | null>(null);
   const [schedulingItem, setSchedulingItem] = useState<ContentItem | null>(null);
   const [generatingItem, setGeneratingItem] = useState<ContentItem | null>(null);

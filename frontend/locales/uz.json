@@ -1,0 +1,91 @@
+{
+  "nav": {
+    "operatorWorkspace": "Bugun"
+  },
+  "common": {
+    "loading": "Yuklanmoqda…",
+    "refresh": "Yangilash"
+  },
+  "operatorWorkspace": {
+    "title": "Operator ish maydoni",
+    "subtitle": "Bugun barcha mijozlar bo'yicha e'tiboringizni talab qiladigan ishlar",
+    "queueTitle": "E'tibor navbati",
+    "overdue": "Muddati o'tgan",
+    "due": "Muddat",
+    "summary": {
+      "needsAction": "Hozir harakat kerak",
+      "waitingClient": "Mijoz kutilmoqda",
+      "publishing": "Nashr muammolari",
+      "dueToday": "Bugun muddat",
+      "integrations": "Integratsiya muammolari",
+      "automation": "Avtomatlashtirish xatolari"
+    },
+    "filters": {
+      "category": "Kategoriya",
+      "priority": "Ustuvorlik",
+      "responsible": "Mas'ul",
+      "client": "Mijoz",
+      "all": "Hammasi",
+      "allClients": "Barcha mijozlar",
+      "clear": "Filtrlarni tozalash"
+    },
+    "categories": {
+      "content_internal_review": "Ichki ko'rib chiqish",
+      "waiting_for_client": "Mijoz kutilmoqda",
+      "publishing_issue": "Nashr muammosi",
+      "scheduling_issue": "Jadval muammosi",
+      "integration_issue": "Integratsiya muammosi",
+      "telegram_ingestion_issue": "Telegram qabul qilish",
+      "automation_failure": "Avtomatlashtirish xatosi"
+    },
+    "priority": {
+      "critical": "Juda muhim",
+      "high": "Yuqori",
+      "medium": "O'rta",
+      "low": "Past"
+    },
+    "responsible": {
+      "operator": "Mening harakatim kerak",
+      "client": "Mijoz kutilmoqda",
+      "system": "Tizim qayta ishlayapti",
+      "provider": "Provayder muammosi"
+    },
+    "reasons": {
+      "internal_review": "Kontent ichki ko'rib chiqishni kutmoqda",
+      "client_pending": "Mijoz tasdig'i kutilmoqda",
+      "client_changes": "Mijoz o'zgartirish so'radi",
+      "publish_operator_review": "Nashr natijasi noaniq — operator tekshiruvi kerak",
+      "publish_failed": "Nashr urinishi muvaffaqiyatsiz",
+      "publish_exhausted": "Nashr qayta urinishlari tugadi",
+      "publish_stuck": "Kontent nashrda qotib qoldi",
+      "publish_retrying": "Nashr qayta urinishi davom etmoqda",
+      "schedule_overdue": "Rejalashtirilgan vaqt o'tdi, lekin nashr qilinmadi",
+      "integration_attention": "Integratsiya ulanishi e'tibor talab qiladi",
+      "telegram_failed": "Telegram webhook qayta ishlash xatosi",
+      "automation_failed": "Avtomatlashtirish vazifasi muvaffaqiyatsiz",
+      "automation_dead_letter": "Avtomatlashtirish vazifasi qo'lda aralashuv talab qiladi",
+      "publish_alert": "Nashr ogohlantirishi ko'rib chiqilishi kerak",
+      "generic": "Operatsion e'tibor talab qilinadi"
+    },
+    "time": {
+      "today": "Bugun",
+      "yesterday": "Kecha",
+      "daysAgo": "{{count}} kun oldin"
+    },
+    "empty": {
+      "title": "Hozircha hammasi yaxshi",
+      "subtitle": "E'tiboringizni talab qiladigan ishlar yo'q. Keyinroq yangilang."
+    },
+    "actions": {
+      "review": "Ko'rib chiqish",
+      "reviewContent": "Kontentni ko'rib chiqish",
+      "reviewPublish": "Nashr urinishini ko'rib chiqish",
+      "reviewQueue": "Nashr navbatini ochish",
+      "reviewAlert": "Nashr ogohlantirishini ko'rib chiqish",
+      "openClientReview": "Mijoz tasdiqlash holatini ochish",
+      "openIntegrations": "Integratsiyalarni ochish",
+      "reviewTelegram": "Telegram sozlamalarini ko'rib chiqish",
+      "openAutomation": "Avtomatlashtirish markazini ochish"
+    }
+  }
+}

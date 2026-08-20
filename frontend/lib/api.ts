@@ -713,6 +713,82 @@ export const dashboardApi = {
   aiSummary: () => pickActiveSessionClient().post<DashboardAiSummary>("/dashboard/ai-summary"),
 };
 
+export type AttentionCategory =
+  | "content_internal_review"
+  | "waiting_for_client"
+  | "publishing_issue"
+  | "scheduling_issue"
+  | "integration_issue"
+  | "telegram_ingestion_issue"
+  | "automation_failure";
+
+export type AttentionPriority = "critical" | "high" | "medium" | "low";
+
+export type ResponsibleParty = "operator" | "client" | "system" | "provider";
+
+export interface OperatorAttentionItem {
+  id: string;
+  attention_type: AttentionCategory;
+  priority: AttentionPriority;
+  client_id: string | null;
+  company_name: string;
+  content_id: string | null;
+  resource_id: string | null;
+  title: string;
+  reason: string;
+  current_state: string | null;
+  responsible_party: ResponsibleParty;
+  suggested_action: string;
+  action_path: string;
+  created_at: string | null;
+  due_at: string | null;
+  overdue: boolean;
+  source_domain: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface OperatorWorkspaceSummary {
+  needs_action_now: number;
+  waiting_for_client: number;
+  publishing_issues: number;
+  due_today: number;
+  integration_issues: number;
+  scheduling_issues: number;
+  telegram_issues: number;
+  automation_failures: number;
+  total: number;
+}
+
+export interface OperatorWorkspaceItemsResponse {
+  items: OperatorAttentionItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  summary: OperatorWorkspaceSummary;
+}
+
+export interface OperatorWorkspaceSummaryResponse {
+  summary: OperatorWorkspaceSummary;
+}
+
+export const operatorWorkspaceApi = {
+  getSummary: (params?: { client_id?: string }) =>
+    pickActiveSessionClient().get<OperatorWorkspaceSummaryResponse>("/operator-workspace/summary", {
+      params,
+    }),
+  listItems: (params?: {
+    client_id?: string;
+    category?: AttentionCategory;
+    priority?: AttentionPriority;
+    responsible_party?: ResponsibleParty;
+    page?: number;
+    page_size?: number;
+  }) =>
+    pickActiveSessionClient().get<OperatorWorkspaceItemsResponse>("/operator-workspace/items", {
+      params,
+    }),
+};
+
 export interface SalesDeptOverviewKpis {
   total_leads: number;
   new_leads: number;
@@ -4690,7 +4766,7 @@ export interface I18nHealth {
   used_keys_count: number;
 }
 
-export type UiLanguage = "ru" | "en" | "zh";
+export type UiLanguage = "ru" | "en" | "zh" | "uz";
 
 export interface UserSettings {
   id: string;

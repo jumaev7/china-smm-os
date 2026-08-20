@@ -157,6 +157,7 @@
     "inbox": "收件箱",
     "tasks": "任务",
     "operatorTasks": "运营任务",
+    "operatorWorkspace": "今日",
     "content": "内容",
     "pipeline": "销售管道",
     "campaigns": "营销活动",
@@ -1824,6 +1825,88 @@
       "dismissed": "Dismiss",
       "monitoring": "Monitor",
       "resolved": "Resolve"
+    }
+  },
+  "operatorWorkspace": {
+    "title": "运营工作台",
+    "subtitle": "今日所有客户中需要您关注的事项",
+    "queueTitle": "关注队列",
+    "overdue": "已逾期",
+    "due": "截止",
+    "summary": {
+      "needsAction": "需要立即处理",
+      "waitingClient": "等待客户",
+      "publishing": "发布问题",
+      "dueToday": "今日到期",
+      "integrations": "集成问题",
+      "automation": "自动化失败"
+    },
+    "filters": {
+      "category": "类别",
+      "priority": "优先级",
+      "responsible": "责任方",
+      "client": "客户",
+      "all": "全部",
+      "allClients": "全部客户",
+      "clear": "清除筛选"
+    },
+    "categories": {
+      "content_internal_review": "内部审核",
+      "waiting_for_client": "等待客户",
+      "publishing_issue": "发布问题",
+      "scheduling_issue": "排期问题",
+      "integration_issue": "集成问题",
+      "telegram_ingestion_issue": "Telegram 接入",
+      "automation_failure": "自动化失败"
+    },
+    "priority": {
+      "critical": "紧急",
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "responsible": {
+      "operator": "需要我处理",
+      "client": "等待客户",
+      "system": "系统处理中",
+      "provider": "平台问题"
+    },
+    "reasons": {
+      "internal_review": "内容等待内部审核",
+      "client_pending": "等待客户批准",
+      "client_changes": "客户要求修改",
+      "publish_operator_review": "发布结果不明确，需运营人员确认",
+      "publish_failed": "发布尝试失败",
+      "publish_exhausted": "发布重试次数已用尽",
+      "publish_stuck": "内容卡在发布中",
+      "publish_retrying": "发布重试进行中",
+      "schedule_overdue": "计划发布时间已过但未发布",
+      "integration_attention": "集成连接需要处理",
+      "telegram_failed": "Telegram webhook 处理失败",
+      "automation_failed": "自动化任务失败",
+      "automation_dead_letter": "自动化任务需人工干预",
+      "publish_alert": "发布告警需查看",
+      "generic": "需要运营关注"
+    },
+    "time": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "daysAgo": "{{count}} 天前"
+    },
+    "empty": {
+      "title": "目前一切正常",
+      "subtitle": "暂无需要您关注的运营事项，请稍后刷新。"
+    },
+    "actions": {
+      "review": "查看",
+      "reviewContent": "审核内容",
+      "reviewPublish": "查看发布尝试",
+      "reviewQueue": "查看发布队列",
+      "reviewAlert": "查看发布告警",
+      "openClientReview": "打开客户审核状态",
+      "openIntegrations": "打开集成",
+      "reviewTelegram": "查看 Telegram 设置",
+      "openAutomation": "打开自动化中心"
     }
   }
 }

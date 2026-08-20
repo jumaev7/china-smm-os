@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { AutomationCard } from "@/components/automation/AutomationCard";
 import { AutomationCenterHeader } from "@/components/automation/AutomationCenterHeader";
@@ -24,6 +25,8 @@ import { cn } from "@/lib/utils";
 
 export default function AutomationPage() {
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const flowParam = searchParams.get("flow");
   const [selected, setSelected] = useState<Automation | null>(null);
 
   const {
@@ -65,6 +68,12 @@ export default function AutomationPage() {
   useEffect(() => {
     setSelected(null);
   }, [tenantId, filters.section, filters.search]);
+
+  useEffect(() => {
+    if (!flowParam || automations.length === 0) return;
+    const match = automations.find((a) => a.id === flowParam);
+    if (match) setSelected(match);
+  }, [flowParam, automations]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

@@ -173,6 +173,7 @@
     "inbox": "Inbox",
     "tasks": "Tasks",
     "operatorTasks": "Operator Tasks",
+    "operatorWorkspace": "Today",
     "content": "Content",
     "pipeline": "Pipeline",
     "campaigns": "Campaigns",
@@ -2255,6 +2256,88 @@
       "dismissed": "Dismiss",
       "monitoring": "Monitor",
       "resolved": "Resolve"
+    }
+  },
+  "operatorWorkspace": {
+    "title": "Operator Workspace",
+    "subtitle": "What requires your attention today across all clients",
+    "queueTitle": "Attention queue",
+    "overdue": "Overdue",
+    "due": "Due",
+    "summary": {
+      "needsAction": "Needs action now",
+      "waitingClient": "Waiting for client",
+      "publishing": "Publishing issues",
+      "dueToday": "Due today",
+      "integrations": "Integration issues",
+      "automation": "Automation failures"
+    },
+    "filters": {
+      "category": "Category",
+      "priority": "Priority",
+      "responsible": "Responsible",
+      "client": "Client",
+      "all": "All",
+      "allClients": "All clients",
+      "clear": "Clear filters"
+    },
+    "categories": {
+      "content_internal_review": "Internal review",
+      "waiting_for_client": "Waiting for client",
+      "publishing_issue": "Publishing issue",
+      "scheduling_issue": "Scheduling issue",
+      "integration_issue": "Integration issue",
+      "telegram_ingestion_issue": "Telegram ingestion",
+      "automation_failure": "Automation failure"
+    },
+    "priority": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "responsible": {
+      "operator": "Needs my action",
+      "client": "Waiting for client",
+      "system": "System processing",
+      "provider": "Provider issue"
+    },
+    "reasons": {
+      "internal_review": "Content awaiting internal review",
+      "client_pending": "Client approval pending",
+      "client_changes": "Client requested changes",
+      "publish_operator_review": "Publish outcome unclear — operator verification required",
+      "publish_failed": "Publish attempt failed",
+      "publish_exhausted": "Publish retries exhausted",
+      "publish_stuck": "Content stuck in publishing",
+      "publish_retrying": "Publish retry in progress",
+      "schedule_overdue": "Scheduled time passed but not published",
+      "integration_attention": "Integration connection needs attention",
+      "telegram_failed": "Telegram webhook processing failed",
+      "automation_failed": "Automation job failed",
+      "automation_dead_letter": "Automation job requires manual intervention",
+      "publish_alert": "Publishing alert requires review",
+      "generic": "Operational attention required"
+    },
+    "time": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "daysAgo": "{{count}} days ago"
+    },
+    "empty": {
+      "title": "All clear for now",
+      "subtitle": "No operational items need your attention. Check back later or refresh."
+    },
+    "actions": {
+      "review": "Review",
+      "reviewContent": "Review content",
+      "reviewPublish": "Review publish attempt",
+      "reviewQueue": "Review publishing queue",
+      "reviewAlert": "Review publishing alert",
+      "openClientReview": "Open client review status",
+      "openIntegrations": "Open integrations",
+      "reviewTelegram": "Review Telegram settings",
+      "openAutomation": "Open automation center"
     }
   }
 }
