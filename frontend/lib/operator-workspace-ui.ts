@@ -61,6 +61,26 @@ export function suggestedActionLabelKey(item: OperatorAttentionItem): string {
   return "operatorWorkspace.actions.review";
 }
 
+export function actionLabelKey(actionId: string): string {
+  const map: Record<string, string> = {
+    open: "operatorWorkspace.actionButtons.open",
+    acknowledge_alert: "operatorWorkspace.actionButtons.acknowledge",
+    resolve_alert: "operatorWorkspace.actionButtons.resolve",
+    retry_publish: "operatorWorkspace.actionButtons.retryPublish",
+    approve_content: "operatorWorkspace.actionButtons.approve",
+  };
+  return map[actionId] ?? "operatorWorkspace.actionButtons.open";
+}
+
+export function actionConfirmKey(actionId: string): string | null {
+  const map: Record<string, string> = {
+    resolve_alert: "operatorWorkspace.confirm.resolve",
+    retry_publish: "operatorWorkspace.confirm.retryPublish",
+    approve_content: "operatorWorkspace.confirm.approve",
+  };
+  return map[actionId] ?? null;
+}
+
 export function reasonLabelKey(item: OperatorAttentionItem): string {
   const code = item.metadata?.reason_code as string | undefined;
   if (code) return `operatorWorkspace.reasons.${code}`;

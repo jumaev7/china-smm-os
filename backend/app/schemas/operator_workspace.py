@@ -1,4 +1,4 @@
-"""Operator Workspace Phase 1 — read-only attention projection schemas."""
+"""Operator Workspace — attention projection and Phase 1 action schemas."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,6 +6,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
 
 AttentionCategory = Literal[
     "content_internal_review",
@@ -30,6 +31,33 @@ AttentionSourceDomain = Literal[
     "automation",
 ]
 
+WorkspaceActionType = Literal["mutation", "navigation"]
+
+WorkspaceActionId = Literal[
+    "open",
+    "acknowledge_alert",
+    "resolve_alert",
+    "retry_publish",
+    "approve_content",
+]
+
+
+class OperatorWorkspaceAction(BaseModel):
+    """Derived action metadata — never persisted; recomputed from canonical state."""
+
+    action_id: str
+    label: str
+    action_type: WorkspaceActionType
+    enabled: bool = True
+    requires_confirmation: bool = False
+    confirmation_message: str | None = None
+    disabled_reason: str | None = None
+    destructive: bool = False
+    external_side_effect: bool = False
+    target_resource: str | None = None
+    href: str | None = None
+    primary: bool = False
+
 
 class OperatorAttentionItem(BaseModel):
     id: str
@@ -50,6 +78,7 @@ class OperatorAttentionItem(BaseModel):
     overdue: bool = False
     source_domain: AttentionSourceDomain
     metadata: dict = Field(default_factory=dict)
+    actions: list[OperatorWorkspaceAction] = Field(default_factory=list)
 
 
 class OperatorWorkspaceSummary(BaseModel):
@@ -74,3 +103,17 @@ class OperatorWorkspaceItemsResponse(BaseModel):
 
 class OperatorWorkspaceSummaryResponse(BaseModel):
     summary: OperatorWorkspaceSummary
+
+
+class OperatorWorkspaceActionRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class OperatorWorkspaceActionResult(BaseModel):
+    success: bool
+    action_id: str
+    message: str
+    canonical_state: dict | None = None
+    attention_still_relevant: bool = False
+    refresh_recommended: bool = True
+    redirect_path: str | None = None

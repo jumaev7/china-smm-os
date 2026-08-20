@@ -1,8 +1,15 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { clientsApi, normalizeList, operatorWorkspaceApi, type Client } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  clientsApi,
+  getApiErrorMessage,
+  normalizeList,
+  operatorWorkspaceApi,
+  type Client,
+  type OperatorWorkspaceActionResult,
+} from "@/lib/api";
 import { useOnboardingTenantId } from "@/lib/onboarding-hooks";
 import {
   DEFAULT_WORKSPACE_FILTERS,
@@ -13,8 +20,10 @@ export const OPERATOR_WORKSPACE_QUERY_KEY = ["operator-workspace"] as const;
 
 export function useOperatorWorkspace() {
   const tenantId = useOnboardingTenantId();
+  const queryClient = useQueryClient();
   const [filters, setFilters] = useState<WorkspaceFilters>(DEFAULT_WORKSPACE_FILTERS);
   const [page, setPage] = useState(1);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
   const params = useMemo(
     () => ({
@@ -58,6 +67,44 @@ export function useOperatorWorkspace() {
     [clientsQuery.data],
   );
 
+  const refreshWorkspace = useCallback(async () => {
+    await Promise.all([
+      itemsQuery.refetch(),
+      summaryQuery.refetch(),
+    ]);
+  }, [itemsQuery, summaryQuery]);
+
+  const actionMutation = useMutation({
+    mutationFn: async ({
+      attentionId,
+      actionId,
+      note,
+    }: {
+      attentionId: string;
+      actionId: string;
+      note?: string;
+    }) => {
+      const key = `${attentionId}:${actionId}`;
+      setPendingKey(key);
+      try {
+        const res = await operatorWorkspaceApi.executeAction(
+          attentionId,
+          actionId,
+          note ? { note } : undefined,
+        );
+        return res.data;
+      } finally {
+        setPendingKey(null);
+      }
+    },
+    onSuccess: async (result: OperatorWorkspaceActionResult) => {
+      if (result.refresh_recommended !== false) {
+        await queryClient.invalidateQueries({ queryKey: OPERATOR_WORKSPACE_QUERY_KEY });
+        await refreshWorkspace();
+      }
+    },
+  });
+
   const updateFilters = useCallback((patch: Partial<WorkspaceFilters>) => {
     setFilters((prev) => ({ ...prev, ...patch }));
     setPage(1);
@@ -80,6 +127,13 @@ export function useOperatorWorkspace() {
     [],
   );
 
+  const isActionPending = useCallback(
+    (attentionId: string, actionId: string) =>
+      pendingKey === `${attentionId}:${actionId}` ||
+      (actionMutation.isPending && pendingKey?.startsWith(`${attentionId}:`) === true),
+    [pendingKey, actionMutation.isPending],
+  );
+
   return {
     filters,
     updateFilters,
@@ -90,9 +144,6 @@ export function useOperatorWorkspace() {
     clients,
     items: itemsQuery.data?.items ?? [],
     total: itemsQuery.data?.total ?? 0,
-    // Prefer dedicated summary endpoint so category/priority filters do not
-    // rewrite unrelated card totals. Items payload summary is already unfiltered
-    // by client scope only, but summaryQuery mirrors that contract explicitly.
     summary: summaryQuery.data?.summary ?? itemsQuery.data?.summary,
     isLoading: itemsQuery.isLoading,
     isError: itemsQuery.isError,
@@ -101,6 +152,10 @@ export function useOperatorWorkspace() {
       void itemsQuery.refetch();
       void summaryQuery.refetch();
     },
+    refreshWorkspace,
+    executeAction: actionMutation.mutateAsync,
+    actionError: actionMutation.error ? getApiErrorMessage(actionMutation.error) : null,
+    isActionPending,
     hasActiveFilters:
       filters.category !== "all" ||
       filters.priority !== "all" ||

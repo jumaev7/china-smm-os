@@ -726,6 +726,21 @@ export type AttentionPriority = "critical" | "high" | "medium" | "low";
 
 export type ResponsibleParty = "operator" | "client" | "system" | "provider";
 
+export interface OperatorWorkspaceAction {
+  action_id: string;
+  label: string;
+  action_type: "mutation" | "navigation";
+  enabled: boolean;
+  requires_confirmation: boolean;
+  confirmation_message: string | null;
+  disabled_reason: string | null;
+  destructive: boolean;
+  external_side_effect: boolean;
+  target_resource: string | null;
+  href: string | null;
+  primary: boolean;
+}
+
 export interface OperatorAttentionItem {
   id: string;
   attention_type: AttentionCategory;
@@ -745,6 +760,7 @@ export interface OperatorAttentionItem {
   overdue: boolean;
   source_domain: string;
   metadata: Record<string, unknown>;
+  actions?: OperatorWorkspaceAction[];
 }
 
 export interface OperatorWorkspaceSummary {
@@ -771,6 +787,16 @@ export interface OperatorWorkspaceSummaryResponse {
   summary: OperatorWorkspaceSummary;
 }
 
+export interface OperatorWorkspaceActionResult {
+  success: boolean;
+  action_id: string;
+  message: string;
+  canonical_state: Record<string, unknown> | null;
+  attention_still_relevant: boolean;
+  refresh_recommended: boolean;
+  redirect_path: string | null;
+}
+
 export const operatorWorkspaceApi = {
   getSummary: (params?: { client_id?: string }) =>
     pickActiveSessionClient().get<OperatorWorkspaceSummaryResponse>("/operator-workspace/summary", {
@@ -787,6 +813,17 @@ export const operatorWorkspaceApi = {
     pickActiveSessionClient().get<OperatorWorkspaceItemsResponse>("/operator-workspace/items", {
       params,
     }),
+  executeAction: (
+    attentionId: string,
+    actionId: string,
+    body?: { note?: string },
+    params?: { tenant_id?: string },
+  ) =>
+    pickActiveSessionClient().post<OperatorWorkspaceActionResult>(
+      `/operator-workspace/items/${encodeURIComponent(attentionId)}/actions/${encodeURIComponent(actionId)}`,
+      body ?? {},
+      { params },
+    ),
 };
 
 export interface SalesDeptOverviewKpis {

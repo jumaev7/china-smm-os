@@ -1,4 +1,4 @@
-# Operator Workspace — Phase 1
+# Operator Workspace
 
 ## Purpose
 
@@ -6,22 +6,25 @@ Operator Workspace is the daily operational view for SMM operators managing mult
 
 **What requires my attention today?**
 
-It is a **read-only aggregation layer** — not a new task system, approval workflow, or publishing engine.
+It is an **aggregation / projection layer** — not a new task system, approval workflow, or publishing engine.
+
+Phase 1 (attention) surfaces what needs work.  
+**Actions Phase 1** adds one-click closure for a small set of **safe, existing canonical mutations**.
 
 ## Source-of-truth boundaries
 
 | Domain | Canonical system | Workspace role |
 |--------|------------------|----------------|
-| Content editing & status | Content (`/content`, ContentItem) | Surfaces items needing internal review or client review |
-| Publishing operations | Publishing Queue & Attempts (`/publishing/queue`, PublishAttempt) | Surfaces failed, stuck, operator-review, and overdue scheduled items |
-| Integrations | Integrations Center (`/integrations`, PublishingAccount) | Surfaces disconnected/expired/missing-permission accounts |
-| Automation | Automation Center (`/automation`, TenantAutomationJob) | Surfaces recent failed/dead-letter jobs |
-| Telegram ingestion | Telegram webhook queue (platform admin) | Surfaces recent terminal failed webhook events to admins only |
-| Publishing alerts | Publishing Alerts (`/publishing/alerts`) | Surfaces open/acknowledged operator alerts |
+| Content editing & status | Content (`/content`, ContentItem) | Surfaces items needing internal review or client review; may invoke `ContentService.approve` |
+| Publishing operations | Publishing Queue & Attempts (`/publishing/queue`, PublishAttempt) | Surfaces failed, stuck, operator-review, and overdue scheduled items; may invoke `PublishAttemptOpsService.manual_retry` when Workspace-eligible |
+| Integrations | Integrations Center (`/integrations`, PublishingAccount) | Surfaces disconnected/expired/missing-permission accounts (navigation only) |
+| Automation | Automation Center (`/automation`, TenantAutomationJob) | Surfaces recent failed/dead-letter jobs (navigation only — no dead-letter replay) |
+| Telegram ingestion | Telegram webhook queue (platform admin) | Surfaces recent terminal failed webhook events to admins only (navigation only) |
+| Publishing alerts | Publishing Alerts (`/publishing/alerts`) | Surfaces open/acknowledged operator alerts; may invoke acknowledge / resolve |
 
-Operator Workspace **does not** mutate canonical state. Each item deep-links to the existing screen where the issue is resolved.
+Operator Workspace **does not** invent domain logic. Mutations always revalidate canonical state and delegate to the owning service.
 
-## Attention categories (Phase 1)
+## Attention categories
 
 1. **content_internal_review** — draft/ready/needs_review content awaiting operator review
 2. **waiting_for_client** — client approval pending or changes requested (lower urgency; responsible party = client); aggregated **one row per client** via SQL `GROUP BY`
@@ -30,6 +33,42 @@ Operator Workspace **does not** mutate canonical state. Each item deep-links to 
 5. **integration_issue** — publishing accounts in attention statuses (disconnected, expired, etc.)
 6. **telegram_ingestion_issue** — recent terminal failed Telegram webhook events (**admin only**; events are platform-global)
 7. **automation_failure** — failed/dead-letter automation jobs within the **7-day actionable window**
+
+## Actions Phase 1 (safe mutation set)
+
+Derived on each items response (`actions[]`). Not persisted.
+
+| Action ID | Attention | Delegates to | Confirmation | Notes |
+|-----------|-----------|--------------|--------------|-------|
+| `acknowledge_alert` | `publish-alert:*` (open) | `PublishOperatorAlertService.acknowledge` | No | Idempotent if already acknowledged |
+| `resolve_alert` | `publish-alert:*` (open/ack) | `PublishOperatorAlertService.resolve_manual` | Yes | Removes from actionable set |
+| `retry_publish` | `publish-attempt:*` failed / exhausted / due retrying | `PublishAttemptOpsService.manual_retry` | Yes | **Not** exposed for `operator_review` |
+| `approve_content` | `content-review:*` | `ContentService.approve` | Yes | Does not bypass client approval; may start client review / Telegram preview via existing path |
+| `open` | all | — | — | Navigation only; mutation endpoint rejects it |
+
+### Explicitly excluded (navigation / deep-link only)
+
+- Meta `operator_review` republish (ambiguous outcomes — fail-closed)
+- OAuth reconnect / credential mutation
+- Automation dead-letter replay
+- Client approval on behalf of client
+- Live social send, Telegram send, email send
+- Destructive deletes / billing
+
+### Endpoint
+
+`POST /api/v1/operator-workspace/items/{attention_id}/actions/{action_id}`
+
+Flow:
+
+1. Resolve attention id prefix + resource
+2. Re-read canonical resource (tenant / client scoped)
+3. Re-check eligibility (409 if stale)
+4. Enforce workspace RBAC (`owner|manager|operator`)
+5. Delegate to canonical service
+6. Return action result + refresh recommendation
+
+Do not trust stale frontend action metadata.
 
 ## Query correctness (no silent truncation)
 
@@ -69,12 +108,13 @@ Healthy in-flight `in_progress` attempts (lease still valid) are **excluded** so
 
 Automation failed/dead_letter jobs appear only when `updated_at` is within **7 days**.
 
-This is a derived recency/actionability rule for the daily workspace. Historical dead letters (e.g. known July jobs older than the window) remain in the automation system unchanged and simply age out of “today”.
+This is a derived recency/actionability rule for the daily workspace. Historical dead letters remain in the automation system unchanged and simply age out of “today”. Workspace never replays them.
 
 ## API
 
 - `GET /api/v1/operator-workspace/summary` — optional `client_id`
-- `GET /api/v1/operator-workspace/items` — `client_id`, `category`, `priority`, `responsible_party`, pagination
+- `GET /api/v1/operator-workspace/items` — `client_id`, `category`, `priority`, `responsible_party`, pagination (includes derived `actions[]`)
+- `POST /api/v1/operator-workspace/items/{attention_id}/actions/{action_id}` — Phase 1 safe mutations
 
 Category/priority/responsibility filters change the **items list** only. Summary cards stay based on the full client-scoped attention set.
 
@@ -86,16 +126,22 @@ Denied: **sales**, **viewer**.
 
 Platform admins may access via existing admin session. Frontend nav/route guards use the same role list.
 
+Actions do **not** expand RBAC beyond the workspace gate + existing domain tenant/client scope.
+
 ## Tenant isolation
 
-Uses existing `ApiAuthContext` + `scope_select()` for client-scoped content/publishing queries and `apply_tenant_direct_scope()` for tenant-level integration/automation resources. Cross-tenant access returns 403 via existing guards.
+Uses existing `ApiAuthContext` + `scope_select()` for client-scoped content/publishing queries and `apply_tenant_direct_scope()` for tenant-level integration/automation resources. Action execution re-resolves the canonical resource server-side; attention ids alone cannot mutate cross-tenant data.
 
-## Phase 2+ (not in scope)
+## Audit & metrics
 
+Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resolved_by` fields. Content approve and publish retry continue to use their canonical side effects / logs. No new analytics subsystem in Actions Phase 1 — future efficiency metrics (time-to-resolution, actions/day) can read existing audit fields.
+
+## Future (not in scope)
+
+- Autonomous remediation (no auto-execute of eligible actions)
 - CRM / project management features
 - AI prioritization
-- Persistent task table
-- In-app resolution forms (retry publish, edit content) inside workspace
+- Persistent task / action table
+- Automation requeue from workspace
+- OAuth reconnect from workspace
 - Listening/Advertising intelligence feeds (unless operational failure)
-- Per-job automation deep pages beyond existing center drawer
-- Tenant-scoped Telegram webhook event projection (requires schema work)

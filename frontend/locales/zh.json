@@ -1907,6 +1907,24 @@
       "openIntegrations": "打开集成",
       "reviewTelegram": "查看 Telegram 设置",
       "openAutomation": "打开自动化中心"
+    },
+    "actionButtons": {
+      "open": "打开",
+      "acknowledge": "确认",
+      "resolve": "解决",
+      "retryPublish": "重试发布",
+      "approve": "批准"
+    },
+    "confirm": {
+      "generic": "确定继续吗？",
+      "resolve": "将把告警标记为已解决，并从关注队列中移除。",
+      "retryPublish": "将再次安排或尝试发布。",
+      "approve": "将完成内部批准，并在配置允许时启动客户审核。不会直接发布，也不会绕过客户批准。"
+    },
+    "feedback": {
+      "success": "操作完成",
+      "failed": "操作失败",
+      "stale": "状态已变化 — 工作区已刷新。请核对后必要时重试。"
     }
   }
 }

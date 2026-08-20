@@ -86,6 +86,24 @@
       "openIntegrations": "Integratsiyalarni ochish",
       "reviewTelegram": "Telegram sozlamalarini ko'rib chiqish",
       "openAutomation": "Avtomatlashtirish markazini ochish"
+    },
+    "actionButtons": {
+      "open": "Ochish",
+      "acknowledge": "Tasdiqlash",
+      "resolve": "Yopish",
+      "retryPublish": "Nashrni qayta urinish",
+      "approve": "Ichki tasdiq"
+    },
+    "confirm": {
+      "generic": "Davom etasizmi?",
+      "resolve": "Ogohlantirish yopiladi va e'tibor navbatidan olib tashlanadi.",
+      "retryPublish": "Nashr qayta rejalashtiriladi yoki qayta uriniladi.",
+      "approve": "Ichki tasdiq belgilanadi va kerak bo'lsa mijoz ko'rib chiqishi boshlanadi. Bu nashr qilmaydi va mijoz tasdig'ini aylanib o'tmaydi."
+    },
+    "feedback": {
+      "success": "Amal bajarildi",
+      "failed": "Amal bajarilmadi",
+      "stale": "Holat o'zgardi — ish maydoni yangilandi. Kerak bo'lsa qayta tekshiring."
     }
   }
 }

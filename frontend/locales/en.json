@@ -2338,6 +2338,24 @@
       "openIntegrations": "Open integrations",
       "reviewTelegram": "Review Telegram settings",
       "openAutomation": "Open automation center"
+    },
+    "actionButtons": {
+      "open": "Open",
+      "acknowledge": "Acknowledge",
+      "resolve": "Resolve",
+      "retryPublish": "Retry publish",
+      "approve": "Approve"
+    },
+    "confirm": {
+      "generic": "Are you sure you want to continue?",
+      "resolve": "This will mark the alert resolved and remove it from the attention queue.",
+      "retryPublish": "This will schedule/attempt publication again.",
+      "approve": "This marks internal approval and starts client review where configured. It does not publish or bypass client approval."
+    },
+    "feedback": {
+      "success": "Action completed",
+      "failed": "Action failed",
+      "stale": "This item changed — workspace refreshed. Review and try again if needed."
     }
   }
 }

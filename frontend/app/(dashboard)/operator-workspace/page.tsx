@@ -1,25 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import toast from "react-hot-toast";
 import { PageHeader, PageShell } from "@/components/ui/design-system";
 import { ErrorState } from "@/components/ui/PageStates";
-import { getApiErrorMessage } from "@/lib/api";
+import { getApiErrorMessage, type OperatorAttentionItem, type OperatorWorkspaceAction } from "@/lib/api";
 import { useTranslation } from "@/lib/I18nProvider";
 import { useOperatorWorkspace } from "@/lib/operator-workspace-hooks";
 import {
   PRIORITY_BADGE,
   RESPONSIBLE_BADGE,
   SUMMARY_CARDS,
+  actionConfirmKey,
+  actionLabelKey,
   categoryLabelKey,
   formatRelativeTime,
   priorityLabelKey,
-  suggestedActionLabelKey,
   reasonLabelKey,
   responsibleLabelKey,
+  suggestedActionLabelKey,
 } from "@/lib/operator-workspace-ui";
 import { cn } from "@/lib/utils";
-import type { OperatorAttentionItem } from "@/lib/api";
 
 function SummaryCards({
   summary,
@@ -52,11 +55,40 @@ function SummaryCards({
   );
 }
 
-function AttentionItemRow({ item }: { item: OperatorAttentionItem }) {
+function AttentionItemRow({
+  item,
+  onExecute,
+  isPending,
+}: {
+  item: OperatorAttentionItem;
+  onExecute: (item: OperatorAttentionItem, action: OperatorWorkspaceAction) => Promise<void>;
+  isPending: (actionId: string) => boolean;
+}) {
   const { t } = useTranslation();
   const reasonKey = reasonLabelKey(item);
   const reasonText = t(reasonKey);
   const displayReason = reasonText === reasonKey ? item.reason : reasonText;
+  const actions = item.actions?.length
+    ? item.actions
+    : [
+        {
+          action_id: "open",
+          label: "Open",
+          action_type: "navigation" as const,
+          enabled: true,
+          requires_confirmation: false,
+          confirmation_message: null,
+          disabled_reason: null,
+          destructive: false,
+          external_side_effect: false,
+          target_resource: null,
+          href: item.action_path,
+          primary: true,
+        },
+      ];
+
+  const primary = actions.find((a) => a.primary) ?? actions[0];
+  const secondary = actions.filter((a) => a !== primary);
 
   return (
     <div className="px-4 py-3 border-b border-gray-100 last:border-0 hover:bg-gray-50/60 transition">
@@ -97,14 +129,95 @@ function AttentionItemRow({ item }: { item: OperatorAttentionItem }) {
           </span>
         )}
       </div>
+
+      <div className="flex flex-wrap items-center gap-2 mt-3">
+        {primary && (
+          <ActionControl
+            item={item}
+            action={primary}
+            variant="primary"
+            onExecute={onExecute}
+            pending={isPending(primary.action_id)}
+            fallbackLabel={t(suggestedActionLabelKey(item))}
+          />
+        )}
+        {secondary.map((action) => (
+          <ActionControl
+            key={action.action_id}
+            item={item}
+            action={action}
+            variant="secondary"
+            onExecute={onExecute}
+            pending={isPending(action.action_id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ActionControl({
+  item,
+  action,
+  variant,
+  onExecute,
+  pending,
+  fallbackLabel,
+}: {
+  item: OperatorAttentionItem;
+  action: OperatorWorkspaceAction;
+  variant: "primary" | "secondary";
+  onExecute: (item: OperatorAttentionItem, action: OperatorWorkspaceAction) => Promise<void>;
+  pending: boolean;
+  fallbackLabel?: string;
+}) {
+  const { t } = useTranslation();
+  const labelKey = actionLabelKey(action.action_id);
+  const translated = t(labelKey);
+  const label =
+    translated === labelKey
+      ? action.label || fallbackLabel || action.action_id
+      : translated;
+
+  if (action.action_type === "navigation") {
+    const href = action.href || item.action_path;
+    return (
       <Link
-        href={item.action_path}
-        className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-800"
+        href={href}
+        className={cn(
+          "inline-flex items-center gap-1 text-sm font-medium",
+          variant === "primary"
+            ? "btn-primary px-3 py-1.5"
+            : "text-indigo-600 hover:text-indigo-800",
+        )}
       >
-        {t(suggestedActionLabelKey(item))}
+        {label}
         <ArrowRight className="h-3.5 w-3.5" />
       </Link>
-    </div>
+    );
+  }
+
+  const disabled = !action.enabled || pending;
+  const title = !action.enabled && action.disabled_reason
+    ? action.disabled_reason
+    : undefined;
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={title}
+      onClick={() => void onExecute(item, action)}
+      className={cn(
+        "inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded transition",
+        variant === "primary"
+          ? "btn-primary disabled:opacity-50"
+          : "btn-secondary disabled:opacity-50",
+      )}
+    >
+      {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+      {label}
+    </button>
   );
 }
 
@@ -123,8 +236,46 @@ export default function OperatorWorkspacePage() {
     isError,
     error,
     retry,
+    executeAction,
+    isActionPending,
     hasActiveFilters,
   } = useOperatorWorkspace();
+  const [busyItemId, setBusyItemId] = useState<string | null>(null);
+
+  const handleExecute = async (
+    item: OperatorAttentionItem,
+    action: OperatorWorkspaceAction,
+  ) => {
+    if (action.action_type !== "mutation" || !action.enabled) return;
+    if (busyItemId === item.id) return;
+
+    if (action.requires_confirmation) {
+      const confirmKey = actionConfirmKey(action.action_id);
+      const message = confirmKey
+        ? t(confirmKey)
+        : action.confirmation_message || t("operatorWorkspace.confirm.generic");
+      if (!window.confirm(message)) return;
+    }
+
+    setBusyItemId(item.id);
+    try {
+      const result = await executeAction({
+        attentionId: item.id,
+        actionId: action.action_id,
+      });
+      toast.success(result.message || t("operatorWorkspace.feedback.success"));
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status === 409) {
+        toast.error(t("operatorWorkspace.feedback.stale"));
+        retry();
+      } else {
+        toast.error(getApiErrorMessage(err) || t("operatorWorkspace.feedback.failed"));
+      }
+    } finally {
+      setBusyItemId(null);
+    }
+  };
 
   return (
     <PageShell>
@@ -255,7 +406,14 @@ export default function OperatorWorkspacePage() {
         )}
 
         {!isLoading && items.map((item) => (
-          <AttentionItemRow key={item.id} item={item} />
+          <AttentionItemRow
+            key={item.id}
+            item={item}
+            onExecute={handleExecute}
+            isPending={(actionId) =>
+              busyItemId === item.id || isActionPending(item.id, actionId)
+            }
+          />
         ))}
       </div>
     </PageShell>

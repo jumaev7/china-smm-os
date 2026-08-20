@@ -1,4 +1,4 @@
-"""Operator Workspace Phase 1 — read-only attention projection over canonical state."""
+"""Operator Workspace — attention projection over canonical state (+ Phase 1 actions)."""
 from __future__ import annotations
 
 import logging
@@ -207,6 +207,11 @@ class OperatorWorkspaceService:
         total = len(items)
         start = (page - 1) * page_size
         page_items = items[start : start + page_size]
+
+        # Actions are derived (not persisted) from current projection state.
+        from app.services.operator_workspace_actions import OperatorWorkspaceActionService
+
+        OperatorWorkspaceActionService.attach_actions(page_items)
 
         return OperatorWorkspaceItemsResponse(
             items=page_items,
