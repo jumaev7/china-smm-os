@@ -657,7 +657,7 @@ def test_waiting_client_sql_aggregation_one_item_per_client():
             company_name="A Co",
             cnt=12,
             oldest=_now() - timedelta(days=2),
-            first_id=first_a,
+            representative_id=first_a,
             has_changes=0,
         ),
         SimpleNamespace(
@@ -665,7 +665,7 @@ def test_waiting_client_sql_aggregation_one_item_per_client():
             company_name="B Co",
             cnt=3,
             oldest=_now() - timedelta(days=1),
-            first_id=first_b,
+            representative_id=first_b,
             has_changes=1,
         ),
     ])
@@ -675,6 +675,39 @@ def test_waiting_client_sql_aggregation_one_item_per_client():
     by_id = {i.client_id: i for i in items}
     assert by_id[client_a].responsible_party == "client"
     assert by_id[client_a].metadata["count"] == 12
+    assert by_id[client_a].content_id is None
     assert by_id[client_a].action_path == f"/content?client_id={client_a}"
     assert by_id[client_b].metadata["reason_code"] == "client_changes"
     assert by_id[client_b].action_path == f"/content?client_id={client_b}"
+
+
+def test_waiting_client_single_item_deep_links_to_content():
+    client_a = uuid.uuid4()
+    content_a = uuid.uuid4()
+    db = FakeWorkspaceDb()
+    db.queue_execute([
+        SimpleNamespace(
+            client_id=client_a,
+            company_name="A Co",
+            cnt=1,
+            oldest=_now() - timedelta(hours=3),
+            representative_id=content_a,
+            has_changes=0,
+        ),
+    ])
+    items = []
+    asyncio.run(OperatorWorkspaceService._collect_waiting_client(db, None, items.append))
+    assert len(items) == 1
+    assert items[0].content_id == content_a
+    assert items[0].metadata["count"] == 1
+    assert items[0].action_path == f"/content/{content_a}"
+
+
+def test_waiting_client_query_path_has_no_uuid_min_max():
+    """Guard against reintroducing PostgreSQL-incompatible UUID aggregates."""
+    import inspect
+
+    source = inspect.getsource(OperatorWorkspaceService._collect_waiting_client)
+    assert "func.min(ContentItem.id)" not in source
+    assert "func.max(ContentItem.id)" not in source
+    assert "row_number" in source

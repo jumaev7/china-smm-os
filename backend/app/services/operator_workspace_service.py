@@ -328,39 +328,61 @@ class OperatorWorkspaceService:
         add,
     ) -> None:
         # Aggregate in SQL so large pending volumes cannot drop whole clients.
-        changes_flag = func.max(
-            case(
-                (
-                    or_(
-                        ContentItem.client_review_status == CLIENT_REVIEW_CHANGES,
-                        ContentItem.status == "changes_requested",
-                    ),
-                    1,
-                ),
-                else_=0,
-            )
-        ).label("has_changes")
-        query = (
-            select(
-                ContentItem.client_id,
-                Client.company_name,
-                func.count(ContentItem.id).label("cnt"),
-                func.min(ContentItem.updated_at).label("oldest"),
-                func.min(ContentItem.id).label("first_id"),
-                changes_flag,
-            )
-            .join(Client, Client.id == ContentItem.client_id)
-            .where(
+        # PostgreSQL has no min(uuid)/max(uuid); pick a deterministic representative
+        # via window ranking (most recently updated, then id desc as tie-break).
+        waiting_filter = or_(
+            ContentItem.client_review_status == CLIENT_REVIEW_PENDING,
+            ContentItem.client_review_status == CLIENT_REVIEW_CHANGES,
+            ContentItem.status == "changes_requested",
+        )
+        changes_expr = case(
+            (
                 or_(
-                    ContentItem.client_review_status == CLIENT_REVIEW_PENDING,
                     ContentItem.client_review_status == CLIENT_REVIEW_CHANGES,
                     ContentItem.status == "changes_requested",
                 ),
-            )
-            .group_by(ContentItem.client_id, Client.company_name)
-            .order_by(func.min(ContentItem.updated_at).asc())
+                1,
+            ),
+            else_=0,
         )
-        query, _ = scope_select(query, None, ContentItem.client_id, client_id=client_id)
+        ranked = (
+            select(
+                ContentItem.client_id.label("client_id"),
+                Client.company_name.label("company_name"),
+                ContentItem.id.label("representative_id"),
+                func.count(ContentItem.id)
+                .over(partition_by=ContentItem.client_id)
+                .label("cnt"),
+                func.min(ContentItem.updated_at)
+                .over(partition_by=ContentItem.client_id)
+                .label("oldest"),
+                func.max(changes_expr)
+                .over(partition_by=ContentItem.client_id)
+                .label("has_changes"),
+                func.row_number()
+                .over(
+                    partition_by=ContentItem.client_id,
+                    order_by=(ContentItem.updated_at.desc(), ContentItem.id.desc()),
+                )
+                .label("rn"),
+            )
+            .join(Client, Client.id == ContentItem.client_id)
+            .where(waiting_filter)
+        )
+        ranked, _ = scope_select(ranked, None, ContentItem.client_id, client_id=client_id)
+        ranked_subq = ranked.subquery("waiting_client_ranked")
+        query = (
+            select(
+                ranked_subq.c.client_id,
+                ranked_subq.c.company_name,
+                ranked_subq.c.cnt,
+                ranked_subq.c.oldest,
+                ranked_subq.c.representative_id,
+                ranked_subq.c.has_changes,
+            )
+            .where(ranked_subq.c.rn == 1)
+            .order_by(ranked_subq.c.oldest.asc())
+        )
         rows = (await db.execute(query)).all()
         _warn_if_pathological("waiting_client_groups", len(rows))
 
@@ -376,21 +398,23 @@ class OperatorWorkspaceService:
                 if is_changes
                 else f"Client approval pending for {count} post{'s' if count != 1 else ''}"
             )
-            first_id = row.first_id
+            representative_id = row.representative_id
             add(OperatorAttentionItem(
                 id=f"waiting-client:{cid}",
                 attention_type="waiting_for_client",
                 priority="low",
                 client_id=cid,
                 company_name=row.company_name or "Unknown",
-                content_id=first_id if count == 1 else None,
+                content_id=representative_id if count == 1 else None,
                 title=reason,
                 reason=reason,
                 current_state="changes_requested" if is_changes else "pending",
                 responsible_party="client",
                 suggested_action="Open client review status",
                 action_path=(
-                    f"/content/{first_id}" if count == 1 else f"/content?client_id={cid}"
+                    f"/content/{representative_id}"
+                    if count == 1
+                    else f"/content?client_id={cid}"
                 ),
                 created_at=_aware(row.oldest),
                 source_domain="content",
