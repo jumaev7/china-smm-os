@@ -8,7 +8,7 @@ Operator Workspace is the daily operational view for SMM operators managing mult
 
 It is an **aggregation / projection layer** — not a new task system, approval workflow, or publishing engine.
 
-Phase 1 (attention) surfaces what needs work.  
+Phase 1 (attention) surfaces what needs work.
 **Actions Phase 1** adds one-click closure for a small set of **safe, existing canonical mutations**.
 
 ## Source-of-truth boundaries
