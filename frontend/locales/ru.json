@@ -1991,5 +1991,76 @@
         "billing_payment_actions": "Биллинг"
       }
     }
+  },
+  "integrationHealth": {
+    "title": "Здоровье интеграций",
+    "statuses": {
+      "healthy": "Здорова",
+      "degraded": "Ограничена",
+      "action_required": "Нужно действие",
+      "unavailable": "Недоступна",
+      "unknown": "Неизвестно",
+      "unhealthy": "Неисправна",
+      "not_configured": "Не настроена"
+    },
+    "capabilities": {
+      "publishing": "Публикация",
+      "listening": "Listening",
+      "import": "Импорт",
+      "metrics": "Метрики",
+      "ingestion": "Приём данных",
+      "freshness": "Актуальность",
+      "webhook": "Webhook",
+      "intake_group": "Группа приёма",
+      "publish_destination": "Канал публикации",
+      "bot": "Бот",
+      "queue": "Очередь"
+    },
+    "responsible": {
+      "operator": "Оператор",
+      "client": "Клиент",
+      "provider": "Провайдер",
+      "system": "Система"
+    },
+    "freshness": {
+      "lastChecked": "Последняя проверка",
+      "stale": "Устарело",
+      "neverChecked": "Ещё не проверялось"
+    },
+    "summary": {
+      "healthy": "Здоровы",
+      "degraded": "Ограничены",
+      "needsAction": "Нужно действие",
+      "staleUnknown": "Устаревшие / неизвестно"
+    },
+    "reasons": {
+      "healthy": "Подключение работает, нужные возможности доступны.",
+      "disconnected": "Аккаунт отключён от платформы.",
+      "expired_token": "Срок авторизации истёк — нужно обновить.",
+      "invalid_token": "Токен доступа недействителен или отозван.",
+      "missing_required_scope": "Не хватает обязательных разрешений.",
+      "missing_optional_scope": "Не хватает опциональных разрешений; основные функции могут работать.",
+      "provider_unreachable": "Провайдер недоступен во время проверки.",
+      "provider_rate_limited": "Провайдер ограничил частоту запросов.",
+      "authorization_required": "Требуется интерактивная авторизация.",
+      "webhook_not_configured": "Webhook не настроен как ожидается.",
+      "webhook_unhealthy": "Наблюдались сбои доставки или обработки webhook.",
+      "account_not_found": "Связанный аккаунт или страница не найдены.",
+      "capability_unavailable": "Некритичная возможность недоступна.",
+      "app_review_required": "Нужен App Review / Advanced Access у провайдера.",
+      "transient_provider_error": "Временная ошибка провайдера при проверке.",
+      "stale_check": "Последние данные о здоровье устарели.",
+      "never_checked": "Проверка здоровья ещё не выполнялась.",
+      "mock_mode": "Интеграция в mock/demo режиме.",
+      "not_configured": "Интеграция не настроена.",
+      "unsupported": "Живая проверка для этого провайдера пока не поддерживается.",
+      "unknown": "Недостаточно данных для классификации."
+    },
+    "actions": {
+      "openIntegration": "Открыть интеграцию",
+      "reconnect": "Переподключить аккаунт",
+      "reviewCapabilities": "Смотреть возможности",
+      "waitRecheck": "Запланирована автоматическая перепроверка"
+    }
   }
 }

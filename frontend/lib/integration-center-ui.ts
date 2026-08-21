@@ -27,7 +27,28 @@ export type IntegrationCategory =
 
 export type IntegrationStatus = "connected" | "not_connected" | "attention_needed" | "coming_soon";
 
-export type IntegrationHealth = "healthy" | "degraded" | "unhealthy" | "unknown";
+export type IntegrationHealth =
+  | "healthy"
+  | "degraded"
+  | "unhealthy"
+  | "action_required"
+  | "unavailable"
+  | "unknown";
+
+export type CapabilityHealthStatus =
+  | "healthy"
+  | "degraded"
+  | "action_required"
+  | "unavailable"
+  | "unknown"
+  | "not_configured";
+
+export interface IntegrationCapabilityView {
+  name: string;
+  status: CapabilityHealthStatus | string;
+  reason: string;
+  reasonCode: string;
+}
 
 export type IntegrationPrimaryAction = "connect" | "manage" | "reconnect" | "coming_soon";
 
@@ -77,6 +98,14 @@ export interface ResolvedIntegration extends IntegrationCatalogItem {
   missingPermissions?: string[];
   blockers?: string[];
   publishingPlatform?: boolean;
+  /** Backend diagnostic (from /integrations/health, never live on page load). */
+  healthReason?: string | null;
+  healthReasonCode?: string | null;
+  recommendedNextStep?: string | null;
+  checkedAt?: string | null;
+  stale?: boolean;
+  responsibleParty?: string | null;
+  capabilities?: IntegrationCapabilityView[];
 }
 
 export const INTEGRATION_CATEGORIES: { id: IntegrationCategory; label: string }[] = [
@@ -336,11 +365,26 @@ function metaNeedsAttention(meta: MetaConnectionSummary | undefined, platform: "
   return (nested.blockers?.length ?? 0) > 0;
 }
 
+function mapBackendHealth(status?: string | null): IntegrationHealth {
+  if (!status) return "unknown";
+  if (status === "action_required") return "action_required";
+  if (status === "unavailable") return "unavailable";
+  if (status === "degraded") return "degraded";
+  if (status === "healthy") return "healthy";
+  if (status === "unhealthy") return "unhealthy";
+  return "unknown";
+}
+
 function resolveHealth(
   status: IntegrationStatus,
   account?: PublishingAccount,
   metaHealth?: string | null,
+  backendStatus?: string | null,
 ): IntegrationHealth {
+  if (backendStatus) {
+    const mapped = mapBackendHealth(backendStatus);
+    if (mapped !== "unknown") return mapped;
+  }
   if (status === "coming_soon" || status === "not_connected") return "unknown";
   if (status === "attention_needed") return "unhealthy";
   if (account?.status === "mock" || metaHealth === "mock") return "degraded";
@@ -366,6 +410,8 @@ export interface IntegrationDataContext {
   telegramConnected?: boolean;
   telegramGroupTitle?: string | null;
   readinessSteps?: { id: string; status: string }[];
+  /** Map platform → latest health diagnostic (local/cached; no live probe). */
+  healthByPlatform?: Record<string, import("@/lib/api").IntegrationHealthItem>;
 }
 
 function findAccount(accounts: PublishingAccount[], platform: string): PublishingAccount | undefined {
@@ -456,6 +502,11 @@ export function resolveIntegration(
       break;
   }
 
+  const backendHealth = ctx.healthByPlatform?.[item.key];
+  if (backendHealth?.requires_operator_action || backendHealth?.status === "action_required") {
+    needsAttention = true;
+  }
+
   const status: IntegrationStatus = connected
     ? needsAttention
       ? "attention_needed"
@@ -469,17 +520,31 @@ export function resolveIntegration(
         ? ctx.meta?.instagram?.health ?? ctx.meta?.health
         : null;
 
+  const health = resolveHealth(status, account, metaHealth, backendHealth?.status);
+
   return {
     ...item,
     status,
-    health: resolveHealth(status, account, metaHealth),
+    health,
     primaryAction: resolvePrimaryAction(status, item.connectHref),
-    lastSync,
+    lastSync: backendHealth?.checked_at ?? lastSync,
     accountName,
     accountId,
     permissions,
     missingPermissions,
     blockers,
+    healthReason: backendHealth?.reason ?? null,
+    healthReasonCode: backendHealth?.reason_code ?? null,
+    recommendedNextStep: backendHealth?.recommended_next_step ?? null,
+    checkedAt: backendHealth?.checked_at ?? null,
+    stale: backendHealth?.stale ?? false,
+    responsibleParty: backendHealth?.responsible_party ?? null,
+    capabilities: (backendHealth?.capabilities ?? []).map((c) => ({
+      name: c.name,
+      status: c.status,
+      reason: c.reason,
+      reasonCode: c.reason_code,
+    })),
   };
 }
 
@@ -502,10 +567,16 @@ export function computeIntegrationSummary(items: ResolvedIntegration[]) {
   const attention = actionable.filter((i) => i.status === "attention_needed");
   const healthy = connected.filter((i) => i.health === "healthy").length;
   const degraded = connected.filter((i) => i.health === "degraded").length;
+  const actionRequired = actionable.filter(
+    (i) => i.health === "action_required" || i.status === "attention_needed",
+  ).length;
+  const staleUnknown = actionable.filter(
+    (i) => i.stale || i.health === "unknown" || i.health === "unavailable",
+  ).length;
 
   const overallHealth: IntegrationHealth =
-    attention.length > 0
-      ? "unhealthy"
+    attention.length > 0 || actionRequired > 0
+      ? "action_required"
       : connected.length === 0
         ? "unknown"
         : degraded > 0
@@ -519,6 +590,10 @@ export function computeIntegrationSummary(items: ResolvedIntegration[]) {
     notConnectedCount: actionable.filter((i) => i.status === "not_connected").length,
     comingSoonCount: items.filter((i) => i.status === "coming_soon").length,
     overallHealth,
+    healthyCount: healthy,
+    degradedCount: degraded,
+    actionRequiredCount: actionRequired,
+    staleUnknownCount: staleUnknown,
     connected,
     attention,
   };
@@ -555,6 +630,8 @@ export const HEALTH_STYLES: Record<IntegrationHealth, string> = {
   healthy: "bg-emerald-500",
   degraded: "bg-amber-500",
   unhealthy: "bg-red-500",
+  action_required: "bg-red-500",
+  unavailable: "bg-orange-500",
   unknown: "bg-slate-300 dark-tenant:bg-slate-600",
 };
 
@@ -562,6 +639,8 @@ export const HEALTH_LABELS: Record<IntegrationHealth, string> = {
   healthy: "Healthy",
   degraded: "Degraded",
   unhealthy: "Unhealthy",
+  action_required: "Action required",
+  unavailable: "Unavailable",
   unknown: "Unknown",
 };
 

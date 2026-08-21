@@ -1,18 +1,36 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { metaPublishingApi, publishingApi, tenantOnboardingApi } from "@/lib/api";
+import {
+  integrationHealthApi,
+  metaPublishingApi,
+  publishingApi,
+  tenantOnboardingApi,
+  type IntegrationHealthItem,
+} from "@/lib/api";
 import { useOnboardingReadiness, useOnboardingTenantId } from "@/lib/onboarding-hooks";
 import {
   computeIntegrationSummary,
   resolveAllIntegrations,
   type IntegrationDataContext,
-  type ResolvedIntegration,
 } from "@/lib/integration-center-ui";
 
 export const INTEGRATION_ACCOUNTS_KEY = ["integration-center", "accounts"] as const;
 export const INTEGRATION_META_KEY = ["integration-center", "meta"] as const;
 export const INTEGRATION_CHANNELS_KEY = ["integration-center", "channels"] as const;
+export const INTEGRATION_HEALTH_KEY = ["integration-center", "health"] as const;
+
+function indexHealthByPlatform(items: IntegrationHealthItem[]): Record<string, IntegrationHealthItem> {
+  const out: Record<string, IntegrationHealthItem> = {};
+  for (const item of items) {
+    const key = item.platform;
+    // Prefer publishing-account rows over synthetic telegram:client rows for catalog keys.
+    if (!out[key] || !String(item.integration_id).includes(":")) {
+      out[key] = item;
+    }
+  }
+  return out;
+}
 
 export function useIntegrationCenterData() {
   const tenantId = useOnboardingTenantId();
@@ -39,6 +57,17 @@ export function useIntegrationCenterData() {
     staleTime: 30_000,
   });
 
+  // Fast local/cached diagnostics — never live_check on page load.
+  const healthQuery = useQuery({
+    queryKey: [...INTEGRATION_HEALTH_KEY, tenantId],
+    queryFn: () =>
+      integrationHealthApi
+        .list({ ...scopeParams, live_check: false })
+        .then((r) => r.data),
+    enabled: !!tenantId,
+    staleTime: 60_000,
+  });
+
   const tg = channelsQuery.data?.telegram as
     | { connected?: boolean; group_title?: string | null }
     | undefined;
@@ -49,13 +78,18 @@ export function useIntegrationCenterData() {
     telegramConnected: !!tg?.connected,
     telegramGroupTitle: tg?.group_title,
     readinessSteps: readinessQuery.data?.platform_steps,
+    healthByPlatform: indexHealthByPlatform(healthQuery.data?.items ?? []),
   };
 
   const integrations = resolveAllIntegrations(ctx);
   const summary = computeIntegrationSummary(integrations);
+  const healthSummary = healthQuery.data?.summary;
 
   const isLoading =
-    readinessQuery.isLoading || accountsQuery.isLoading || metaQuery.isLoading || channelsQuery.isLoading;
+    readinessQuery.isLoading ||
+    accountsQuery.isLoading ||
+    metaQuery.isLoading ||
+    channelsQuery.isLoading;
 
   const isError = accountsQuery.isError || metaQuery.isError || channelsQuery.isError;
 
@@ -69,12 +103,14 @@ export function useIntegrationCenterData() {
     void accountsQuery.refetch();
     void metaQuery.refetch();
     void channelsQuery.refetch();
+    void healthQuery.refetch();
   };
 
   return {
     tenantId,
     integrations,
     summary,
+    healthSummary,
     isLoading,
     isError,
     error,
@@ -83,11 +119,12 @@ export function useIntegrationCenterData() {
       readinessQuery.isFetching ||
       accountsQuery.isFetching ||
       metaQuery.isFetching ||
-      channelsQuery.isFetching,
+      channelsQuery.isFetching ||
+      healthQuery.isFetching,
   };
 }
 
 export type IntegrationCenterData = {
-  integrations: ResolvedIntegration[];
+  integrations: import("@/lib/integration-center-ui").ResolvedIntegration[];
   summary: ReturnType<typeof computeIntegrationSummary>;
 };

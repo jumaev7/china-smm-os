@@ -17,6 +17,10 @@ export function IntegrationCenterHeader({
   activeCategory,
   onCategoryChange,
   categories,
+  healthyCount,
+  degradedCount,
+  actionRequiredCount,
+  staleUnknownCount,
 }: {
   connectedCount: number;
   attentionCount: number;
@@ -25,13 +29,17 @@ export function IntegrationCenterHeader({
   activeCategory: IntegrationCategory;
   onCategoryChange: (category: IntegrationCategory) => void;
   categories: { id: IntegrationCategory; label: string }[];
+  healthyCount?: number;
+  degradedCount?: number;
+  actionRequiredCount?: number;
+  staleUnknownCount?: number;
 }) {
   const healthSub =
     overallHealth === "healthy"
       ? "All systems operational"
       : overallHealth === "degraded"
-        ? "Some integrations in mock mode"
-        : overallHealth === "unhealthy"
+        ? "Some integrations limited"
+        : overallHealth === "action_required" || overallHealth === "unhealthy"
           ? "Action required"
           : "No connections yet";
 
@@ -50,12 +58,16 @@ export function IntegrationCenterHeader({
         <KpiCard
           label="Overall Health"
           value={HEALTH_LABELS[overallHealth]}
-          sub={healthSub}
+          sub={
+            typeof healthyCount === "number"
+              ? `Healthy ${healthyCount} · Degraded ${degradedCount ?? 0} · Action ${actionRequiredCount ?? 0} · Stale ${staleUnknownCount ?? 0}`
+              : healthSub
+          }
           icon={HeartPulse}
           iconClassName={
             overallHealth === "healthy"
               ? "bg-emerald-50 text-emerald-600 dark-tenant:bg-emerald-500/15 dark-tenant:text-emerald-400"
-              : overallHealth === "unhealthy"
+              : overallHealth === "action_required" || overallHealth === "unhealthy"
                 ? "bg-red-50 text-red-600 dark-tenant:bg-red-500/15 dark-tenant:text-red-400"
                 : overallHealth === "degraded"
                   ? "bg-amber-50 text-amber-600 dark-tenant:bg-amber-500/15 dark-tenant:text-amber-400"

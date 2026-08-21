@@ -608,11 +608,11 @@ class OperatorWorkspaceService:
         tenant_id: UUID | None,
         add,
     ) -> None:
-        query = (
-            select(PublishingAccount)
-            .where(PublishingAccount.status.in_(tuple(INTEGRATION_ATTENTION_STATUSES)))
-            .order_by(PublishingAccount.updated_at.desc())
-        )
+        """Surface actionable integration health — suppress healthy + non-escalated transients."""
+        from app.services.integration_health.persistence import read_diagnostic
+        from app.services.integration_health.taxonomy import reason_meta
+
+        query = select(PublishingAccount).order_by(PublishingAccount.updated_at.desc())
         tenant_filt = cls._tenant_filter(PublishingAccount.tenant_id)
         if tenant_filt is not None:
             query = query.where(tenant_filt)
@@ -621,15 +621,91 @@ class OperatorWorkspaceService:
 
         accounts = list((await db.scalars(query)).all())
         _warn_if_pathological("integrations", len(accounts))
+
         for account in accounts:
-            priority: AttentionPriority = (
-                "critical" if account.status in ("blocked", "missing_permissions") else "high"
+            diag = read_diagnostic(account)
+            # Prefer persisted diagnostic; fall back to attention statuses.
+            status = diag.get("status")
+            reason_code = diag.get("reason_code") or _REASON_CODES["integration_attention"]
+            requires_action = diag.get("requires_operator_action")
+            responsible = diag.get("responsible_party")
+            reason_text = diag.get("reason")
+            next_step = diag.get("recommended_next_step")
+            checked_at = diag.get("checked_at")
+            escalated = bool(diag.get("escalated"))
+            transient_count = int(diag.get("transient_failure_count") or 0)
+
+            if not status:
+                if account.status not in INTEGRATION_ATTENTION_STATUSES:
+                    continue
+                status = "action_required"
+                meta = reason_meta(
+                    {
+                        "disconnected": "disconnected",
+                        "expired": "expired_token",
+                        "invalid": "invalid_token",
+                        "missing_permissions": "missing_required_scope",
+                        "blocked": "account_not_found",
+                    }.get(account.status, "unknown")
+                )
+                reason_code = {
+                    "disconnected": "disconnected",
+                    "expired": "expired_token",
+                    "invalid": "invalid_token",
+                    "missing_permissions": "missing_required_scope",
+                    "blocked": "account_not_found",
+                }.get(account.status, "unknown")
+                requires_action = True
+                responsible = meta["responsible_party"]
+                reason_text = meta["explanation"]
+                next_step = meta["recommended_next_step"]
+            else:
+                # Healthy / never-checked / non-escalated transient → no Workspace noise.
+                if status == "healthy":
+                    continue
+                if status in ("unknown",) and not requires_action:
+                    continue
+                if (
+                    status in ("degraded", "unavailable")
+                    and not requires_action
+                    and not escalated
+                    and transient_count > 0
+                    and transient_count < 3
+                ):
+                    continue
+                if requires_action is False and status == "degraded" and not escalated:
+                    # Optional listening gap still warrants medium attention when operator action flagged.
+                    if reason_code not in (
+                        "missing_optional_scope",
+                        "app_review_required",
+                        "mock_mode",
+                        "capability_unavailable",
+                    ):
+                        continue
+
+            # Only show items that need human attention or escalated provider issues.
+            show = bool(requires_action) or escalated or (
+                account.status in INTEGRATION_ATTENTION_STATUSES and status == "action_required"
             )
-            responsible: ResponsibleParty = (
-                "provider"
-                if account.status in ("expired", "missing_permissions", "invalid")
-                else "operator"
-            )
+            if reason_code in ("missing_optional_scope", "app_review_required"):
+                show = True
+            if not show:
+                continue
+
+            priority: AttentionPriority = "medium"
+            if status == "action_required" or account.status in ("blocked", "missing_permissions", "expired"):
+                priority = "high"
+            if account.status == "blocked":
+                priority = "critical"
+            if reason_code in ("missing_optional_scope", "app_review_required"):
+                priority = "medium"
+            if escalated and not requires_action:
+                priority = "low"
+
+            party: ResponsibleParty = responsible or "operator"  # type: ignore[assignment]
+            if party not in ("operator", "client", "system", "provider"):
+                party = "operator"
+
             add(OperatorAttentionItem(
                 id=f"integration:{account.id}",
                 attention_type="integration_issue",
@@ -637,21 +713,29 @@ class OperatorWorkspaceService:
                 client_id=None,
                 company_name=account.account_name,
                 resource_id=str(account.id),
-                title=f"{account.platform.title()} connection issue",
-                reason="Integration connection needs attention",
-                current_state=account.status,
-                responsible_party=responsible,
-                suggested_action="Open integrations",
+                title=f"{account.platform.title()} — {status.replace('_', ' ')}",
+                reason=reason_text or "Integration connection needs attention",
+                current_state=status or account.status,
+                responsible_party=party,
+                suggested_action=next_step or "Open integrations",
                 action_path=f"/integrations?platform={account.platform}",
                 created_at=_aware(account.updated_at) or _aware(account.created_at),
                 source_domain="integration",
                 metadata={
-                    "reason_code": _REASON_CODES["integration_attention"],
+                    "reason_code": reason_code,
                     "platform": account.platform,
                     "account_id": str(account.id),
-                    "status": account.status,
+                    "status": status or account.status,
+                    "health_status": status,
+                    "responsible_party": party,
+                    "checked_at": checked_at,
+                    "recommended_next_step": next_step,
+                    "requires_operator_action": bool(requires_action),
+                    "transient_failure_count": transient_count,
+                    "escalated": escalated,
                 },
             ))
+
 
     @classmethod
     async def _collect_telegram_issues(

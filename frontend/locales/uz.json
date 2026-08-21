@@ -150,5 +150,76 @@
         "billing_payment_actions": "To'lov amallari"
       }
     }
+  },
+  "integrationHealth": {
+    "title": "Integratsiya salomatligi",
+    "statuses": {
+      "healthy": "Sog'lom",
+      "degraded": "Cheklangan",
+      "action_required": "Amal kerak",
+      "unavailable": "Mavjud emas",
+      "unknown": "Noma'lum",
+      "unhealthy": "Nosog'lom",
+      "not_configured": "Sozlanmagan"
+    },
+    "capabilities": {
+      "publishing": "Nashr",
+      "listening": "Listening",
+      "import": "Import",
+      "metrics": "Metrikalar",
+      "ingestion": "Qabul qilish",
+      "freshness": "Yangilik",
+      "webhook": "Webhook",
+      "intake_group": "Qabul guruh",
+      "publish_destination": "Nashr kanali",
+      "bot": "Bot",
+      "queue": "Navbat"
+    },
+    "responsible": {
+      "operator": "Operator",
+      "client": "Mijoz",
+      "provider": "Provayder",
+      "system": "Tizim"
+    },
+    "freshness": {
+      "lastChecked": "Oxirgi tekshiruv",
+      "stale": "Eskirgan",
+      "neverChecked": "Hali tekshirilmagan"
+    },
+    "summary": {
+      "healthy": "Sog'lom",
+      "degraded": "Cheklangan",
+      "needsAction": "Amal kerak",
+      "staleUnknown": "Eskirgan / noma'lum"
+    },
+    "reasons": {
+      "healthy": "Ulanish ishlayapti, zarur imkoniyatlar mavjud.",
+      "disconnected": "Hisob platformadan uzilgan.",
+      "expired_token": "Avtorizatsiya muddati tugagan.",
+      "invalid_token": "Kirish tokeni yaroqsiz yoki bekor qilingan.",
+      "missing_required_scope": "Majburiy ruxsatlar yetishmayapti.",
+      "missing_optional_scope": "Ixtiyoriy ruxsatlar yetishmayapti; asosiy funksiyalar ishlashi mumkin.",
+      "provider_unreachable": "Tekshiruvda provayderga yetib bo'lmadi.",
+      "provider_rate_limited": "Provayder so'rovlar tezligini chekladi.",
+      "authorization_required": "Interaktiv avtorizatsiya kerak.",
+      "webhook_not_configured": "Webhook kutilgandek sozlanmagan.",
+      "webhook_unhealthy": "Webhook yetkazish yoki qayta ishlash xatolari kuzatildi.",
+      "account_not_found": "Bog'langan hisob yoki sahifa topilmadi.",
+      "capability_unavailable": "Muhim bo'lmagan imkoniyat mavjud emas.",
+      "app_review_required": "Provayder App Review / Advanced Access talab qiladi.",
+      "transient_provider_error": "Tekshiruvda vaqtinchalik provayder xatosi.",
+      "stale_check": "Oxirgi salomatlik ma'lumoti eskirgan.",
+      "never_checked": "Salomatlik tekshiruvi hali bajarilmagan.",
+      "mock_mode": "Integratsiya mock/demo rejimida.",
+      "not_configured": "Integratsiya sozlanmagan.",
+      "unsupported": "Bu provayder uchun jonli tekshiruv hali yo'q.",
+      "unknown": "Tasniflash uchun dalil yetarli emas."
+    },
+    "actions": {
+      "openIntegration": "Integratsiyani ochish",
+      "reconnect": "Hisobni qayta ulash",
+      "reviewCapabilities": "Imkoniyatlarni ko'rish",
+      "waitRecheck": "Avtomatik qayta tekshiruv rejalashtirilgan"
+    }
   }
 }

@@ -10472,6 +10472,84 @@ export const metaPublishingApi = {
     api.post<MetaConnectionSummary>("/publishing/meta/oauth/demo-connect", undefined, { params }),
 };
 
+export type IntegrationHealthStatus =
+  | "healthy"
+  | "degraded"
+  | "action_required"
+  | "unavailable"
+  | "unknown";
+
+export interface IntegrationCapabilityHealth {
+  name: string;
+  status: string;
+  reason_code: string;
+  reason: string;
+  requires_operator_action?: boolean;
+}
+
+export interface IntegrationHealthItem {
+  integration_id: string;
+  platform: string;
+  provider: string;
+  tenant_id?: string | null;
+  client_id?: string | null;
+  account_name?: string | null;
+  status: IntegrationHealthStatus;
+  severity: string;
+  reason_code: string;
+  reason: string;
+  checked_at?: string | null;
+  last_success_at?: string | null;
+  stale_after_seconds: number;
+  stale: boolean;
+  requires_operator_action: boolean;
+  responsible_party: string;
+  recommended_next_step: string;
+  deep_link: string;
+  capabilities: IntegrationCapabilityHealth[];
+  source: string;
+  never_checked: boolean;
+  transient_failure_count: number;
+  safe_auto_recheck: boolean;
+}
+
+export interface IntegrationHealthListResponse {
+  items: IntegrationHealthItem[];
+  total: number;
+  summary: {
+    healthy: number;
+    degraded: number;
+    action_required: number;
+    unavailable: number;
+    unknown: number;
+    stale: number;
+    requires_action: number;
+  };
+  checked_at: string;
+  cache_semantics: string;
+  live_check: boolean;
+}
+
+export const integrationHealthApi = {
+  list: (params?: {
+    tenant_id?: string;
+    client_id?: string;
+    platform?: string;
+    status?: string;
+    requires_action?: boolean;
+    live_check?: boolean;
+  }) => api.get<IntegrationHealthListResponse>("/integrations/health", { params }),
+  get: (
+    integrationId: string,
+    params?: { tenant_id?: string; live_check?: boolean },
+  ) =>
+    api.get<{ item: IntegrationHealthItem; cache_semantics: string; live_check: boolean }>(
+      `/integrations/${integrationId}/health`,
+      { params },
+    ),
+};
+
+
 export interface PublishingCalendarItem {
   id: string;
   title: string;

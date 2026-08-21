@@ -21,6 +21,7 @@ from app.api.webhooks.whatsapp import router as whatsapp_webhook_router
 from app.api.webhooks.meta_listening import router as meta_listening_webhook_router
 from app.services.scheduled_publish_service import ScheduledPublishService
 from app.services.health_snapshot_service import HealthSnapshotService
+from app.services.integration_health.scheduler import IntegrationHealthScheduler
 from app.services.schema_guard import SchemaGuard
 from app.services.startup_health_service import StartupHealthService
 from app.services.event_handlers.registration import register_event_bus_subscribers
@@ -83,7 +84,9 @@ async def lifespan(app: FastAPI):
         await HealthSnapshotService.start()
     else:
         logger.info("[Health Snapshot] disabled (HEALTH_SNAPSHOT_ENABLED=false)")
+    await IntegrationHealthScheduler.start()
     yield
+    await IntegrationHealthScheduler.stop()
     await HealthSnapshotService.stop()
     await ScheduledPublishService.stop()
 

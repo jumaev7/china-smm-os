@@ -2402,6 +2402,77 @@
         "billing_payment_actions": "Billing actions"
       }
     }
+  },
+  "integrationHealth": {
+    "title": "Integration health",
+    "statuses": {
+      "healthy": "Healthy",
+      "degraded": "Degraded",
+      "action_required": "Action required",
+      "unavailable": "Unavailable",
+      "unknown": "Unknown",
+      "unhealthy": "Unhealthy",
+      "not_configured": "Not configured"
+    },
+    "capabilities": {
+      "publishing": "Publishing",
+      "listening": "Listening",
+      "import": "Import",
+      "metrics": "Metrics",
+      "ingestion": "Ingestion",
+      "freshness": "Freshness",
+      "webhook": "Webhook",
+      "intake_group": "Intake group",
+      "publish_destination": "Publish destination",
+      "bot": "Bot",
+      "queue": "Queue"
+    },
+    "responsible": {
+      "operator": "Operator",
+      "client": "Client",
+      "provider": "Provider",
+      "system": "System"
+    },
+    "freshness": {
+      "lastChecked": "Last checked",
+      "stale": "Stale",
+      "neverChecked": "Never checked"
+    },
+    "summary": {
+      "healthy": "Healthy",
+      "degraded": "Degraded",
+      "needsAction": "Needs action",
+      "staleUnknown": "Stale / unknown"
+    },
+    "reasons": {
+      "healthy": "Connection operational and required capabilities available.",
+      "disconnected": "Account is disconnected from the platform.",
+      "expired_token": "Authorization has expired and must be renewed.",
+      "invalid_token": "Access token is invalid or revoked.",
+      "missing_required_scope": "Required permissions are missing for this capability.",
+      "missing_optional_scope": "Optional capability permissions are missing; core features may still work.",
+      "provider_unreachable": "Provider could not be reached during the health check.",
+      "provider_rate_limited": "Provider rate-limited the health check.",
+      "authorization_required": "Interactive authorization or consent is required.",
+      "webhook_not_configured": "Webhook is not configured as expected.",
+      "webhook_unhealthy": "Recent webhook delivery or processing failures were observed.",
+      "account_not_found": "Linked provider account or page was not found.",
+      "capability_unavailable": "A non-critical capability is unavailable.",
+      "app_review_required": "Provider App Review / Advanced Access is required for this capability.",
+      "transient_provider_error": "Temporary provider error during health check.",
+      "stale_check": "Last health evidence is stale and should not be treated as current.",
+      "never_checked": "No health check has completed yet.",
+      "mock_mode": "Integration is in mock/demo mode.",
+      "not_configured": "Integration is not configured for this tenant/client.",
+      "unsupported": "Live health probing is not supported for this provider yet.",
+      "unknown": "Insufficient evidence to classify integration health."
+    },
+    "actions": {
+      "openIntegration": "Open integration",
+      "reconnect": "Reconnect account",
+      "reviewCapabilities": "Review capability details",
+      "waitRecheck": "Automatic recheck scheduled"
+    }
   }
 }
 

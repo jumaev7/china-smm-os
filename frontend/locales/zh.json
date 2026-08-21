@@ -1971,5 +1971,76 @@
         "billing_payment_actions": "计费操作"
       }
     }
+  },
+  "integrationHealth": {
+    "title": "集成健康",
+    "statuses": {
+      "healthy": "正常",
+      "degraded": "降级",
+      "action_required": "需要操作",
+      "unavailable": "不可用",
+      "unknown": "未知",
+      "unhealthy": "异常",
+      "not_configured": "未配置"
+    },
+    "capabilities": {
+      "publishing": "发布",
+      "listening": "监听",
+      "import": "导入",
+      "metrics": "指标",
+      "ingestion": "采集",
+      "freshness": "新鲜度",
+      "webhook": "Webhook",
+      "intake_group": "接入群组",
+      "publish_destination": "发布目标",
+      "bot": "机器人",
+      "queue": "队列"
+    },
+    "responsible": {
+      "operator": "运营",
+      "client": "客户",
+      "provider": "平台方",
+      "system": "系统"
+    },
+    "freshness": {
+      "lastChecked": "上次检查",
+      "stale": "已过期",
+      "neverChecked": "尚未检查"
+    },
+    "summary": {
+      "healthy": "正常",
+      "degraded": "降级",
+      "needsAction": "需处理",
+      "staleUnknown": "过期 / 未知"
+    },
+    "reasons": {
+      "healthy": "连接正常，所需能力可用。",
+      "disconnected": "账号已与平台断开。",
+      "expired_token": "授权已过期，需要重新授权。",
+      "invalid_token": "访问令牌无效或已撤销。",
+      "missing_required_scope": "缺少必需权限。",
+      "missing_optional_scope": "缺少可选权限；核心功能仍可能可用。",
+      "provider_unreachable": "健康检查时无法连接平台。",
+      "provider_rate_limited": "平台触发了频率限制。",
+      "authorization_required": "需要交互式授权/同意。",
+      "webhook_not_configured": "Webhook 未按预期配置。",
+      "webhook_unhealthy": "近期出现 Webhook 投递或处理失败。",
+      "account_not_found": "未找到关联的账号或主页。",
+      "capability_unavailable": "非关键能力不可用。",
+      "app_review_required": "该能力需要平台 App Review / Advanced Access。",
+      "transient_provider_error": "健康检查遇到临时平台错误。",
+      "stale_check": "上次健康证据已过期，不可视为当前状态。",
+      "never_checked": "尚未完成健康检查。",
+      "mock_mode": "集成处于模拟/演示模式。",
+      "not_configured": "尚未配置该集成。",
+      "unsupported": "该平台尚不支持实时健康探测。",
+      "unknown": "证据不足，无法判定健康状态。"
+    },
+    "actions": {
+      "openIntegration": "打开集成",
+      "reconnect": "重新连接账号",
+      "reviewCapabilities": "查看能力详情",
+      "waitRecheck": "已安排自动复查"
+    }
   }
 }

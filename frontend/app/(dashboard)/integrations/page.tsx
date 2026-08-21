@@ -69,6 +69,10 @@ export default function IntegrationsPage() {
             attentionCount={summary.attentionCount}
             notConnectedCount={summary.notConnectedCount}
             overallHealth={summary.overallHealth}
+            healthyCount={summary.healthyCount}
+            degradedCount={summary.degradedCount}
+            actionRequiredCount={summary.actionRequiredCount}
+            staleUnknownCount={summary.staleUnknownCount}
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
             categories={INTEGRATION_CATEGORIES}

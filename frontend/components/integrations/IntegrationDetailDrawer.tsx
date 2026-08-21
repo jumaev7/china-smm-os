@@ -144,13 +144,53 @@ export function IntegrationDetailDrawer({
             <p className="text-sm text-gray-600 dark-tenant:text-slate-400 leading-relaxed">
               {integration.description}
             </p>
-            {integration.lastSync ? (
+            {integration.checkedAt || integration.lastSync ? (
               <p className="text-xs text-gray-500 flex items-center gap-1 dark-tenant:text-slate-500">
                 <Clock size={11} />
-                Last sync {formatRelativeTime(integration.lastSync)}
+                Last checked{" "}
+                {formatRelativeTime(integration.checkedAt ?? integration.lastSync!)}
+                {integration.stale ? " · stale" : ""}
+              </p>
+            ) : null}
+            {integration.healthReason ? (
+              <p className="text-sm text-gray-700 dark-tenant:text-slate-300 mt-2">
+                {integration.healthReason}
+              </p>
+            ) : null}
+            {integration.recommendedNextStep ? (
+              <p className="text-xs text-amber-800 dark-tenant:text-amber-300 mt-1">
+                Next: {integration.recommendedNextStep}
+              </p>
+            ) : null}
+            {integration.responsibleParty ? (
+              <p className="text-[11px] text-gray-500 dark-tenant:text-slate-500 mt-1">
+                Responsible: {integration.responsibleParty}
               </p>
             ) : null}
           </DrawerSection>
+
+          {integration.capabilities && integration.capabilities.length > 0 ? (
+            <DrawerSection title="Capabilities" icon={Shield}>
+              <ul className="space-y-2">
+                {integration.capabilities.map((cap) => (
+                  <li
+                    key={cap.name}
+                    className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark-tenant:border-white/[0.06] dark-tenant:bg-white/[0.03]"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium capitalize text-gray-900 dark-tenant:text-slate-100">
+                        {cap.name.replace(/_/g, " ")}
+                      </span>
+                      <span className="text-[10px] uppercase font-semibold tracking-wide text-gray-500 dark-tenant:text-slate-400">
+                        {cap.status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 mt-1 dark-tenant:text-slate-400">{cap.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </DrawerSection>
+          ) : null}
 
           {integration.accountName || integration.accountId ? (
             <DrawerSection title="Connected account" icon={PlugZap}>

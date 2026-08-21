@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     DB_PROBE_CONCURRENCY: int = 4
     # Background health snapshots probe dozens of routes — opt in outside local/dev.
     HEALTH_SNAPSHOT_ENABLED: bool = False
+    # Periodic read-only integration health checks (Meta debug_token, local Telegram/ads/listening).
+    # Default off until explicitly enabled in an environment; never mutates providers.
+    INTEGRATION_HEALTH_CHECK_ENABLED: bool = False
     # Pilot readiness route probes spawn nested API calls; keep them off locally unless explicit.
     ROUTE_PROBING_ENABLED: bool = False
 

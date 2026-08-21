@@ -346,7 +346,7 @@ async def _test_integration_attention_only_bad_statuses():
     await OperatorWorkspaceService._collect_integration_issues(db, uuid.uuid4(), items.append)
     assert len(items) == 1
     assert items[0].attention_type == "integration_issue"
-    assert items[0].responsible_party == "provider"
+    assert items[0].responsible_party == "client"
     assert "platform=facebook" in items[0].action_path
 
     db2 = FakeWorkspaceDb()
