@@ -2356,6 +2356,51 @@
       "success": "Action completed",
       "failed": "Action failed",
       "stale": "This item changed — workspace refreshed. Review and try again if needed."
+    },
+    "metrics": {
+      "title": "Operational pulse",
+      "needsAttention": "Needs attention now",
+      "oldest": "Oldest unresolved",
+      "actionsInWindow": "Actions in window",
+      "medianResolution": "Median alert resolution",
+      "topIssue": "Top issue",
+      "byCategory": "By category",
+      "topCandidate": "Automation candidate",
+      "advisoryOnly": "Candidates are advisory — auto-actions are off",
+      "unavailable": "—",
+      "durationSeconds": "{{count}}s",
+      "durationMinutes": "{{count}}m",
+      "durationHours": "{{count}}h",
+      "durationDays": "{{count}}d",
+      "windows": {
+        "24h": "24h",
+        "7d": "7d",
+        "30d": "30d"
+      },
+      "levels": {
+        "A": "Safe auto (future)",
+        "B": "Auto with guards",
+        "C": "Needs confirmation",
+        "D": "Manual only"
+      },
+      "candidates": {
+        "acknowledge_alert": "Acknowledge alert",
+        "resolve_alert": "Resolve alert",
+        "retry_publish_known_safe": "Retry known-safe publish",
+        "retry_publish_exhausted": "Retry exhausted publish",
+        "operator_review_retry": "Operator-review retry",
+        "approve_content": "Approve content",
+        "automation_failed_job_requeue": "Requeue failed automation",
+        "automation_dead_letter_replay": "Dead-letter replay",
+        "integration_health_refresh": "Integration health refresh",
+        "oauth_reconnect": "OAuth reconnect",
+        "telegram_failed_event_replay": "Telegram event replay",
+        "schedule_correction": "Schedule correction",
+        "client_approval": "Client approval",
+        "social_provider_publishing": "Social publishing",
+        "deletes": "Deletes",
+        "billing_payment_actions": "Billing actions"
+      }
     }
   }
 }

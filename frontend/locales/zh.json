@@ -1925,6 +1925,51 @@
       "success": "操作完成",
       "failed": "操作失败",
       "stale": "状态已变化 — 工作区已刷新。请核对后必要时重试。"
+    },
+    "metrics": {
+      "title": "运营脉搏",
+      "needsAttention": "当前需处理",
+      "oldest": "最久未解决",
+      "actionsInWindow": "窗口内操作",
+      "medianResolution": "告警解决中位数",
+      "topIssue": "高频问题",
+      "byCategory": "按类别",
+      "topCandidate": "自动化候选",
+      "advisoryOnly": "候选仅供参考 — 自动操作未启用",
+      "unavailable": "—",
+      "durationSeconds": "{{count}}秒",
+      "durationMinutes": "{{count}}分",
+      "durationHours": "{{count}}小时",
+      "durationDays": "{{count}}天",
+      "windows": {
+        "24h": "24小时",
+        "7d": "7天",
+        "30d": "30天"
+      },
+      "levels": {
+        "A": "可安全自动（未来）",
+        "B": "带护栏自动",
+        "C": "需人工确认",
+        "D": "仅人工"
+      },
+      "candidates": {
+        "acknowledge_alert": "确认告警",
+        "resolve_alert": "解决告警",
+        "retry_publish_known_safe": "重试已知安全发布",
+        "retry_publish_exhausted": "重试已耗尽发布",
+        "operator_review_retry": "人工复核后重试",
+        "approve_content": "批准内容",
+        "automation_failed_job_requeue": "失败自动化重新入队",
+        "automation_dead_letter_replay": "死信重放",
+        "integration_health_refresh": "集成健康刷新",
+        "oauth_reconnect": "OAuth 重连",
+        "telegram_failed_event_replay": "Telegram 事件重放",
+        "schedule_correction": "排期修正",
+        "client_approval": "客户批准",
+        "social_provider_publishing": "社交发布",
+        "deletes": "删除",
+        "billing_payment_actions": "计费操作"
+      }
     }
   }
 }

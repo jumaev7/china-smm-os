@@ -6,7 +6,12 @@ import { AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import toast from "react-hot-toast";
 import { PageHeader, PageShell } from "@/components/ui/design-system";
 import { ErrorState } from "@/components/ui/PageStates";
-import { getApiErrorMessage, type OperatorAttentionItem, type OperatorWorkspaceAction } from "@/lib/api";
+import {
+  getApiErrorMessage,
+  type OperatorAttentionItem,
+  type OperatorWorkspaceAction,
+  type OperatorWorkspaceMetricsResponse,
+} from "@/lib/api";
 import { useTranslation } from "@/lib/I18nProvider";
 import { useOperatorWorkspace } from "@/lib/operator-workspace-hooks";
 import {
@@ -23,6 +28,128 @@ import {
   suggestedActionLabelKey,
 } from "@/lib/operator-workspace-ui";
 import { cn } from "@/lib/utils";
+
+function formatDuration(seconds: number | null | undefined, t: (k: string, p?: Record<string, string | number>) => string): string {
+  if (seconds == null || Number.isNaN(seconds)) return t("operatorWorkspace.metrics.unavailable");
+  if (seconds < 60) return t("operatorWorkspace.metrics.durationSeconds", { count: Math.round(seconds) });
+  if (seconds < 3600) return t("operatorWorkspace.metrics.durationMinutes", { count: Math.round(seconds / 60) });
+  if (seconds < 86400) return t("operatorWorkspace.metrics.durationHours", { count: Math.round(seconds / 3600) });
+  return t("operatorWorkspace.metrics.durationDays", { count: Math.round(seconds / 86400) });
+}
+
+function MetricsStrip({
+  metrics,
+  window,
+  onWindowChange,
+  loading,
+}: {
+  metrics: OperatorWorkspaceMetricsResponse | undefined;
+  window: "24h" | "7d" | "30d";
+  onWindowChange: (w: "24h" | "7d" | "30d") => void;
+  loading: boolean;
+}) {
+  const { t } = useTranslation();
+  if (!metrics && !loading) return null;
+
+  const attentionTotal = metrics?.attention?.total ?? 0;
+  const actionsTotal = metrics?.actions?.total ?? 0;
+  const medianRes = metrics?.resolution?.median_resolution_seconds;
+  const oldest = metrics?.oldest_unresolved_age_seconds;
+  const topIssue = metrics?.top_recurring_issue;
+  const topCandidate = (metrics?.automation_candidates ?? []).find(
+    (c) => c.available && !c.never_auto && c.level && c.level !== "D",
+  );
+
+  const categoryEntries = Object.entries(metrics?.attention?.by_category ?? {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4);
+
+  return (
+    <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50/70 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <h2 className="text-sm font-semibold text-gray-900">
+          {t("operatorWorkspace.metrics.title")}
+        </h2>
+        <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5 text-xs">
+          {(["24h", "7d", "30d"] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => onWindowChange(w)}
+              className={cn(
+                "px-2.5 py-1 rounded transition",
+                window === w ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100",
+              )}
+            >
+              {t(`operatorWorkspace.metrics.windows.${w}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading && !metrics ? (
+        <div className="text-sm text-gray-400">{t("common.loading")}</div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+          <div>
+            <div className="text-xs text-gray-500">{t("operatorWorkspace.metrics.needsAttention")}</div>
+            <div className="text-lg font-semibold tabular-nums text-gray-900">{attentionTotal}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">{t("operatorWorkspace.metrics.oldest")}</div>
+            <div className="text-lg font-semibold tabular-nums text-gray-900">
+              {formatDuration(oldest, t)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">{t("operatorWorkspace.metrics.actionsInWindow")}</div>
+            <div className="text-lg font-semibold tabular-nums text-gray-900">{actionsTotal}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500">{t("operatorWorkspace.metrics.medianResolution")}</div>
+            <div className="text-lg font-semibold tabular-nums text-gray-900">
+              {formatDuration(medianRes, t)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {metrics && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600">
+          {topIssue && (
+            <span>
+              {t("operatorWorkspace.metrics.topIssue")}:{" "}
+              <span className="font-medium text-gray-800">
+                {t(`operatorWorkspace.categories.${topIssue}`)}
+              </span>
+            </span>
+          )}
+          {categoryEntries.length > 0 && (
+            <span>
+              {t("operatorWorkspace.metrics.byCategory")}:{" "}
+              {categoryEntries.map(([cat, n], i) => (
+                <span key={cat}>
+                  {i > 0 ? " · " : ""}
+                  {t(`operatorWorkspace.categories.${cat}`)} ({n})
+                </span>
+              ))}
+            </span>
+          )}
+          {topCandidate && (
+            <span>
+              {t("operatorWorkspace.metrics.topCandidate")}:{" "}
+              <span className="font-medium text-gray-800">
+                {t(`operatorWorkspace.metrics.candidates.${topCandidate.action_key}`)}{" "}
+                ({t(`operatorWorkspace.metrics.levels.${topCandidate.level}`)})
+              </span>
+            </span>
+          )}
+          <span className="text-gray-400">{t("operatorWorkspace.metrics.advisoryOnly")}</span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SummaryCards({
   summary,
@@ -239,6 +366,10 @@ export default function OperatorWorkspacePage() {
     executeAction,
     isActionPending,
     hasActiveFilters,
+    metrics,
+    metricsWindow,
+    setMetricsWindow,
+    metricsLoading,
   } = useOperatorWorkspace();
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
 
@@ -303,6 +434,15 @@ export default function OperatorWorkspacePage() {
 
       {!isError && summary && (
         <SummaryCards summary={summary} onFilter={applySummaryFilter} />
+      )}
+
+      {!isError && (
+        <MetricsStrip
+          metrics={metrics}
+          window={metricsWindow}
+          onWindowChange={setMetricsWindow}
+          loading={metricsLoading}
+        />
       )}
 
       <div className="card mb-4 p-4">

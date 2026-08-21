@@ -55,6 +55,29 @@ export function useOperatorWorkspace() {
     staleTime: 30_000,
   });
 
+  const [metricsWindow, setMetricsWindow] = useState<"24h" | "7d" | "30d">("7d");
+
+  const metricsQuery = useQuery({
+    queryKey: [
+      ...OPERATOR_WORKSPACE_QUERY_KEY,
+      "metrics",
+      tenantId,
+      metricsWindow,
+      filters.clientId,
+      filters.category,
+    ],
+    queryFn: () =>
+      operatorWorkspaceApi
+        .getMetrics({
+          window: metricsWindow,
+          client_id: filters.clientId ?? undefined,
+          category: filters.category === "all" ? undefined : filters.category,
+        })
+        .then((r) => r.data),
+    enabled: Boolean(tenantId),
+    staleTime: 60_000,
+  });
+
   const clientsQuery = useQuery({
     queryKey: ["clients", "operator-workspace", tenantId],
     queryFn: () => clientsApi.list({ limit: 300 }).then((r) => r.data),
@@ -71,8 +94,9 @@ export function useOperatorWorkspace() {
     await Promise.all([
       itemsQuery.refetch(),
       summaryQuery.refetch(),
+      metricsQuery.refetch(),
     ]);
-  }, [itemsQuery, summaryQuery]);
+  }, [itemsQuery, summaryQuery, metricsQuery]);
 
   const actionMutation = useMutation({
     mutationFn: async ({
@@ -151,11 +175,16 @@ export function useOperatorWorkspace() {
     retry: () => {
       void itemsQuery.refetch();
       void summaryQuery.refetch();
+      void metricsQuery.refetch();
     },
     refreshWorkspace,
     executeAction: actionMutation.mutateAsync,
     actionError: actionMutation.error ? getApiErrorMessage(actionMutation.error) : null,
     isActionPending,
+    metrics: metricsQuery.data,
+    metricsWindow,
+    setMetricsWindow,
+    metricsLoading: metricsQuery.isLoading,
     hasActiveFilters:
       filters.category !== "all" ||
       filters.priority !== "all" ||

@@ -104,6 +104,51 @@
       "success": "Amal bajarildi",
       "failed": "Amal bajarilmadi",
       "stale": "Holat o'zgardi — ish maydoni yangilandi. Kerak bo'lsa qayta tekshiring."
+    },
+    "metrics": {
+      "title": "Operatsion puls",
+      "needsAttention": "Hozir e'tibor kerak",
+      "oldest": "Eng eski yechilmagan",
+      "actionsInWindow": "Davrdagi amallar",
+      "medianResolution": "Ogohlantirish yechimi medianasi",
+      "topIssue": "Eng ko'p muammo",
+      "byCategory": "Kategoriya bo'yicha",
+      "topCandidate": "Avtomatlashtirish nomzodi",
+      "advisoryOnly": "Nomzodlar maslahat uchun — avto-amallar o'chirilgan",
+      "unavailable": "—",
+      "durationSeconds": "{{count}}s",
+      "durationMinutes": "{{count}}daq",
+      "durationHours": "{{count}}soat",
+      "durationDays": "{{count}}kun",
+      "windows": {
+        "24h": "24s",
+        "7d": "7k",
+        "30d": "30k"
+      },
+      "levels": {
+        "A": "Xavfsiz avto (kelajak)",
+        "B": "Himoya bilan avto",
+        "C": "Tasdiq kerak",
+        "D": "Faqat qo'lda"
+      },
+      "candidates": {
+        "acknowledge_alert": "Ogohlantirishni tasdiqlash",
+        "resolve_alert": "Ogohlantirishni yechish",
+        "retry_publish_known_safe": "Xavfsiz nashrni qayta urinish",
+        "retry_publish_exhausted": "Tugagan nashrni qayta urinish",
+        "operator_review_retry": "Operator review qayta urinishi",
+        "approve_content": "Kontentni tasdiqlash",
+        "automation_failed_job_requeue": "Muvaffaqiyatsiz avtomatlashtirishni qayta navbatlash",
+        "automation_dead_letter_replay": "Dead-letter qayta ijro",
+        "integration_health_refresh": "Integratsiya salomatligini yangilash",
+        "oauth_reconnect": "OAuth qayta ulash",
+        "telegram_failed_event_replay": "Telegram voqeasini qayta ijro",
+        "schedule_correction": "Jadval tuzatish",
+        "client_approval": "Mijoz tasdiqi",
+        "social_provider_publishing": "Ijtimoiy nashr",
+        "deletes": "O'chirishlar",
+        "billing_payment_actions": "To'lov amallari"
+      }
     }
   }
 }

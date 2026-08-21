@@ -34,6 +34,15 @@ from app.services.publish_resilience import (
 from app.services.tenant_auth_service import CurrentTenantUser, TenantAuthService
 
 
+@pytest.fixture(autouse=True)
+def _mute_workspace_action_audit(monkeypatch):
+    """Action tests focus on domain routing; audit is covered in metrics tests."""
+    monkeypatch.setattr(
+        "app.services.operator_workspace_actions.OperatorWorkspaceMetricsService.record_action",
+        AsyncMock(return_value=None),
+    )
+
+
 def _now():
     return datetime.now(timezone.utc)
 
@@ -268,7 +277,7 @@ def test_acknowledge_alert_delegates_to_canonical_service():
                 patch.object(
                     OperatorWorkspaceActionService,
                     "_load_alert_scoped",
-                    new=AsyncMock(return_value=(alert, tenant_id)),
+                    new=AsyncMock(return_value=(alert, tenant_id, None)),
                 ),
                 patch(
                     "app.services.operator_workspace_actions.PublishOperatorAlertService.acknowledge",
@@ -312,7 +321,7 @@ def test_duplicate_acknowledge_is_safe():
                 patch.object(
                     OperatorWorkspaceActionService,
                     "_load_alert_scoped",
-                    new=AsyncMock(return_value=(alert, tenant_id)),
+                    new=AsyncMock(return_value=(alert, tenant_id, None)),
                 ),
                 patch(
                     "app.services.operator_workspace_actions.PublishOperatorAlertService.acknowledge",
@@ -354,7 +363,7 @@ def test_resolve_alert_clears_attention():
                 patch.object(
                     OperatorWorkspaceActionService,
                     "_load_alert_scoped",
-                    new=AsyncMock(return_value=(alert, tenant_id)),
+                    new=AsyncMock(return_value=(alert, tenant_id, None)),
                 ),
                 patch(
                     "app.services.operator_workspace_actions.PublishOperatorAlertService.resolve_manual",
@@ -393,7 +402,7 @@ def test_acknowledge_resolved_alert_returns_conflict():
             with patch.object(
                 OperatorWorkspaceActionService,
                 "_load_alert_scoped",
-                new=AsyncMock(return_value=(alert, tenant_id)),
+                new=AsyncMock(return_value=(alert, tenant_id, None)),
             ):
                 with pytest.raises(HTTPException) as exc:
                     await OperatorWorkspaceActionService.execute(

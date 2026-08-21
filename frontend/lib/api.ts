@@ -797,6 +797,63 @@ export interface OperatorWorkspaceActionResult {
   redirect_path: string | null;
 }
 
+export type OperatorWorkspaceMetricsWindow = "24h" | "7d" | "30d";
+
+export interface OperatorWorkspaceMetricsResponse {
+  window: OperatorWorkspaceMetricsWindow;
+  generated_at: string;
+  attention: {
+    total?: number;
+    by_category?: Record<string, number>;
+    by_priority?: Record<string, number>;
+    by_responsibility?: Record<string, number>;
+    age_buckets?: Record<string, number>;
+    median_age_seconds?: number | null;
+    oldest_age_seconds?: number | null;
+    missing_timestamp_count?: number;
+    by_client_count?: number;
+  };
+  actions: {
+    total?: number;
+    by_action?: Record<string, Record<string, number>>;
+    success?: number;
+    rejected?: number;
+    failed?: number;
+    stale?: number;
+    available?: boolean;
+  };
+  resolution: {
+    resolved?: number;
+    system_resolved?: number;
+    manual_resolved?: number;
+    acknowledged?: number;
+    median_resolution_seconds?: number | null;
+    median_ack_seconds?: number | null;
+    available?: boolean;
+    non_alert_resolution_available?: boolean;
+  };
+  automation_candidates: Array<{
+    action_key: string;
+    level: string | null;
+    score: number | null;
+    available: boolean;
+    auto_eligible: boolean;
+    never_auto?: boolean;
+    rationale?: string;
+    prerequisites?: string[];
+  }>;
+  top_recurring_issue: string | null;
+  oldest_unresolved_age_seconds: number | null;
+  age_semantics: Record<string, string>;
+  notes: Record<string, string>;
+  candidate_catalog: Array<{
+    action_key: string;
+    level: string;
+    rationale: string;
+    prerequisites: string[];
+  }>;
+}
+
 export const operatorWorkspaceApi = {
   getSummary: (params?: { client_id?: string }) =>
     pickActiveSessionClient().get<OperatorWorkspaceSummaryResponse>("/operator-workspace/summary", {
@@ -811,6 +868,14 @@ export const operatorWorkspaceApi = {
     page_size?: number;
   }) =>
     pickActiveSessionClient().get<OperatorWorkspaceItemsResponse>("/operator-workspace/items", {
+      params,
+    }),
+  getMetrics: (params?: {
+    window?: OperatorWorkspaceMetricsWindow;
+    client_id?: string;
+    category?: AttentionCategory;
+  }) =>
+    pickActiveSessionClient().get<OperatorWorkspaceMetricsResponse>("/operator-workspace/metrics", {
       params,
     }),
   executeAction: (

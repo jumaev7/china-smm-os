@@ -15,14 +15,17 @@ from app.core.tenant_access import get_current_tenant_user
 from app.schemas.operator_workspace import (
     AttentionCategory,
     AttentionPriority,
+    MetricsWindow,
     OperatorWorkspaceActionRequest,
     OperatorWorkspaceActionResult,
     OperatorWorkspaceItemsResponse,
+    OperatorWorkspaceMetricsResponse,
     OperatorWorkspaceSummaryResponse,
     ResponsibleParty,
 )
 from app.services.admin_rbac_service import CurrentAdminUser
 from app.services.operator_workspace_actions import OperatorWorkspaceActionService
+from app.services.operator_workspace_metrics import OperatorWorkspaceMetricsService
 from app.services.operator_workspace_service import OperatorWorkspaceService
 from app.services.tenant_auth_service import CurrentTenantUser, TenantAuthService
 
@@ -104,6 +107,26 @@ async def operator_workspace_items(
             page_size=page_size,
         ),
         label="operator-workspace.items",
+    )
+
+
+@router.get("/metrics", response_model=OperatorWorkspaceMetricsResponse)
+async def operator_workspace_metrics(
+    window: MetricsWindow = Query("7d"),
+    client_id: UUID | None = None,
+    category: AttentionCategory | None = None,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentTenantUser | None = Depends(require_operator_workspace_access),
+):
+    """Read-only observability. No provider calls. No autonomous actions."""
+    return await run_guarded(
+        OperatorWorkspaceMetricsService.get_metrics(
+            db,
+            window=window,
+            client_id=client_id,
+            category=category,
+        ),
+        label="operator-workspace.metrics",
     )
 
 

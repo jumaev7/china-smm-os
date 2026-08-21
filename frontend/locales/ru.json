@@ -1945,6 +1945,51 @@
       "success": "Действие выполнено",
       "failed": "Не удалось выполнить действие",
       "stale": "Состояние изменилось — рабочее пространство обновлено. Проверьте и повторите при необходимости."
+    },
+    "metrics": {
+      "title": "Операционный пульс",
+      "needsAttention": "Требует внимания сейчас",
+      "oldest": "Самый старый нерешённый",
+      "actionsInWindow": "Действия за период",
+      "medianResolution": "Медиана решения алертов",
+      "topIssue": "Частая проблема",
+      "byCategory": "По категориям",
+      "topCandidate": "Кандидат на автоматизацию",
+      "advisoryOnly": "Кандидаты справочные — авто-действия выключены",
+      "unavailable": "—",
+      "durationSeconds": "{{count}}с",
+      "durationMinutes": "{{count}}м",
+      "durationHours": "{{count}}ч",
+      "durationDays": "{{count}}д",
+      "windows": {
+        "24h": "24ч",
+        "7d": "7д",
+        "30d": "30д"
+      },
+      "levels": {
+        "A": "Безопасное авто (будущее)",
+        "B": "Авто с проверками",
+        "C": "Нужно подтверждение",
+        "D": "Только вручную"
+      },
+      "candidates": {
+        "acknowledge_alert": "Подтвердить алерт",
+        "resolve_alert": "Закрыть алерт",
+        "retry_publish_known_safe": "Повтор безопасной публикации",
+        "retry_publish_exhausted": "Повтор исчерпанной публикации",
+        "operator_review_retry": "Повтор после operator review",
+        "approve_content": "Одобрить контент",
+        "automation_failed_job_requeue": "Перезапуск failed automation",
+        "automation_dead_letter_replay": "Повтор dead-letter",
+        "integration_health_refresh": "Обновление здоровья интеграции",
+        "oauth_reconnect": "Переподключение OAuth",
+        "telegram_failed_event_replay": "Повтор Telegram-события",
+        "schedule_correction": "Коррекция расписания",
+        "client_approval": "Одобрение клиента",
+        "social_provider_publishing": "Публикация в соцсети",
+        "deletes": "Удаления",
+        "billing_payment_actions": "Биллинг"
+      }
     }
   }
 }

@@ -27,6 +27,7 @@ from app.services.content_review_service import (
     CLIENT_REVIEW_PENDING,
 )
 from app.services.content_service import ContentService
+from app.services.operator_workspace_metrics import OperatorWorkspaceMetricsService
 from app.services.operator_workspace_service import INTERNAL_REVIEW_STATUSES
 from app.services.publish_attempt_ops_service import PublishAttemptOpsService
 from app.services.publish_operator_alert_service import PublishOperatorAlertService
@@ -269,34 +270,100 @@ class OperatorWorkspaceActionService:
             raise HTTPException(status_code=400, detail="Unknown or unsupported action")
 
         prefix, resource_key = parse_attention_id(attention_id)
+        audit_tenant = tenant_id
+        audit_client: UUID | None = None
+        audit_category: str | None = None
+        resource_type = prefix
+        resource_id = resource_key
 
-        if action_id in (ACTION_ACKNOWLEDGE_ALERT, ACTION_RESOLVE_ALERT):
-            if prefix != "publish-alert":
-                raise HTTPException(status_code=400, detail="Action does not apply to this attention item")
-            return await cls._execute_alert(
+        try:
+            if action_id in (ACTION_ACKNOWLEDGE_ALERT, ACTION_RESOLVE_ALERT):
+                if prefix != "publish-alert":
+                    raise HTTPException(status_code=400, detail="Action does not apply to this attention item")
+                result, audit_tenant, audit_client = await cls._execute_alert(
+                    db,
+                    alert_id=UUID(resource_key),
+                    action_id=action_id,
+                    actor_id=actor_id,
+                    tenant_id=tenant_id,
+                    note=note,
+                )
+                audit_category = "publishing_issue"
+            elif action_id == ACTION_RETRY_PUBLISH:
+                if prefix != "publish-attempt":
+                    raise HTTPException(status_code=400, detail="Action does not apply to this attention item")
+                result, audit_tenant, audit_client = await cls._execute_retry(
+                    db,
+                    attempt_id=UUID(resource_key),
+                    tenant_id=tenant_id,
+                    actor_id=actor_id,
+                )
+                audit_category = "publishing_issue"
+            elif action_id == ACTION_APPROVE_CONTENT:
+                if prefix != "content-review":
+                    raise HTTPException(status_code=400, detail="Action does not apply to this attention item")
+                result, audit_tenant, audit_client = await cls._execute_approve(
+                    db,
+                    content_id=UUID(resource_key),
+                    actor_id=actor_id,
+                    tenant_id=tenant_id,
+                )
+                audit_category = "content_internal_review"
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported action")
+
+            await OperatorWorkspaceMetricsService.record_action(
                 db,
-                alert_id=UUID(resource_key),
                 action_id=action_id,
+                outcome="success",
                 actor_id=actor_id,
-                tenant_id=tenant_id,
-                note=note,
+                tenant_id=audit_tenant,
+                attention_id=attention_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                client_id=audit_client,
+                category=audit_category,
+                message=result.message,
+                commit=True,
             )
-
-        if action_id == ACTION_RETRY_PUBLISH:
-            if prefix != "publish-attempt":
-                raise HTTPException(status_code=400, detail="Action does not apply to this attention item")
-            return await cls._execute_retry(
+            return result
+        except HTTPException as exc:
+            outcome = "stale" if exc.status_code == 409 else "rejected"
+            if exc.status_code >= 500:
+                outcome = "failed"
+            await OperatorWorkspaceMetricsService.record_action(
                 db,
-                attempt_id=UUID(resource_key),
-                tenant_id=tenant_id,
+                action_id=action_id,
+                outcome=outcome,  # type: ignore[arg-type]
+                actor_id=actor_id,
+                tenant_id=audit_tenant or tenant_id,
+                attention_id=attention_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                client_id=audit_client,
+                category=audit_category,
+                reason_code=str(exc.status_code),
+                message=str(exc.detail)[:500] if exc.detail else None,
+                commit=True,
             )
-
-        if action_id == ACTION_APPROVE_CONTENT:
-            if prefix != "content-review":
-                raise HTTPException(status_code=400, detail="Action does not apply to this attention item")
-            return await cls._execute_approve(db, content_id=UUID(resource_key))
-
-        raise HTTPException(status_code=400, detail="Unsupported action")
+            raise
+        except Exception as exc:
+            await OperatorWorkspaceMetricsService.record_action(
+                db,
+                action_id=action_id,
+                outcome="failed",
+                actor_id=actor_id,
+                tenant_id=audit_tenant or tenant_id,
+                attention_id=attention_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                client_id=audit_client,
+                category=audit_category,
+                reason_code="exception",
+                message=str(exc)[:500],
+                commit=True,
+            )
+            raise
 
     @classmethod
     async def _resolve_alert_tenant(
@@ -326,7 +393,7 @@ class OperatorWorkspaceActionService:
         alert_id: UUID,
         *,
         tenant_id: UUID | None,
-    ) -> tuple[PublishOperatorAlert, UUID]:
+    ) -> tuple[PublishOperatorAlert, UUID, UUID | None]:
         row = (
             await db.execute(
                 select(PublishOperatorAlert).where(PublishOperatorAlert.id == alert_id),
@@ -335,6 +402,7 @@ class OperatorWorkspaceActionService:
         if row is None:
             raise HTTPException(status_code=404, detail="Alert not found")
 
+        client_id: UUID | None = None
         # Enforce client scope via content when present.
         if row.content_id is not None:
             content = (
@@ -345,9 +413,10 @@ class OperatorWorkspaceActionService:
             if content is None:
                 raise HTTPException(status_code=404, detail="Alert not found")
             guard_resource_client_id(content.client_id)
+            client_id = content.client_id
 
         scope_tenant = await cls._resolve_alert_tenant(db, row, tenant_id=tenant_id)
-        return row, scope_tenant
+        return row, scope_tenant, client_id
 
     @classmethod
     async def _execute_alert(
@@ -359,8 +428,10 @@ class OperatorWorkspaceActionService:
         actor_id: UUID | None,
         tenant_id: UUID | None,
         note: str | None,
-    ) -> OperatorWorkspaceActionResult:
-        alert, scope_tenant = await cls._load_alert_scoped(db, alert_id, tenant_id=tenant_id)
+    ) -> tuple[OperatorWorkspaceActionResult, UUID, UUID | None]:
+        alert, scope_tenant, client_id = await cls._load_alert_scoped(
+            db, alert_id, tenant_id=tenant_id,
+        )
 
         if action_id == ACTION_ACKNOWLEDGE_ALERT:
             if alert.state == "resolved":
@@ -378,13 +449,17 @@ class OperatorWorkspaceActionService:
             )
             await db.commit()
             still = response.state in ("open", "acknowledged")
-            return OperatorWorkspaceActionResult(
-                success=True,
-                action_id=action_id,
-                message="Alert acknowledged",
-                canonical_state={"id": str(response.id), "state": response.state},
-                attention_still_relevant=still,
-                refresh_recommended=True,
+            return (
+                OperatorWorkspaceActionResult(
+                    success=True,
+                    action_id=action_id,
+                    message="Alert acknowledged",
+                    canonical_state={"id": str(response.id), "state": response.state},
+                    attention_still_relevant=still,
+                    refresh_recommended=True,
+                ),
+                scope_tenant,
+                client_id,
             )
 
         # resolve
@@ -397,13 +472,17 @@ class OperatorWorkspaceActionService:
             db, scope_tenant, alert_id, actor_id=actor_id, note=note,
         )
         await db.commit()
-        return OperatorWorkspaceActionResult(
-            success=True,
-            action_id=action_id,
-            message="Alert resolved",
-            canonical_state={"id": str(response.id), "state": response.state},
-            attention_still_relevant=False,
-            refresh_recommended=True,
+        return (
+            OperatorWorkspaceActionResult(
+                success=True,
+                action_id=action_id,
+                message="Alert resolved",
+                canonical_state={"id": str(response.id), "state": response.state},
+                attention_still_relevant=False,
+                refresh_recommended=True,
+            ),
+            scope_tenant,
+            client_id,
         )
 
     @classmethod
@@ -413,7 +492,9 @@ class OperatorWorkspaceActionService:
         *,
         attempt_id: UUID,
         tenant_id: UUID | None,
-    ) -> OperatorWorkspaceActionResult:
+        actor_id: UUID | None = None,
+    ) -> tuple[OperatorWorkspaceActionResult, UUID | None, UUID | None]:
+        del actor_id  # recorded by execute() wrapper
         ctx = get_auth_context()
         scope_tenant = tenant_id
         if ctx and ctx.is_tenant:
@@ -422,6 +503,11 @@ class OperatorWorkspaceActionService:
         attempt = await PublishAttemptOpsService._load_attempt(
             db, attempt_id, tenant_id=scope_tenant,
         )
+
+        # Client attribution is best-effort for audit only; never block retry.
+        client_id: UUID | None = getattr(attempt, "client_id", None)
+        if not isinstance(client_id, UUID):
+            client_id = None
 
         # Re-check Workspace eligibility (stricter than canonical).
         allowed, reason = workspace_retry_allowed(attempt)
@@ -452,18 +538,22 @@ class OperatorWorkspaceActionService:
                 detail=str(blocked or "Retry unavailable — refresh the workspace"),
             )
 
-        return OperatorWorkspaceActionResult(
-            success=True,
-            action_id=ACTION_RETRY_PUBLISH,
-            message=str(result.get("message") or "Publish retry completed"),
-            canonical_state={
-                "attempt_id": str(attempt_id),
-                "content_id": str(result.get("content_id")) if result.get("content_id") else None,
-                "status": result.get("status"),
-            },
-            attention_still_relevant=not bool(result.get("ok")),
-            refresh_recommended=True,
-            redirect_path=f"/content/{result['content_id']}" if result.get("content_id") else None,
+        return (
+            OperatorWorkspaceActionResult(
+                success=True,
+                action_id=ACTION_RETRY_PUBLISH,
+                message=str(result.get("message") or "Publish retry completed"),
+                canonical_state={
+                    "attempt_id": str(attempt_id),
+                    "content_id": str(result.get("content_id")) if result.get("content_id") else None,
+                    "status": result.get("status"),
+                },
+                attention_still_relevant=not bool(result.get("ok")),
+                refresh_recommended=True,
+                redirect_path=f"/content/{result['content_id']}" if result.get("content_id") else None,
+            ),
+            scope_tenant,
+            client_id,
         )
 
     @classmethod
@@ -472,22 +562,34 @@ class OperatorWorkspaceActionService:
         db: AsyncSession,
         *,
         content_id: UUID,
-    ) -> OperatorWorkspaceActionResult:
+        actor_id: UUID | None = None,
+        tenant_id: UUID | None = None,
+    ) -> tuple[OperatorWorkspaceActionResult, UUID | None, UUID | None]:
+        del actor_id  # recorded by execute() wrapper
         item = await ContentService.get(db, content_id)
+        client_id = item.client_id
+        ctx = get_auth_context()
+        scope_tenant = tenant_id
+        if ctx and ctx.is_tenant:
+            scope_tenant = ctx.tenant_id
 
         # Idempotent: already internally approved → success, no duplicate transition.
         if item.status == "approved" and item.approved_at is not None:
-            return OperatorWorkspaceActionResult(
-                success=True,
-                action_id=ACTION_APPROVE_CONTENT,
-                message="Content already approved",
-                canonical_state={
-                    "content_id": str(item.id),
-                    "status": item.status,
-                    "client_review_status": item.client_review_status,
-                },
-                attention_still_relevant=False,
-                refresh_recommended=True,
+            return (
+                OperatorWorkspaceActionResult(
+                    success=True,
+                    action_id=ACTION_APPROVE_CONTENT,
+                    message="Content already approved",
+                    canonical_state={
+                        "content_id": str(item.id),
+                        "status": item.status,
+                        "client_review_status": item.client_review_status,
+                    },
+                    attention_still_relevant=False,
+                    refresh_recommended=True,
+                ),
+                scope_tenant,
+                client_id,
             )
 
         # Must still be in internal-review statuses (not waiting for client, not published).
@@ -503,18 +605,22 @@ class OperatorWorkspaceActionService:
             )
 
         approved = await ContentService.approve(db, content_id)
-        return OperatorWorkspaceActionResult(
-            success=True,
-            action_id=ACTION_APPROVE_CONTENT,
-            message="Content approved — client review started where configured",
-            canonical_state={
-                "content_id": str(approved.id),
-                "status": approved.status,
-                "client_review_status": approved.client_review_status,
-            },
-            attention_still_relevant=False,
-            refresh_recommended=True,
-            redirect_path=f"/content/{approved.id}",
+        return (
+            OperatorWorkspaceActionResult(
+                success=True,
+                action_id=ACTION_APPROVE_CONTENT,
+                message="Content approved — client review started where configured",
+                canonical_state={
+                    "content_id": str(approved.id),
+                    "status": approved.status,
+                    "client_review_status": approved.client_review_status,
+                },
+                attention_still_relevant=False,
+                refresh_recommended=True,
+                redirect_path=f"/content/{approved.id}",
+            ),
+            scope_tenant,
+            client_id,
         )
 
 

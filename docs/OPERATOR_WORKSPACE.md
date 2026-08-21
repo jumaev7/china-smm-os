@@ -114,6 +114,7 @@ This is a derived recency/actionability rule for the daily workspace. Historical
 
 - `GET /api/v1/operator-workspace/summary` — optional `client_id`
 - `GET /api/v1/operator-workspace/items` — `client_id`, `category`, `priority`, `responsible_party`, pagination (includes derived `actions[]`)
+- `GET /api/v1/operator-workspace/metrics` — `window` (`24h`|`7d`|`30d`), optional `client_id` / `category` (read-only observability)
 - `POST /api/v1/operator-workspace/items/{attention_id}/actions/{action_id}` — Phase 1 safe mutations
 
 Category/priority/responsibility filters change the **items list** only. Summary cards stay based on the full client-scoped attention set.
@@ -134,7 +135,18 @@ Uses existing `ApiAuthContext` + `scope_select()` for client-scoped content/publ
 
 ## Audit & metrics
 
-Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resolved_by` fields. Content approve and publish retry continue to use their canonical side effects / logs. No new analytics subsystem in Actions Phase 1 — future efficiency metrics (time-to-resolution, actions/day) can read existing audit fields.
+Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resolved_by` fields.
+
+**Observability Phase (this layer):**
+
+- `GET /api/v1/operator-workspace/metrics` — read-only attention / action / resolution pulse
+- Workspace mutation actions write durable provenance to existing `platform_audit_logs`
+  (`event_type=operator_workspace.action`). Navigation `open` is never recorded.
+- Attention volume/age is a **point-in-time** projection over canonical collectors (no new attention table).
+- Alert TTR uses `PublishOperatorAlert.first_occurred_at` → `resolved_at` / `acknowledged_at`.
+- Automation candidate levels (A/B/C/D) and scores are **advisory only** — auto-execution remains disabled.
+
+No new analytics subsystem or migration was introduced for this phase.
 
 ## Future (not in scope)
 

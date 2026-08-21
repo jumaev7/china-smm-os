@@ -117,3 +117,22 @@ class OperatorWorkspaceActionResult(BaseModel):
     attention_still_relevant: bool = False
     refresh_recommended: bool = True
     redirect_path: str | None = None
+
+
+MetricsWindow = Literal["24h", "7d", "30d"]
+
+
+class OperatorWorkspaceMetricsResponse(BaseModel):
+    """Compact observability payload. Null/unavailable fields are preferred over guesses."""
+
+    window: MetricsWindow
+    generated_at: datetime
+    attention: dict = Field(default_factory=dict)
+    actions: dict = Field(default_factory=dict)
+    resolution: dict = Field(default_factory=dict)
+    automation_candidates: list[dict] = Field(default_factory=list)
+    top_recurring_issue: str | None = None
+    oldest_unresolved_age_seconds: int | None = None
+    age_semantics: dict[str, str] = Field(default_factory=dict)
+    notes: dict[str, str] = Field(default_factory=dict)
+    candidate_catalog: list[dict] = Field(default_factory=list)
