@@ -94,6 +94,10 @@ services:
       <<: *backend-environment
       SCHEDULED_PUBLISH_ENABLED: "true"
       AUTOMATION_SCHEDULER_ENABLED: "false"
+      # Integration Health scheduler (backend lifespan only). Defaults false;
+      # local-only activation: CHECK=true, REMOTE=false until a separate rollout.
+      INTEGRATION_HEALTH_CHECK_ENABLED: ${INTEGRATION_HEALTH_CHECK_ENABLED:-false}
+      INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED: ${INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED:-false}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips="*"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
