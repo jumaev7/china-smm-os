@@ -20,6 +20,7 @@ from app.services.integration_health.taxonomy import (
     REASON_APP_REVIEW_REQUIRED,
     REASON_AUTHORIZATION_REQUIRED,
     REASON_CAPABILITY_UNAVAILABLE,
+    REASON_CREDENTIAL_DECRYPTION_FAILED,
     REASON_DISCONNECTED,
     REASON_EXPIRED_TOKEN,
     REASON_HEALTHY,
@@ -219,55 +220,75 @@ async def evaluate_meta_account(
         and not is_demo
         and account.status != "disconnected"
     ):
-        remote_ran = True
+        token: str | None = None
         try:
             token = decrypt_token(account.access_token_encrypted or "")
-            debug_data = await debug_token(token)
-            if not debug_data.get("is_valid"):
-                token_valid = False
-                reason = REASON_INVALID_TOKEN
-            else:
-                live_perms = debug_data.get("scopes") or []
-                if isinstance(live_perms, list) and live_perms:
-                    permissions = sorted({str(p) for p in live_perms if p})
-                    publish_missing = (
-                        missing_facebook_publish_permissions(permissions)
-                        if platform == "facebook"
-                        else missing_instagram_publish_permissions(permissions)
-                    )
-                    connection_missing = missing_connection_permissions(permissions)
-                    listening_missing = sorted(
-                        LISTENING_FACEBOOK_READ_PERMISSIONS - set(permissions)
-                    )
-                    if connection_missing or publish_missing:
-                        reason = REASON_MISSING_REQUIRED_SCOPE
-                    elif reason == REASON_HEALTHY:
-                        reason = REASON_HEALTHY
-        except MetaGraphError as exc:
-            provider_error_class = "meta_graph"
-            if exc.status_code == 429 or exc.error_code in {4, 17, 32, 613}:
-                reason = REASON_PROVIDER_RATE_LIMITED
-                transient = True
-            elif exc.is_timeout or exc.is_connection_error or exc.is_transient:
+        except ValueError:
+            # Local vault failure — never classify as provider/transient.
+            token_valid = False
+            reason = REASON_CREDENTIAL_DECRYPTION_FAILED
+            provider_error_class = "vault"
+            remote_ran = False
+            transient = False
+            logger.warning(
+                "Meta health probe blocked by credential vault failure account_id=%s",
+                account.id,
+            )
+        else:
+            remote_ran = True
+            try:
+                debug_data = await debug_token(token)
+                if not debug_data.get("is_valid"):
+                    token_valid = False
+                    reason = REASON_INVALID_TOKEN
+                else:
+                    live_perms = debug_data.get("scopes") or []
+                    if isinstance(live_perms, list) and live_perms:
+                        permissions = sorted({str(p) for p in live_perms if p})
+                        publish_missing = (
+                            missing_facebook_publish_permissions(permissions)
+                            if platform == "facebook"
+                            else missing_instagram_publish_permissions(permissions)
+                        )
+                        connection_missing = missing_connection_permissions(permissions)
+                        listening_missing = sorted(
+                            LISTENING_FACEBOOK_READ_PERMISSIONS - set(permissions)
+                        )
+                        if connection_missing or publish_missing:
+                            reason = REASON_MISSING_REQUIRED_SCOPE
+                        elif reason == REASON_HEALTHY:
+                            reason = REASON_HEALTHY
+            except MetaGraphError as exc:
+                provider_error_class = "meta_graph"
+                if exc.status_code == 429 or exc.error_code in {4, 17, 32, 613}:
+                    reason = REASON_PROVIDER_RATE_LIMITED
+                    transient = True
+                elif exc.is_timeout or exc.is_connection_error or exc.is_transient:
+                    reason = REASON_TRANSIENT_PROVIDER_ERROR
+                    transient = True
+                else:
+                    reason = REASON_PROVIDER_UNREACHABLE
+                    transient = True
+                logger.info(
+                    "Meta health probe classified reason=%s code=%s status=%s",
+                    reason,
+                    exc.error_code,
+                    exc.status_code,
+                )
+            except Exception:
+                provider_error_class = "unexpected"
                 reason = REASON_TRANSIENT_PROVIDER_ERROR
                 transient = True
-            else:
-                reason = REASON_PROVIDER_UNREACHABLE
-                transient = True
-            logger.info(
-                "Meta health probe classified reason=%s code=%s status=%s",
-                reason,
-                exc.error_code,
-                exc.status_code,
-            )
-        except Exception as exc:
-            provider_error_class = "unexpected"
-            reason = REASON_TRANSIENT_PROVIDER_ERROR
-            transient = True
-            logger.warning("Meta health probe failed: %s", type(exc).__name__)
+                logger.warning("Meta health probe failed after decrypt")
 
     # Capability split: publishing vs listening.
-    if reason in (REASON_DISCONNECTED, REASON_EXPIRED_TOKEN, REASON_INVALID_TOKEN, REASON_AUTHORIZATION_REQUIRED):
+    if reason in (
+        REASON_DISCONNECTED,
+        REASON_EXPIRED_TOKEN,
+        REASON_INVALID_TOKEN,
+        REASON_AUTHORIZATION_REQUIRED,
+        REASON_CREDENTIAL_DECRYPTION_FAILED,
+    ):
         pub_cap = CapabilityHealth(
             name="publishing",
             status=reason_meta(reason)["status"],
@@ -392,6 +413,10 @@ async def evaluate_meta_account(
             requires_action_override = False
             responsible_override = "provider"
             severity_override = "medium"
+    elif reason == REASON_CREDENTIAL_DECRYPTION_FAILED:
+        # Local vault failures must never accumulate as provider transient retries.
+        transient_count = 0
+        escalated = False
     elif reason == REASON_HEALTHY or (
         pub_cap.status == "healthy" and reason in (REASON_MISSING_OPTIONAL_SCOPE, REASON_APP_REVIEW_REQUIRED)
     ):

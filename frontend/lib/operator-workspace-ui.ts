@@ -54,7 +54,9 @@ export function suggestedActionLabelKey(item: OperatorAttentionItem): string {
   if (code === "internal_review") return "operatorWorkspace.actions.reviewContent";
   if (code?.startsWith("client")) return "operatorWorkspace.actions.openClientReview";
   if (code === "schedule_overdue") return "operatorWorkspace.actions.reviewQueue";
-  if (code === "integration_attention") return "operatorWorkspace.actions.openIntegrations";
+  if (code === "integration_attention" || code === "credential_decryption_failed") {
+    return "operatorWorkspace.actions.openIntegrations";
+  }
   if (code === "telegram_failed") return "operatorWorkspace.actions.reviewTelegram";
   if (code?.startsWith("automation")) return "operatorWorkspace.actions.openAutomation";
   if (code === "publish_alert") return "operatorWorkspace.actions.reviewAlert";

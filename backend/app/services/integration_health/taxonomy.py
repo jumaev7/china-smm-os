@@ -33,6 +33,7 @@ REASON_ACCOUNT_NOT_FOUND = "account_not_found"
 REASON_CAPABILITY_UNAVAILABLE = "capability_unavailable"
 REASON_APP_REVIEW_REQUIRED = "app_review_required"
 REASON_TRANSIENT_PROVIDER_ERROR = "transient_provider_error"
+REASON_CREDENTIAL_DECRYPTION_FAILED = "credential_decryption_failed"
 REASON_STALE_CHECK = "stale_check"
 REASON_NEVER_CHECKED = "never_checked"
 REASON_MOCK_MODE = "mock_mode"
@@ -56,6 +57,7 @@ REASON_CODES = frozenset({
     REASON_CAPABILITY_UNAVAILABLE,
     REASON_APP_REVIEW_REQUIRED,
     REASON_TRANSIENT_PROVIDER_ERROR,
+    REASON_CREDENTIAL_DECRYPTION_FAILED,
     REASON_STALE_CHECK,
     REASON_NEVER_CHECKED,
     REASON_MOCK_MODE,
@@ -200,6 +202,21 @@ _REASON_META: dict[str, dict[str, Any]] = {
         "safe_auto_recheck": True,
         "explanation": "Temporary provider error during health check.",
         "recommended_next_step": "Automatic recheck scheduled; no operator action yet.",
+    },
+    REASON_CREDENTIAL_DECRYPTION_FAILED: {
+        "status": "action_required",
+        "severity": "high",
+        "responsible_party": "operator",
+        "requires_operator_action": True,
+        "safe_auto_recheck": False,
+        "explanation": (
+            "Meta connection credentials cannot be read by the platform. "
+            "Publishing health cannot be verified."
+        ),
+        "recommended_next_step": (
+            "Administrator intervention required in Integration Center. "
+            "Do not treat this as a temporary Meta outage."
+        ),
     },
     REASON_STALE_CHECK: {
         "status": "unknown",

@@ -21,9 +21,11 @@ from app.services.integration_health.persistence import (
 )
 from app.services.integration_health.taxonomy import (
     REASON_CODES,
+    REASON_CREDENTIAL_DECRYPTION_FAILED,
     REASON_DISCONNECTED,
     REASON_EXPIRED_TOKEN,
     REASON_HEALTHY,
+    REASON_INVALID_TOKEN,
     REASON_MISSING_OPTIONAL_SCOPE,
     REASON_MISSING_REQUIRED_SCOPE,
     REASON_NEVER_CHECKED,
@@ -618,3 +620,228 @@ def test_rate_limit_classified():
     result = asyncio.run(_run())
     assert result.reason_code == "provider_rate_limited"
     assert result.requires_operator_action is False
+
+
+def test_credential_decryption_failed_not_transient():
+    """Wrong key / corrupted ciphertext must never look like a Meta outage."""
+    debug_mock = AsyncMock()
+
+    async def _run():
+        with (
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                side_effect=ValueError("Invalid or corrupted encrypted token"),
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+        ):
+            return await evaluate_meta_account(
+                _account(),
+                live_check=True,
+                prior_diag={
+                    "transient_failure_count": 2,
+                    "transient_window_started_at": _now().isoformat(),
+                    "escalated": False,
+                },
+            )
+
+    result = asyncio.run(_run())
+    assert result.reason_code == REASON_CREDENTIAL_DECRYPTION_FAILED
+    assert result.status == "action_required"
+    assert result.severity == "high"
+    assert result.responsible_party == "operator"
+    assert result.requires_operator_action is True
+    assert result.safe_auto_recheck is False
+    assert result.transient_failure_count == 0
+    assert result.source == "local"
+    assert result.diagnostic.get("provider_error_class") == "vault"
+    debug_mock.assert_not_called()
+    payload = json.dumps(result.to_public_dict())
+    assert "encrypted" not in payload
+    assert "Invalid or corrupted" not in payload
+    assert "vault" not in payload  # internal diagnostic only
+    pub = next(c for c in result.capabilities if c.name == "publishing")
+    assert pub.reason_code == REASON_CREDENTIAL_DECRYPTION_FAILED
+    assert pub.requires_operator_action is True
+
+
+def test_malformed_ciphertext_credential_classification():
+    debug_mock = AsyncMock()
+
+    async def _run():
+        with (
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                side_effect=ValueError("Invalid or corrupted encrypted token"),
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+        ):
+            return await evaluate_meta_account(
+                _account(access_token_encrypted="not-valid-fernet!!!"),
+                live_check=True,
+                prior_diag={},
+            )
+
+    result = asyncio.run(_run())
+    assert result.reason_code == REASON_CREDENTIAL_DECRYPTION_FAILED
+    assert result.transient_failure_count == 0
+    debug_mock.assert_not_called()
+
+
+def test_credential_failure_cleared_after_successful_live_check():
+    prior = {
+        "status": "action_required",
+        "reason_code": REASON_CREDENTIAL_DECRYPTION_FAILED,
+        "requires_operator_action": True,
+        "transient_failure_count": 0,
+        "provider_error_class": "vault",
+    }
+
+    async def _run():
+        with (
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="tok",
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                AsyncMock(
+                    return_value={
+                        "is_valid": True,
+                        "scopes": [
+                            "pages_show_list",
+                            "instagram_basic",
+                            "business_management",
+                            "pages_manage_posts",
+                            "pages_read_engagement",
+                            "pages_read_user_content",
+                        ],
+                    }
+                ),
+            ),
+        ):
+            return await evaluate_meta_account(_account(), live_check=True, prior_diag=prior)
+
+    result = asyncio.run(_run())
+    assert result.reason_code != REASON_CREDENTIAL_DECRYPTION_FAILED
+    assert result.transient_failure_count == 0
+    assert result.status in ("healthy", "degraded")
+    assert result.diagnostic.get("provider_error_class") is None
+
+
+def test_invalid_token_after_successful_decrypt():
+    async def _run():
+        with (
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="tok",
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                AsyncMock(return_value={"is_valid": False, "scopes": []}),
+            ),
+        ):
+            return await evaluate_meta_account(_account(), live_check=True, prior_diag={})
+
+    result = asyncio.run(_run())
+    assert result.reason_code == REASON_INVALID_TOKEN
+    assert result.status == "action_required"
+    assert result.source == "remote"
+
+
+def test_workspace_surfaces_credential_decryption_issue():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid, status="connected")
+        write_diagnostic(
+            acct,
+            {
+                "status": "action_required",
+                "reason_code": REASON_CREDENTIAL_DECRYPTION_FAILED,
+                "reason": reason_meta(REASON_CREDENTIAL_DECRYPTION_FAILED)["explanation"],
+                "requires_operator_action": True,
+                "responsible_party": "operator",
+                "recommended_next_step": reason_meta(REASON_CREDENTIAL_DECRYPTION_FAILED)[
+                    "recommended_next_step"
+                ],
+                "checked_at": _now().isoformat(),
+                "severity": "high",
+                "transient_failure_count": 0,
+                "escalated": False,
+            },
+        )
+
+        class _Scalars:
+            def all(self):
+                return [acct]
+
+        db = AsyncMock()
+        db.scalars = AsyncMock(return_value=_Scalars())
+        items = []
+        with patch.object(OperatorWorkspaceService, "_tenant_filter", return_value=None):
+            await OperatorWorkspaceService._collect_integration_issues(db, tid, items.append)
+        return items
+
+    items = asyncio.run(_run())
+    assert len(items) == 1
+    assert items[0].metadata["reason_code"] == REASON_CREDENTIAL_DECRYPTION_FAILED
+    assert items[0].priority == "high"
+    assert items[0].responsible_party == "operator"
+    assert items[0].action_path.startswith("/integrations")
+    blob = json.dumps(items[0].metadata)
+    assert "gAAAA" not in blob
+    assert "encrypted" not in blob
+    assert "ADMIN_SECRET" not in blob
+
+
+def test_scheduler_disabled_by_default():
+    from app.core.config import Settings
+
+    assert Settings().INTEGRATION_HEALTH_CHECK_ENABLED is False
+
+
+def test_token_vault_roundtrip_and_wrong_key():
+    """Valid ciphertext decrypts; wrong key raises the vault ValueError used by health checks."""
+    import base64
+    import hashlib
+    from cryptography.fernet import Fernet
+    from app.utils import token_vault
+
+    def _fernet_for(secret: str) -> Fernet:
+        digest = hashlib.sha256(secret.encode()).digest()
+        return Fernet(base64.urlsafe_b64encode(digest))
+
+    with patch.object(token_vault.settings, "ADMIN_SECRET_KEY", "unit-test-admin-secret-aaa"):
+        with patch.object(token_vault.settings, "SECRET_KEY", "unit-test-fallback-secret-bbb"):
+            cipher = token_vault.encrypt_token("EAABtesttokenvalue")
+            assert cipher.startswith("gAAAA")
+            assert token_vault.decrypt_token(cipher) == "EAABtesttokenvalue"
+
+    other = _fernet_for("historical-other-key").encrypt(b"EAABtesttokenvalue").decode()
+    with patch.object(token_vault.settings, "ADMIN_SECRET_KEY", "unit-test-admin-secret-aaa"):
+        with patch.object(token_vault.settings, "SECRET_KEY", "unit-test-fallback-secret-bbb"):
+            with pytest.raises(ValueError, match="Invalid or corrupted encrypted token"):
+                token_vault.decrypt_token(other)
+            with pytest.raises(ValueError, match="Invalid or corrupted encrypted token"):
+                token_vault.decrypt_token("not-a-fernet-blob")

@@ -699,6 +699,8 @@ class OperatorWorkspaceService:
                 priority = "critical"
             if reason_code in ("missing_optional_scope", "app_review_required"):
                 priority = "medium"
+            if reason_code == "credential_decryption_failed":
+                priority = "high"
             if escalated and not requires_action:
                 priority = "low"
 
