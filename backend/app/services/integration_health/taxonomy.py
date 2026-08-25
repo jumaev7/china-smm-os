@@ -115,9 +115,9 @@ _REASON_META: dict[str, dict[str, Any]] = {
     },
     REASON_MISSING_OPTIONAL_SCOPE: {
         "status": "degraded",
-        "severity": "medium",
+        "severity": "low",
         "responsible_party": "client",
-        "requires_operator_action": True,
+        "requires_operator_action": False,
         "safe_auto_recheck": True,
         "explanation": "Optional capability permissions are missing; core features may still work.",
         "recommended_next_step": "Review capability details and grant optional scopes if needed.",
@@ -187,9 +187,9 @@ _REASON_META: dict[str, dict[str, Any]] = {
     },
     REASON_APP_REVIEW_REQUIRED: {
         "status": "degraded",
-        "severity": "medium",
+        "severity": "low",
         "responsible_party": "operator",
-        "requires_operator_action": True,
+        "requires_operator_action": False,
         "safe_auto_recheck": True,
         "explanation": "Provider App Review / Advanced Access is required for this capability.",
         "recommended_next_step": "Complete Meta App Review for Listening scopes, then reconnect.",

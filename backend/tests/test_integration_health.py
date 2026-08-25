@@ -35,6 +35,7 @@ from app.services.integration_health.taxonomy import (
     reason_meta,
 )
 from app.services.integration_health.checks import _build_result, evaluate_meta_account
+from app.services.integration_health.scheduler import IntegrationHealthScheduler
 from app.services.integration_health.service import IntegrationHealthService
 from app.services.meta_graph_client import MetaGraphError
 from app.services.operator_workspace_service import OperatorWorkspaceService
@@ -200,6 +201,9 @@ def test_missing_optional_listening_does_not_break_publishing():
     assert listen.reason_code == REASON_MISSING_OPTIONAL_SCOPE
     assert result.reason_code == REASON_MISSING_OPTIONAL_SCOPE
     assert result.status == "degraded"
+    # Optional Listening gap must not force operator-queue attention.
+    assert result.requires_operator_action is False
+    assert listen.requires_operator_action is True
 
 
 def test_provider_timeout_transient():
@@ -819,6 +823,122 @@ def test_scheduler_disabled_by_default():
     from app.core.config import Settings
 
     assert Settings().INTEGRATION_HEALTH_CHECK_ENABLED is False
+    assert Settings().INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED is False
+
+
+def test_workspace_optional_listening_scope_suppressed():
+    """Known optional Listening gap must not flood Operator Workspace."""
+
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid, status="connected")
+        write_diagnostic(
+            acct,
+            {
+                "status": "degraded",
+                "reason_code": "missing_optional_scope",
+                "requires_operator_action": False,
+                "responsible_party": "client",
+                "checked_at": _now().isoformat(),
+                "capabilities": [
+                    {"name": "publishing", "status": "healthy"},
+                    {"name": "listening", "status": "action_required"},
+                ],
+            },
+        )
+
+        class _Scalars:
+            def all(self):
+                return [acct]
+
+        db = AsyncMock()
+        db.scalars = AsyncMock(return_value=_Scalars())
+        items = []
+        with patch.object(OperatorWorkspaceService, "_tenant_filter", return_value=None):
+            await OperatorWorkspaceService._collect_integration_issues(db, tid, items.append)
+        return items
+
+    assert asyncio.run(_run()) == []
+
+
+def test_rate_limit_cooldown_skips_remote_probe():
+    prior = {
+        "reason_code": "provider_rate_limited",
+        "checked_at": _now().isoformat(),
+        "transient_failure_count": 1,
+        "escalated": False,
+    }
+    debug_mock = AsyncMock()
+
+    async def _run():
+        with (
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="tok",
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+        ):
+            return await evaluate_meta_account(
+                _account(), live_check=True, prior_diag=prior
+            )
+
+    result = asyncio.run(_run())
+    debug_mock.assert_not_called()
+    assert result.source == "local"
+    assert result.reason_code == "provider_rate_limited"
+
+
+def test_scheduler_skips_when_disabled(monkeypatch):
+    from app.services.integration_health import scheduler as sched_mod
+
+    monkeypatch.setattr(sched_mod.settings, "INTEGRATION_HEALTH_CHECK_ENABLED", False)
+
+    async def _run():
+        await IntegrationHealthScheduler.start()
+        assert sched_mod._task is None
+        await IntegrationHealthScheduler.stop()
+
+    asyncio.run(_run())
+
+
+def test_scheduler_remote_gate(monkeypatch):
+    from app.services.integration_health import scheduler as sched_mod
+
+    monkeypatch.setattr(sched_mod.settings, "INTEGRATION_HEALTH_CHECK_ENABLED", True)
+    monkeypatch.setattr(sched_mod.settings, "INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED", False)
+    sched_mod._cycle = 0
+    sched_mod._cycle_running = False
+
+    async def _fake_cycle(db, *, live_remote=False):
+        return {"tenants": 0, "checked": 0, "errors": 0, "live_remote": live_remote}
+
+    async def _run():
+        with (
+            patch.object(
+                IntegrationHealthService,
+                "run_periodic_cycle",
+                side_effect=_fake_cycle,
+            ) as mock_cycle,
+            patch("app.services.integration_health.scheduler.session_scope") as scope,
+        ):
+            cm = AsyncMock()
+            cm.__aenter__ = AsyncMock(return_value=AsyncMock())
+            cm.__aexit__ = AsyncMock(return_value=None)
+            scope.return_value = cm
+            # Force remote-eligible cycle number while remote flag is off.
+            sched_mod._cycle = 3
+            summary = await IntegrationHealthScheduler.run_once()
+            assert mock_cycle.await_args.kwargs.get("live_remote") is False
+            return summary
+
+    asyncio.run(_run())
 
 
 def test_token_vault_roundtrip_and_wrong_key():

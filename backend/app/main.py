@@ -31,6 +31,10 @@ logging.basicConfig(level=logging.INFO)
 # httpx includes full query strings in INFO logs; Meta tokens are query parameters.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+# Redact OAuth code/state and similar secrets from uvicorn access logs.
+from app.core.access_log_redaction import install_access_log_redaction
+
+install_access_log_redaction()
 
 
 def _log_database_target() -> None:

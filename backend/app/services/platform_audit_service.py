@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.access_log_redaction import scrub_audit_details
 from app.models.platform_ops import PlatformAuditLog
 from app.models.tenant import Tenant
 
@@ -40,7 +41,7 @@ class PlatformAuditService:
             event_type=event_type,
             resource_type=resource_type,
             resource_id=resource_id,
-            details=details,
+            details=scrub_audit_details(details),
         )
         db.add(row)
         if commit:

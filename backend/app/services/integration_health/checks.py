@@ -211,7 +211,15 @@ async def evaluate_meta_account(
     else:
         reason = REASON_HEALTHY
 
-    # Live read-only probe (debug_token only).
+    # Recent Meta rate-limit → skip remote probe briefly (bounded cooldown, no storm).
+    rate_limit_cooldown = False
+    if live_check and prior_diag.get("reason_code") == REASON_PROVIDER_RATE_LIMITED:
+        prior_checked = _parse_prior_checked(prior_diag)
+        if prior_checked and (now - prior_checked).total_seconds() < 30 * 60:
+            live_check = False
+            rate_limit_cooldown = True
+
+    # Live read-only probe (debug_token only — never publish, never token exchange).
     if (
         live_check
         and token_present
@@ -280,6 +288,12 @@ async def evaluate_meta_account(
                 reason = REASON_TRANSIENT_PROVIDER_ERROR
                 transient = True
                 logger.warning("Meta health probe failed after decrypt")
+    elif rate_limit_cooldown and reason == REASON_HEALTHY:
+        # Preserve rate-limit classification during cooldown without another Meta call
+        # and without inflating the transient failure counter.
+        reason = REASON_PROVIDER_RATE_LIMITED
+        transient = False
+        provider_error_class = "meta_graph"
 
     # Capability split: publishing vs listening.
     if reason in (

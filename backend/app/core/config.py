@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Periodic read-only integration health checks (Meta debug_token, local Telegram/ads/listening).
     # Default off until explicitly enabled in an environment; never mutates providers.
     INTEGRATION_HEALTH_CHECK_ENABLED: bool = False
+    # Remote provider probes (Meta debug_token). Independent kill switch — default off so
+    # enabling the scheduler alone runs local/cached evaluation only until explicitly opted in.
+    INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED: bool = False
     # Pilot readiness route probes spawn nested API calls; keep them off locally unless explicit.
     ROUTE_PROBING_ENABLED: bool = False
 

@@ -673,22 +673,23 @@ class OperatorWorkspaceService:
                     and transient_count < 3
                 ):
                     continue
+                # Optional Listening scope / App Review gaps must not flood the
+                # daily operator queue when publishing remains healthy.
+                if reason_code in ("missing_optional_scope", "app_review_required"):
+                    continue
                 if requires_action is False and status == "degraded" and not escalated:
-                    # Optional listening gap still warrants medium attention when operator action flagged.
                     if reason_code not in (
-                        "missing_optional_scope",
-                        "app_review_required",
                         "mock_mode",
                         "capability_unavailable",
                     ):
                         continue
 
             # Only show items that need human attention or escalated provider issues.
+            if reason_code in ("missing_optional_scope", "app_review_required"):
+                continue
             show = bool(requires_action) or escalated or (
                 account.status in INTEGRATION_ATTENTION_STATUSES and status == "action_required"
             )
-            if reason_code in ("missing_optional_scope", "app_review_required"):
-                show = True
             if not show:
                 continue
 
@@ -697,8 +698,6 @@ class OperatorWorkspaceService:
                 priority = "high"
             if account.status == "blocked":
                 priority = "critical"
-            if reason_code in ("missing_optional_scope", "app_review_required"):
-                priority = "medium"
             if reason_code == "credential_decryption_failed":
                 priority = "high"
             if escalated and not requires_action:

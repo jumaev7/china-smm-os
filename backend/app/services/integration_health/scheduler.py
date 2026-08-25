@@ -2,6 +2,11 @@
 
 Mirrors HealthSnapshotService lifecycle: in-process asyncio loop, gated by
 INTEGRATION_HEALTH_CHECK_ENABLED. Prefer this over a new always-on worker.
+
+Topology assumption: single production ``backend`` uvicorn process owns this
+scheduler. Worker containers do not import FastAPI lifespan. In-process locks
+are sufficient for that topology; do not scale backend replicas without adding
+a durable lease/advisory lock first.
 """
 from __future__ import annotations
 
@@ -15,13 +20,22 @@ from app.services.integration_health.service import IntegrationHealthService
 
 logger = logging.getLogger(__name__)
 
-# Conservative cadence: local eval often; remote Meta probes on the same cycle
-# but bounded concurrency + per-account locks prevent stampeding.
+# Conservative cadence: local eval often; remote Meta probes less frequently.
+# Recommended first production activation: local ~30m, remote ~120m (every 4th cycle).
 INTERVAL_SECONDS = 30 * 60  # 30 minutes
-_REMOTE_EVERY_N_CYCLES = 2  # remote Meta probes every ~60 minutes
+_REMOTE_EVERY_N_CYCLES = 4  # remote Meta probes every ~120 minutes when remote enabled
 
 _task: asyncio.Task | None = None
 _cycle = 0
+_cycle_lock: asyncio.Lock | None = None
+_cycle_running = False
+
+
+def _get_cycle_lock() -> asyncio.Lock:
+    global _cycle_lock
+    if _cycle_lock is None:
+        _cycle_lock = asyncio.Lock()
+    return _cycle_lock
 
 
 class IntegrationHealthScheduler:
@@ -38,7 +52,9 @@ class IntegrationHealthScheduler:
             return
         _task = asyncio.create_task(cls._run_loop())
         logger.info(
-            "[IntegrationHealth] scheduler started (interval=%ss)", INTERVAL_SECONDS
+            "[IntegrationHealth] scheduler started (interval=%ss remote=%s)",
+            INTERVAL_SECONDS,
+            settings.INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED,
         )
 
     @classmethod
@@ -56,7 +72,6 @@ class IntegrationHealthScheduler:
 
     @classmethod
     async def _run_loop(cls) -> None:
-        global _cycle
         await asyncio.sleep(15)
         while True:
             try:
@@ -67,19 +82,33 @@ class IntegrationHealthScheduler:
 
     @classmethod
     async def run_once(cls) -> dict[str, Any]:
-        global _cycle
-        _cycle += 1
-        live_remote = (_cycle % _REMOTE_EVERY_N_CYCLES) == 0
-        async with session_scope() as db:
-            summary = await IntegrationHealthService.run_periodic_cycle(
-                db, live_remote=live_remote
-            )
-        logger.info(
-            "[IntegrationHealth] cycle=%s live_remote=%s tenants=%s checked=%s errors=%s",
-            _cycle,
-            live_remote,
-            summary.get("tenants"),
-            summary.get("checked"),
-            summary.get("errors"),
-        )
-        return summary
+        """Run one cycle; skip if a prior cycle is still in progress (no overlap)."""
+        global _cycle, _cycle_running
+        lock = _get_cycle_lock()
+        if lock.locked() or _cycle_running:
+            logger.warning("[IntegrationHealth] skipping overlapping cycle")
+            return {"skipped": True, "reason": "overlap"}
+
+        async with lock:
+            _cycle_running = True
+            try:
+                _cycle += 1
+                remote_allowed = bool(settings.INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED)
+                live_remote = remote_allowed and (_cycle % _REMOTE_EVERY_N_CYCLES) == 0
+                async with session_scope() as db:
+                    summary = await IntegrationHealthService.run_periodic_cycle(
+                        db, live_remote=live_remote
+                    )
+                logger.info(
+                    "[IntegrationHealth] cycle=%s live_remote=%s remote_enabled=%s "
+                    "tenants=%s checked=%s errors=%s",
+                    _cycle,
+                    live_remote,
+                    remote_allowed,
+                    summary.get("tenants"),
+                    summary.get("checked"),
+                    summary.get("errors"),
+                )
+                return summary
+            finally:
+                _cycle_running = False

@@ -36,6 +36,13 @@ _FORBIDDEN_PAYLOAD_KEYS = frozenset({
     "token",
     "bearer",
     "client_secret",
+    "code",
+    "oauth_code",
+    "authorization_code",
+    "oauth_state",
+    "admin_secret_key",
+    "app_secret",
+    "meta_app_secret",
 })
 
 INTEGRATION_ATTENTION_STATUSES = frozenset({
