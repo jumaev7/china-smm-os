@@ -369,11 +369,22 @@ def test_get_metrics_no_provider_calls_and_empty_ok():
                         "non_alert_resolution_available": False,
                     }),
                 ),
+                patch(
+                    "app.services.operator_auto_ack.shadow.OperatorAutoAckShadowService.build_metrics",
+                    new=AsyncMock(return_value={
+                        "available": True,
+                        "evaluated": 0,
+                        "eligible": 0,
+                        "would_acknowledge": 0,
+                        "outcomes": {},
+                    }),
+                ),
             ):
                 result = await OperatorWorkspaceMetricsService.get_metrics(db, window="7d")
             assert result.attention["total"] == 0
             assert result.actions["total"] == 0
             assert result.window == "7d"
+            assert result.auto_ack_shadow.get("available") is True
             assert all(c.get("auto_eligible") is False for c in result.automation_candidates)
         finally:
             _auth_ctx.reset(token)

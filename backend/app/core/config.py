@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Remote provider probes (Meta debug_token). Independent kill switch — default off so
     # enabling the scheduler alone runs local/cached evaluation only until explicitly opted in.
     INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED: bool = False
+    # Shadow-mode auto-ack evaluator (observe + audit only). Default off; never mutates alerts.
+    OPERATOR_AUTO_ACK_ALERTS_SHADOW_ENABLED: bool = False
+    # Future real auto-ack kill switch. Default off and UNUSED in Phase 1 — must stay false.
+    OPERATOR_AUTO_ACK_ALERTS_ENABLED: bool = False
     # Pilot readiness route probes spawn nested API calls; keep them off locally unless explicit.
     ROUTE_PROBING_ENABLED: bool = False
 

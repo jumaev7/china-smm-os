@@ -208,6 +208,26 @@ class OperatorWorkspaceMetricsService:
 
         oldest_age = attention.get("oldest_age_seconds")
 
+        # Shadow auto-ack aggregates — isolated from Workspace action counts.
+        auto_ack_shadow: dict[str, Any] = {"available": False}
+        try:
+            from app.services.operator_auto_ack.shadow import OperatorAutoAckShadowService
+
+            ctx = get_auth_context()
+            tenant_scope = ctx.tenant_id if ctx and ctx.is_tenant else None
+            auto_ack_shadow = await OperatorAutoAckShadowService.build_metrics(
+                db,
+                since=since,
+                tenant_id=tenant_scope,
+                client_id=client_id,
+            )
+        except Exception:
+            logger.warning("[WorkspaceMetrics] auto_ack_shadow metrics failed", exc_info=True)
+            auto_ack_shadow = {
+                "available": False,
+                "error": "aggregation_failed",
+            }
+
         return OperatorWorkspaceMetricsResponse(
             window=window,
             generated_at=now,
@@ -237,6 +257,11 @@ class OperatorWorkspaceMetricsService:
                     "Candidate levels and scores are advisory only; "
                     "auto-execution is disabled."
                 ),
+                "auto_ack_shadow": (
+                    "Shadow would-acknowledge recommendations from "
+                    "operator_workspace.auto_ack_shadow audits. "
+                    "Never mutates alerts; isolated from action counts."
+                ),
             },
             candidate_catalog=[
                 {
@@ -247,6 +272,7 @@ class OperatorWorkspaceMetricsService:
                 }
                 for c in list_candidates()
             ],
+            auto_ack_shadow=auto_ack_shadow,
         )
 
     @classmethod

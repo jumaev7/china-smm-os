@@ -136,3 +136,5 @@ class OperatorWorkspaceMetricsResponse(BaseModel):
     age_semantics: dict[str, str] = Field(default_factory=dict)
     notes: dict[str, str] = Field(default_factory=dict)
     candidate_catalog: list[dict] = Field(default_factory=list)
+    # Shadow-mode auto-ack observability (read-only; never enables execution).
+    auto_ack_shadow: dict = Field(default_factory=dict)
