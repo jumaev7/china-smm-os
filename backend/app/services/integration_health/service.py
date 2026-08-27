@@ -376,7 +376,20 @@ class IntegrationHealthService:
                 (await db.scalars(select(Tenant.id).order_by(Tenant.created_at))).all()
             )
 
-        totals = {"tenants": 0, "checked": 0, "errors": 0}
+        totals: dict[str, Any] = {
+            "tenants": 0,
+            "checked": 0,
+            "errors": 0,
+            "meta_accounts": 0,
+            "remote_meta_probes": 0,
+            "status_summary": {
+                "healthy": 0,
+                "degraded": 0,
+                "action_required": 0,
+                "unavailable": 0,
+                "unknown": 0,
+            },
+        }
         for tid in tenant_ids:
             totals["tenants"] += 1
             try:
@@ -393,10 +406,16 @@ class IntegrationHealthService:
                 for account in accounts:
                     try:
                         live = live_remote and account.platform in META_PLATFORMS
-                        await cls.evaluate_account(
+                        if account.platform in META_PLATFORMS:
+                            totals["meta_accounts"] += 1
+                            if live:
+                                totals["remote_meta_probes"] += 1
+                        result = await cls.evaluate_account(
                             db, account, live_check=live, persist=True
                         )
                         totals["checked"] += 1
+                        if result.status in totals["status_summary"]:
+                            totals["status_summary"][result.status] += 1
                     except Exception:
                         totals["errors"] += 1
                         logger.exception(
@@ -412,6 +431,70 @@ class IntegrationHealthService:
                 logger.exception("Periodic health failed tenant=%s", tid)
                 await db.rollback()
         return totals
+
+    @classmethod
+    async def audit_scheduler_cycle(
+        cls,
+        db: AsyncSession,
+        *,
+        cycle: int,
+        live_remote: bool,
+        remote_enabled: bool,
+        started_at: datetime,
+        completed_at: datetime,
+        totals: dict[str, Any],
+    ) -> None:
+        """Persist a durable batch audit for one completed scheduler cycle.
+
+        Failure-isolated: audit errors are logged and never propagate to the
+        scheduler or provider checks. Uses its own commit boundary.
+        """
+        try:
+            checked = int(totals.get("checked", 0))
+            errors = int(totals.get("errors", 0))
+            if errors == 0:
+                outcome = "success"
+            elif checked > 0:
+                outcome = "partial"
+            else:
+                outcome = "failed"
+
+            duration_ms = max(
+                0,
+                int((completed_at - started_at).total_seconds() * 1000),
+            )
+
+            await PlatformAuditService.record(
+                db,
+                event_type="integration_health.batch_check",
+                tenant_id=None,
+                actor_type="system",
+                resource_type="integration_health",
+                resource_id=f"scheduler:cycle:{cycle}",
+                details={
+                    "trigger": "scheduler",
+                    "cycle": cycle,
+                    "remote_check": live_remote,
+                    "remote_enabled": remote_enabled,
+                    "started_at": started_at.isoformat(),
+                    "completed_at": completed_at.isoformat(),
+                    "duration_ms": duration_ms,
+                    "tenant_count": int(totals.get("tenants", 0)),
+                    "checked_count": checked,
+                    "error_count": errors,
+                    "meta_accounts": int(totals.get("meta_accounts", 0)),
+                    "remote_meta_probes": int(totals.get("remote_meta_probes", 0)),
+                    "status_summary": dict(totals.get("status_summary") or {}),
+                    "outcome": outcome,
+                },
+                commit=True,
+            )
+        except Exception:
+            logger.warning(
+                "integration health scheduler audit failed cycle=%s",
+                cycle,
+                exc_info=True,
+            )
 
     @classmethod
     async def _audit(
@@ -430,6 +513,7 @@ class IntegrationHealthService:
                 resource_type="integration_health",
                 resource_id=result.integration_id,
                 details={
+                    "trigger": "api_live_check",
                     "platform": result.platform,
                     "status": result.status,
                     "reason_code": result.reason_code,
@@ -456,7 +540,7 @@ class IntegrationHealthService:
                 actor_type="system",
                 resource_type="integration_health",
                 resource_id=str(tenant_id),
-                details={"checked_count": count},
+                details={"trigger": "api_live_check", "checked_count": count},
                 commit=False,
             )
         except Exception:

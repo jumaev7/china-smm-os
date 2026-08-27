@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
@@ -93,22 +94,47 @@ class IntegrationHealthScheduler:
             _cycle_running = True
             try:
                 _cycle += 1
+                cycle_num = _cycle
                 remote_allowed = bool(settings.INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED)
-                live_remote = remote_allowed and (_cycle % _REMOTE_EVERY_N_CYCLES) == 0
+                live_remote = remote_allowed and (cycle_num % _REMOTE_EVERY_N_CYCLES) == 0
+                started_at = datetime.now(timezone.utc)
                 async with session_scope() as db:
                     summary = await IntegrationHealthService.run_periodic_cycle(
                         db, live_remote=live_remote
                     )
+                completed_at = datetime.now(timezone.utc)
+                try:
+                    async with session_scope() as db:
+                        await IntegrationHealthService.audit_scheduler_cycle(
+                            db,
+                            cycle=cycle_num,
+                            live_remote=live_remote,
+                            remote_enabled=remote_allowed,
+                            started_at=started_at,
+                            completed_at=completed_at,
+                            totals=summary,
+                        )
+                except Exception:
+                    logger.warning(
+                        "[IntegrationHealth] scheduler audit failed cycle=%s",
+                        cycle_num,
+                        exc_info=True,
+                    )
                 logger.info(
                     "[IntegrationHealth] cycle=%s live_remote=%s remote_enabled=%s "
                     "tenants=%s checked=%s errors=%s",
-                    _cycle,
+                    cycle_num,
                     live_remote,
                     remote_allowed,
                     summary.get("tenants"),
                     summary.get("checked"),
                     summary.get("errors"),
                 )
-                return summary
+                return {
+                    **summary,
+                    "cycle": cycle_num,
+                    "live_remote": live_remote,
+                    "remote_enabled": remote_allowed,
+                }
             finally:
                 _cycle_running = False
