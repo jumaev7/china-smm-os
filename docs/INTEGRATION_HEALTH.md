@@ -73,7 +73,7 @@ Safe fields written to `platform_audit_logs.details`:
 |---|---|
 | `trigger` | Always `scheduler` |
 | `cycle` | Monotonic in-process cycle counter |
-| `remote_check` | Whether this cycle performed remote Meta probes |
+| `remote_check` | Whether this cycle requested Meta remote checks (`live_check` intent) |
 | `remote_enabled` | `INTEGRATION_HEALTH_REMOTE_CHECK_ENABLED` at cycle time |
 | `started_at` | ISO-8601 UTC cycle start |
 | `completed_at` | ISO-8601 UTC cycle end |
@@ -81,10 +81,38 @@ Safe fields written to `platform_audit_logs.details`:
 | `tenant_count` | Tenants processed |
 | `checked_count` | Publishing accounts evaluated |
 | `error_count` | Evaluation errors |
-| `meta_accounts` | Meta platform accounts seen |
-| `remote_meta_probes` | Meta accounts where `live_check=true` was used |
+| `meta_accounts` | Meta PublishingAccount rows **considered** (entity evaluation) |
+| `remote_meta_probes` | **Legacy intent:** Meta rows where `live_check=true` was requested (not HTTP volume) |
+| `remote_meta_probe_attempts` | Actual Meta Graph `GET /debug_token` attempts at the call boundary |
+| `remote_meta_probe_successes` | Attempts where `debug_token` completed and `is_valid=true` |
+| `remote_meta_probe_failures` | Attempts that raised (timeout/429/5xx/etc.) or returned `is_valid=false` |
+| `remote_meta_probe_skipped` | Meta rows with remote intent that were short-circuited locally (disconnected, no token, decrypt failure, cooldown, etc.) |
 | `status_summary` | Aggregate status counts (`healthy`, `degraded`, etc.) |
 | `outcome` | `success` / `partial` / `failed` |
+
+#### Counter semantics (entity vs remote HTTP)
+
+Do not treat “probe” as synonymous with an HTTP call. Use these distinctions:
+
+| Concept | Field(s) | Meaning |
+|---|---|---|
+| Entity evaluation | `meta_accounts` | Meta account rows walked in the cycle |
+| Remote intent | `remote_meta_probes` | Rows for which the cycle requested `live_check=true` |
+| Remote HTTP attempt | `remote_meta_probe_attempts` | Entered the `debug_token` call path (counts timeouts/429/auth failures) |
+| Remote HTTP success | `remote_meta_probe_successes` | Attempt completed with a valid token response |
+| Remote HTTP failure | `remote_meta_probe_failures` | Attempt executed but failed or returned invalid token |
+| Intentionally skipped | `remote_meta_probe_skipped` | Remote intent but no HTTP (disconnected / missing token / vault decrypt / cooldown / demo / expired) |
+
+Invariant on remote cycles:
+
+`remote_meta_probes` ≈ `remote_meta_probe_attempts` + `remote_meta_probe_skipped`
+
+Local cycles (`remote_check=false`): all remote HTTP counters are `0`.
+
+`remote_meta_probes` is retained for backward compatibility with existing audit rows and
+dashboards; prefer the `remote_meta_probe_*` fields for forensic HTTP volume.
+
+Historical audit rows are not rewritten.
 
 ### Per-integration audit decision
 

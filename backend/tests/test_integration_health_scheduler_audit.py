@@ -13,6 +13,7 @@ import pytest
 from app.core.access_log_redaction import scrub_audit_details
 from app.services.integration_health.scheduler import IntegrationHealthScheduler
 from app.services.integration_health.service import IntegrationHealthService
+from app.services.meta_graph_client import MetaGraphError
 from app.services.operator_workspace_metrics import (
     WORKSPACE_ACTION_EVENT,
     OperatorWorkspaceMetricsService,
@@ -24,6 +25,8 @@ def _now():
 
 
 def _account(**kwargs):
+    from datetime import timedelta
+
     defaults = dict(
         id=uuid.uuid4(),
         tenant_id=uuid.uuid4(),
@@ -31,6 +34,21 @@ def _account(**kwargs):
         account_name="Acme Page",
         account_id="page-1",
         access_token_encrypted="enc-token",
+        refresh_token_encrypted=None,
+        expires_at=_now() + timedelta(days=30),
+        facebook_page_id="123",
+        instagram_business_account_id=None,
+        permissions_json=json.dumps(
+            [
+                "pages_show_list",
+                "instagram_basic",
+                "business_management",
+                "pages_manage_posts",
+                "pages_read_engagement",
+                "pages_read_user_content",
+            ]
+        ),
+        account_metadata_json=None,
         status="connected",
     )
     defaults.update(kwargs)
@@ -44,6 +62,10 @@ def _make_totals(**overrides):
         "errors": 0,
         "meta_accounts": 3,
         "remote_meta_probes": 0,
+        "remote_meta_probe_attempts": 0,
+        "remote_meta_probe_successes": 0,
+        "remote_meta_probe_failures": 0,
+        "remote_meta_probe_skipped": 0,
         "status_summary": {"healthy": 4, "degraded": 1},
     }
     base.update(overrides)
@@ -95,7 +117,14 @@ def test_scheduler_remote_cycle_audit_fields():
         db = AsyncMock()
         started = _now()
         completed = started
-        totals = _make_totals(remote_meta_probes=3, meta_accounts=3)
+        totals = _make_totals(
+            remote_meta_probes=7,
+            meta_accounts=7,
+            remote_meta_probe_attempts=2,
+            remote_meta_probe_successes=2,
+            remote_meta_probe_failures=0,
+            remote_meta_probe_skipped=5,
+        )
         with patch(
             "app.services.integration_health.service.PlatformAuditService.record",
             new=AsyncMock(return_value=MagicMock()),
@@ -111,8 +140,12 @@ def test_scheduler_remote_cycle_audit_fields():
             )
             details = record.await_args.kwargs["details"]
             assert details["remote_check"] is True
-            assert details["remote_meta_probes"] == 3
-            assert details["meta_accounts"] == 3
+            assert details["remote_meta_probes"] == 7
+            assert details["meta_accounts"] == 7
+            assert details["remote_meta_probe_attempts"] == 2
+            assert details["remote_meta_probe_successes"] == 2
+            assert details["remote_meta_probe_failures"] == 0
+            assert details["remote_meta_probe_skipped"] == 5
 
     asyncio.run(_run())
 
@@ -581,7 +614,10 @@ def test_periodic_cycle_tracks_meta_probe_counts():
             never_checked=False,
             transient_failure_count=0,
             safe_auto_recheck=True,
-            diagnostic={},
+            diagnostic={
+                "remote_http_attempted": True,
+                "remote_http_outcome": "success",
+            },
         )
 
         with (
@@ -608,6 +644,10 @@ def test_periodic_cycle_tracks_meta_probe_counts():
             )
             assert totals["meta_accounts"] == 2
             assert totals["remote_meta_probes"] == 2
+            assert totals["remote_meta_probe_attempts"] == 2
+            assert totals["remote_meta_probe_successes"] == 2
+            assert totals["remote_meta_probe_failures"] == 0
+            assert totals["remote_meta_probe_skipped"] == 0
             assert totals["checked"] == 2
             assert totals["status_summary"]["healthy"] == 2
 
@@ -643,5 +683,532 @@ def test_manual_run_once_creates_audit_at_least_once():
             await IntegrationHealthScheduler.run_once()
             await IntegrationHealthScheduler.run_once()
             assert audit_mock.await_count == 2
+
+    asyncio.run(_run())
+
+
+# ── Remote HTTP attempt counter semantics ───────────────────────────────────
+
+
+def _scalars_db(rows):
+    class _Scalars:
+        def __init__(self, items):
+            self._rows = items
+
+        def all(self):
+            return self._rows
+
+    db = AsyncMock()
+    db.scalars = AsyncMock(return_value=_Scalars(rows))
+    db.commit = AsyncMock()
+    db.rollback = AsyncMock()
+    return db
+
+
+def test_local_cycle_zero_remote_http_attempts():
+    async def _run():
+        tid = uuid.uuid4()
+        accounts = [
+            _account(tenant_id=tid, platform="facebook"),
+            _account(tenant_id=tid, platform="instagram"),
+        ]
+        db = _scalars_db(accounts)
+        debug_mock = AsyncMock(return_value={"is_valid": True, "scopes": []})
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=False
+            )
+            assert totals["meta_accounts"] == 2
+            assert totals["remote_meta_probes"] == 0
+            assert totals["remote_meta_probe_attempts"] == 0
+            assert totals["remote_meta_probe_successes"] == 0
+            assert totals["remote_meta_probe_failures"] == 0
+            assert totals["remote_meta_probe_skipped"] == 0
+            debug_mock.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_seven_meta_two_probeable_attempts_equal_two():
+    """Production-like: 7 Meta rows, 2 connected/token-bearing → 2 HTTP attempts."""
+
+    async def _run():
+        tid = uuid.uuid4()
+        accounts = [
+            _account(tenant_id=tid, platform="facebook", account_name="live-1"),
+            _account(
+                tenant_id=tid,
+                platform="instagram",
+                account_name="live-2",
+                instagram_business_account_id="ig-1",
+            ),
+            _account(
+                tenant_id=tid,
+                platform="facebook",
+                status="disconnected",
+                access_token_encrypted=None,
+                account_name="disc-1",
+            ),
+            _account(
+                tenant_id=tid,
+                platform="facebook",
+                status="disconnected",
+                access_token_encrypted=None,
+                account_name="disc-2",
+            ),
+            _account(
+                tenant_id=tid,
+                platform="instagram",
+                status="disconnected",
+                access_token_encrypted="",
+                account_name="disc-3",
+            ),
+            _account(
+                tenant_id=tid,
+                platform="facebook",
+                access_token_encrypted=None,
+                account_name="no-token",
+            ),
+            _account(
+                tenant_id=tid,
+                platform="instagram",
+                status="disconnected",
+                access_token_encrypted=None,
+                account_name="disc-4",
+            ),
+        ]
+        db = _scalars_db(accounts)
+        debug_mock = AsyncMock(
+            return_value={
+                "is_valid": True,
+                "scopes": [
+                    "pages_show_list",
+                    "instagram_basic",
+                    "business_management",
+                    "pages_manage_posts",
+                    "pages_read_engagement",
+                    "pages_read_user_content",
+                ],
+            }
+        )
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["meta_accounts"] == 7
+            assert totals["remote_meta_probes"] == 7
+            assert totals["remote_meta_probe_attempts"] == 2
+            assert totals["remote_meta_probe_successes"] == 2
+            assert totals["remote_meta_probe_failures"] == 0
+            assert totals["remote_meta_probe_skipped"] == 5
+            assert debug_mock.await_count == 2
+
+    asyncio.run(_run())
+
+
+def test_disconnected_account_not_counted_as_http_attempt():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(
+            tenant_id=tid,
+            status="disconnected",
+            access_token_encrypted="enc-token",
+        )
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock(return_value={"is_valid": True, "scopes": []})
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probe_attempts"] == 0
+            assert totals["remote_meta_probe_skipped"] == 1
+            debug_mock.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_missing_token_not_counted_as_http_attempt():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid, access_token_encrypted=None)
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock()
+        with (
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probe_attempts"] == 0
+            assert totals["remote_meta_probe_skipped"] == 1
+            debug_mock.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_credential_decrypt_failure_not_counted_as_http_attempt():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid)
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock()
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                side_effect=ValueError("Invalid or corrupted encrypted token"),
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probes"] == 1
+            assert totals["remote_meta_probe_attempts"] == 0
+            assert totals["remote_meta_probe_skipped"] == 1
+            debug_mock.assert_not_called()
+
+    asyncio.run(_run())
+
+
+def test_successful_probe_counted_as_attempt_and_success():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid)
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock(
+            return_value={
+                "is_valid": True,
+                "scopes": [
+                    "pages_show_list",
+                    "instagram_basic",
+                    "business_management",
+                    "pages_manage_posts",
+                    "pages_read_engagement",
+                    "pages_read_user_content",
+                ],
+            }
+        )
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probe_attempts"] == 1
+            assert totals["remote_meta_probe_successes"] == 1
+            assert totals["remote_meta_probe_failures"] == 0
+            assert totals["remote_meta_probe_skipped"] == 0
+            assert debug_mock.await_count == 1
+
+    asyncio.run(_run())
+
+
+def test_timeout_counted_as_attempted_failure():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid)
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock(
+            side_effect=MetaGraphError("timeout", is_timeout=True, is_transient=True)
+        )
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probe_attempts"] == 1
+            assert totals["remote_meta_probe_successes"] == 0
+            assert totals["remote_meta_probe_failures"] == 1
+            assert debug_mock.await_count == 1
+
+    asyncio.run(_run())
+
+
+def test_rate_limit_counted_as_attempted_failure():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid)
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock(
+            side_effect=MetaGraphError("rate limited", status_code=429, error_code=4)
+        )
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probe_attempts"] == 1
+            assert totals["remote_meta_probe_failures"] == 1
+            assert totals["remote_meta_probe_successes"] == 0
+            assert debug_mock.await_count == 1
+
+    asyncio.run(_run())
+
+
+def test_invalid_token_after_provider_call_counts_as_attempt_failure():
+    async def _run():
+        tid = uuid.uuid4()
+        acct = _account(tenant_id=tid)
+        db = _scalars_db([acct])
+        debug_mock = AsyncMock(return_value={"is_valid": False, "scopes": []})
+        with (
+            patch(
+                "app.services.integration_health.checks.decrypt_token",
+                return_value="plain-token",
+            ),
+            patch(
+                "app.services.integration_health.checks.meta_oauth_configured",
+                return_value=True,
+            ),
+            patch(
+                "app.services.integration_health.checks.debug_token",
+                debug_mock,
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_telegram_tenant",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_advertising_accounts",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
+                "app.services.integration_health.service.evaluate_listening_sources",
+                AsyncMock(return_value=[]),
+            ),
+        ):
+            totals = await IntegrationHealthService.run_periodic_cycle(
+                db, tenant_ids=[tid], live_remote=True
+            )
+            assert totals["remote_meta_probe_attempts"] == 1
+            assert totals["remote_meta_probe_failures"] == 1
+            assert totals["remote_meta_probe_successes"] == 0
+            assert debug_mock.await_count == 1
+
+    asyncio.run(_run())
+
+
+def test_audit_payload_includes_http_counters_without_secrets():
+    async def _run():
+        db = AsyncMock()
+        dirty_totals = _make_totals(
+            remote_meta_probes=7,
+            remote_meta_probe_attempts=2,
+            remote_meta_probe_successes=2,
+            remote_meta_probe_failures=0,
+            remote_meta_probe_skipped=5,
+            meta_accounts=7,
+        )
+        with patch(
+            "app.services.integration_health.service.PlatformAuditService.record",
+            new=AsyncMock(return_value=MagicMock()),
+        ) as record:
+            await IntegrationHealthService.audit_scheduler_cycle(
+                db,
+                cycle=8,
+                live_remote=True,
+                remote_enabled=True,
+                started_at=_now(),
+                completed_at=_now(),
+                totals=dirty_totals,
+            )
+            details = record.await_args.kwargs["details"]
+            scrubbed = scrub_audit_details(
+                {
+                    **details,
+                    "access_token": "EAAB_SHOULD_NOT",
+                    "input_token": "debug_input",
+                }
+            )
+            blob = json.dumps(scrubbed)
+            assert "EAAB_SHOULD_NOT" not in blob
+            assert "debug_input" not in blob
+            assert scrubbed["remote_meta_probe_attempts"] == 2
+            assert scrubbed["remote_meta_probe_skipped"] == 5
+            assert scrubbed["remote_meta_probes"] == 7
 
     asyncio.run(_run())

@@ -193,6 +193,9 @@ async def evaluate_meta_account(
     token_valid = token_present
     provider_error_class: str | None = None
     remote_ran = False
+    # Ephemeral audit markers: set only at the debug_token call boundary.
+    # Not persisted (deny-by-default diagnostic allowlist).
+    remote_http_outcome: str | None = None  # "success" | "failure"
     transient = False
 
     if account.status == "disconnected":
@@ -243,13 +246,17 @@ async def evaluate_meta_account(
                 account.id,
             )
         else:
+            # Call-boundary: remote_ran marks an actual debug_token attempt,
+            # including timeouts / 429 / auth failures — not local short-circuits.
             remote_ran = True
             try:
                 debug_data = await debug_token(token)
                 if not debug_data.get("is_valid"):
                     token_valid = False
                     reason = REASON_INVALID_TOKEN
+                    remote_http_outcome = "failure"
                 else:
+                    remote_http_outcome = "success"
                     live_perms = debug_data.get("scopes") or []
                     if isinstance(live_perms, list) and live_perms:
                         permissions = sorted({str(p) for p in live_perms if p})
@@ -267,6 +274,7 @@ async def evaluate_meta_account(
                         elif reason == REASON_HEALTHY:
                             reason = REASON_HEALTHY
             except MetaGraphError as exc:
+                remote_http_outcome = "failure"
                 provider_error_class = "meta_graph"
                 if exc.status_code == 429 or exc.error_code in {4, 17, 32, 613}:
                     reason = REASON_PROVIDER_RATE_LIMITED
@@ -284,6 +292,7 @@ async def evaluate_meta_account(
                     exc.status_code,
                 )
             except Exception:
+                remote_http_outcome = "failure"
                 provider_error_class = "unexpected"
                 reason = REASON_TRANSIENT_PROVIDER_ERROR
                 transient = True
@@ -472,6 +481,9 @@ async def evaluate_meta_account(
         "publish_missing": publish_missing,
         "listening_missing": listening_missing,
         "token_valid": token_valid,
+        # Scheduler audit only — never persisted (not in diagnostic allowlist).
+        "remote_http_attempted": remote_ran,
+        "remote_http_outcome": remote_http_outcome,
     }
     return result
 

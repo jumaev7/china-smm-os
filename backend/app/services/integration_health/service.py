@@ -30,9 +30,13 @@ from app.services.integration_health.persistence import (
 )
 from app.services.integration_health.taxonomy import (
     REASON_HEALTHY,
+    REASON_INVALID_TOKEN,
     REASON_MISSING_OPTIONAL_SCOPE,
     REASON_APP_REVIEW_REQUIRED,
     REASON_MOCK_MODE,
+    REASON_PROVIDER_RATE_LIMITED,
+    REASON_PROVIDER_UNREACHABLE,
+    REASON_TRANSIENT_PROVIDER_ERROR,
 )
 from app.services.integration_health.types import IntegrationHealthResult
 from app.services.platform_audit_service import PlatformAuditService
@@ -40,6 +44,38 @@ from app.services.platform_audit_service import PlatformAuditService
 logger = logging.getLogger(__name__)
 
 META_PLATFORMS = frozenset({"facebook", "instagram"})
+
+# Reason codes that mean a remote HTTP attempt did not confirm a usable token.
+_REMOTE_HTTP_FAILURE_REASONS = frozenset({
+    REASON_INVALID_TOKEN,
+    REASON_PROVIDER_RATE_LIMITED,
+    REASON_TRANSIENT_PROVIDER_ERROR,
+    REASON_PROVIDER_UNREACHABLE,
+})
+
+
+def _record_remote_meta_http_counters(
+    totals: dict[str, Any],
+    result: IntegrationHealthResult,
+) -> None:
+    """Accumulate actual Meta remote HTTP attempt counters from one evaluation.
+
+    Uses ephemeral diagnostic markers set at the ``debug_token`` call boundary
+    when present; falls back to ``result.source == "remote"`` for mocked paths.
+    """
+    diag = result.diagnostic or {}
+    attempted = bool(diag.get("remote_http_attempted")) or result.source == "remote"
+    if attempted:
+        totals["remote_meta_probe_attempts"] += 1
+        outcome = diag.get("remote_http_outcome")
+        if outcome == "failure" or (
+            outcome is None and result.reason_code in _REMOTE_HTTP_FAILURE_REASONS
+        ):
+            totals["remote_meta_probe_failures"] += 1
+        else:
+            totals["remote_meta_probe_successes"] += 1
+    else:
+        totals["remote_meta_probe_skipped"] += 1
 
 # In-process lock to prevent duplicate concurrent checks per integration.
 _check_locks: dict[str, Any] = {}
@@ -381,7 +417,13 @@ class IntegrationHealthService:
             "checked": 0,
             "errors": 0,
             "meta_accounts": 0,
+            # Legacy: Meta rows evaluated with live_check intent (not HTTP volume).
             "remote_meta_probes": 0,
+            # Forensic: actual GET /debug_token attempts at the call boundary.
+            "remote_meta_probe_attempts": 0,
+            "remote_meta_probe_successes": 0,
+            "remote_meta_probe_failures": 0,
+            "remote_meta_probe_skipped": 0,
             "status_summary": {
                 "healthy": 0,
                 "degraded": 0,
@@ -413,6 +455,8 @@ class IntegrationHealthService:
                         result = await cls.evaluate_account(
                             db, account, live_check=live, persist=True
                         )
+                        if live:
+                            _record_remote_meta_http_counters(totals, result)
                         totals["checked"] += 1
                         if result.status in totals["status_summary"]:
                             totals["status_summary"][result.status] += 1
@@ -483,7 +527,20 @@ class IntegrationHealthService:
                     "checked_count": checked,
                     "error_count": errors,
                     "meta_accounts": int(totals.get("meta_accounts", 0)),
+                    # Legacy intent counter (live_check=True rows), not HTTP volume.
                     "remote_meta_probes": int(totals.get("remote_meta_probes", 0)),
+                    "remote_meta_probe_attempts": int(
+                        totals.get("remote_meta_probe_attempts", 0)
+                    ),
+                    "remote_meta_probe_successes": int(
+                        totals.get("remote_meta_probe_successes", 0)
+                    ),
+                    "remote_meta_probe_failures": int(
+                        totals.get("remote_meta_probe_failures", 0)
+                    ),
+                    "remote_meta_probe_skipped": int(
+                        totals.get("remote_meta_probe_skipped", 0)
+                    ),
                     "status_summary": dict(totals.get("status_summary") or {}),
                     "outcome": outcome,
                 },
