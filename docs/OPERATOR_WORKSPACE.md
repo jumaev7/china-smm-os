@@ -24,6 +24,8 @@ Phase 1 (attention) surfaces what needs work.
 
 Operator Workspace **does not** invent domain logic. Mutations always revalidate canonical state and delegate to the owning service.
 
+Mobile clients reuse these same projections and actions via `/api/v1/mobile-control/*` and `X-Client-Source: mobile` — see [MOBILE_OPERATOR_CONTROL.md](./MOBILE_OPERATOR_CONTROL.md).
+
 ## Attention categories
 
 1. **content_internal_review** — draft/ready/needs_review content awaiting operator review

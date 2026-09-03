@@ -25,7 +25,6 @@ from app.services.auth_service import (
     TOKEN_TYPE_REFRESH,
     create_access_token,
     create_refresh_token,
-    create_refresh_token_value,
     decode_token,
     hash_password,
     hash_refresh_token,
@@ -202,7 +201,12 @@ class TenantAuthService:
             email=user.email,
             role=user.role,
         )
-        refresh_value = create_refresh_token_value()
+        # JWT refresh (decodeable) + server-side hash for rotation/revocation.
+        # Opaque create_refresh_token_value() is incompatible with refresh_session.
+        refresh_value = create_refresh_token(
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+        )
         user.refresh_token_hash = hash_refresh_token(refresh_value)
         user.last_login_at = _utc_now()
         user.updated_at = _utc_now()
@@ -262,8 +266,11 @@ class TenantAuthService:
     async def refresh_session(db: AsyncSession, refresh_token: str) -> dict[str, Any]:
         payload = decode_token(refresh_token, expected_type=TOKEN_TYPE_REFRESH)
         user_id = UUID(payload["sub"])
+        token_tenant = payload.get("tenant_id")
         user = await TenantAuthService.load_user_by_id(db, user_id)
         if not user or user.status != "active":
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        if token_tenant and str(user.tenant_id) != str(token_tenant):
             raise HTTPException(status_code=401, detail="Invalid refresh token")
         if not user.refresh_token_hash:
             raise HTTPException(status_code=401, detail="Refresh token revoked")
@@ -278,7 +285,10 @@ class TenantAuthService:
             email=user.email,
             role=user.role,
         )
-        new_refresh = create_refresh_token_value()
+        new_refresh = create_refresh_token(
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+        )
         user.refresh_token_hash = hash_refresh_token(new_refresh)
         user.updated_at = _utc_now()
         await db.commit()

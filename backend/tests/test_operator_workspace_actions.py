@@ -101,7 +101,10 @@ def test_alert_open_exposes_ack_resolve_and_open():
     assert ids == [ACTION_ACKNOWLEDGE_ALERT, ACTION_RESOLVE_ALERT, ACTION_OPEN]
     assert actions[0].primary is True
     assert actions[0].requires_confirmation is False
+    assert actions[0].confirmation_tier == "low"
     assert actions[1].requires_confirmation is True
+    assert actions[1].confirmation_tier == "medium"
+    assert actions[2].confirmation_tier == "low"
 
 
 def test_alert_acknowledged_exposes_resolve_as_primary():
@@ -128,6 +131,7 @@ def test_failed_publish_exposes_retry():
     retry = next(a for a in actions if a.action_id == ACTION_RETRY_PUBLISH)
     assert retry.enabled is True
     assert retry.requires_confirmation is True
+    assert retry.confirmation_tier == "medium"
     assert retry.external_side_effect is True
     assert "publication again" in (retry.confirmation_message or "")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,20 @@ def _tenant_id_hint(
     if user is not None:
         return user.tenant_id
     return tenant_id
+
+
+def _resolve_action_source(
+    body: OperatorWorkspaceActionRequest | None,
+    x_client_source: str | None,
+) -> str:
+    """Prefer body.source, then X-Client-Source header; default web."""
+    if body and body.source in ("web", "mobile"):
+        return body.source
+    if x_client_source:
+        normalized = x_client_source.strip().lower()
+        if normalized in ("web", "mobile"):
+            return normalized
+    return "web"
 
 
 @router.get("/summary", response_model=OperatorWorkspaceSummaryResponse)
@@ -142,12 +156,14 @@ async def execute_operator_workspace_action(
     db: AsyncSession = Depends(get_db),
     user: CurrentTenantUser | None = Depends(require_operator_workspace_access),
     admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+    x_client_source: str | None = Header(None, alias="X-Client-Source"),
 ):
     """Route a Phase 1 safe action to the owning canonical domain service.
 
     Does not implement domain logic. Always revalidates eligibility server-side.
     """
     note = body.note if body else None
+    source = _resolve_action_source(body, x_client_source)
 
     return await run_guarded(
         OperatorWorkspaceActionService.execute(
@@ -157,6 +173,7 @@ async def execute_operator_workspace_action(
             actor_id=_actor_id(user, admin),
             tenant_id=_tenant_id_hint(user, tenant_id),
             note=note,
+            source=source,
         ),
         label="operator-workspace.action",
         timeout=SCAN_TIMEOUT_SEC,

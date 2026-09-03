@@ -116,18 +116,21 @@ class OperatorWorkspaceMetricsService:
         category: str | None = None,
         reason_code: str | None = None,
         message: str | None = None,
+        source: str = "web",
         commit: bool = True,
     ) -> None:
         """Minimal durable instrumentation via existing PlatformAuditLog.
 
         Never logs secrets. Never raises into the action path.
         Navigation `open` must not be recorded.
+        ``source`` distinguishes web vs mobile operator surfaces (not autonomous).
         """
         if action_id == "open":
             return
         try:
             ctx = get_auth_context()
             actor_type = "admin" if ctx and ctx.is_admin else "tenant_user"
+            audit_source = source if source in ("web", "mobile") else "web"
             details = scrub_payload({
                 "action_id": action_id,
                 "attention_id": attention_id,
@@ -136,6 +139,7 @@ class OperatorWorkspaceMetricsService:
                 "category": category,
                 "reason_code": reason_code,
                 "message": (message or "")[:500] or None,
+                "source": audit_source,
             })
             await PlatformAuditService.record(
                 db,

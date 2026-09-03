@@ -41,6 +41,12 @@ WorkspaceActionId = Literal[
     "approve_content",
 ]
 
+# Mobile / web confirmation UX — additive; does not change backend gates.
+ConfirmationTier = Literal["low", "medium", "high"]
+
+# Distinguishes operator surfaces in PlatformAuditLog details.source
+OperatorActionSource = Literal["web", "mobile"]
+
 
 class OperatorWorkspaceAction(BaseModel):
     """Derived action metadata — never persisted; recomputed from canonical state."""
@@ -51,6 +57,7 @@ class OperatorWorkspaceAction(BaseModel):
     enabled: bool = True
     requires_confirmation: bool = False
     confirmation_message: str | None = None
+    confirmation_tier: ConfirmationTier = "low"
     disabled_reason: str | None = None
     destructive: bool = False
     external_side_effect: bool = False
@@ -107,6 +114,8 @@ class OperatorWorkspaceSummaryResponse(BaseModel):
 
 class OperatorWorkspaceActionRequest(BaseModel):
     note: str | None = Field(default=None, max_length=2000)
+    # Optional client surface marker for audit/observability (web default).
+    source: OperatorActionSource | None = None
 
 
 class OperatorWorkspaceActionResult(BaseModel):

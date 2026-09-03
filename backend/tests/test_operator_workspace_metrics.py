@@ -252,6 +252,7 @@ def test_record_action_writes_audit_event():
                 resource_id="abc",
                 client_id=uuid.uuid4(),
                 category="publishing_issue",
+                source="mobile",
                 commit=True,
             )
             record.assert_awaited_once()
@@ -259,7 +260,28 @@ def test_record_action_writes_audit_event():
             assert kwargs["event_type"] == WORKSPACE_ACTION_EVENT
             assert kwargs["details"]["action_id"] == "acknowledge_alert"
             assert kwargs["details"]["outcome"] == "success"
+            assert kwargs["details"]["source"] == "mobile"
             assert "access_token" not in (kwargs["details"] or {})
+
+    asyncio.run(_run())
+
+
+def test_record_action_defaults_source_to_web():
+    async def _run():
+        db = AsyncMock()
+        with patch(
+            "app.services.operator_workspace_metrics.PlatformAuditService.record",
+            new=AsyncMock(return_value=MagicMock()),
+        ) as record:
+            await OperatorWorkspaceMetricsService.record_action(
+                db,
+                action_id="resolve_alert",
+                outcome="success",
+                actor_id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                commit=True,
+            )
+            assert record.await_args.kwargs["details"]["source"] == "web"
 
     asyncio.run(_run())
 

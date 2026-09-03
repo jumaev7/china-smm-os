@@ -91,11 +91,20 @@ def _open_action(href: str, *, label: str = "Open") -> OperatorWorkspaceAction:
         action_type="navigation",
         enabled=True,
         requires_confirmation=False,
+        confirmation_tier="low",
         destructive=False,
         external_side_effect=False,
         href=href,
         primary=False,
     )
+
+
+def _confirmation_tier_for(action_id: str, *, requires_confirmation: bool) -> str:
+    if action_id in (ACTION_RESOLVE_ALERT, ACTION_RETRY_PUBLISH, ACTION_APPROVE_CONTENT):
+        return "medium"
+    if requires_confirmation:
+        return "medium"
+    return "low"
 
 
 def _mutation(
@@ -118,6 +127,9 @@ def _mutation(
         enabled=enabled,
         requires_confirmation=requires_confirmation,
         confirmation_message=confirmation_message,
+        confirmation_tier=_confirmation_tier_for(
+            action_id, requires_confirmation=requires_confirmation,
+        ),
         disabled_reason=disabled_reason,
         destructive=destructive,
         external_side_effect=external_side_effect,
@@ -260,6 +272,7 @@ class OperatorWorkspaceActionService:
         actor_id: UUID | None,
         tenant_id: UUID | None,
         note: str | None = None,
+        source: str = "web",
     ) -> OperatorWorkspaceActionResult:
         if action_id == ACTION_OPEN:
             raise HTTPException(
@@ -269,6 +282,7 @@ class OperatorWorkspaceActionService:
         if action_id not in MUTATION_ACTIONS:
             raise HTTPException(status_code=400, detail="Unknown or unsupported action")
 
+        audit_source = source if source in ("web", "mobile") else "web"
         prefix, resource_key = parse_attention_id(attention_id)
         audit_tenant = tenant_id
         audit_client: UUID | None = None
@@ -324,6 +338,7 @@ class OperatorWorkspaceActionService:
                 client_id=audit_client,
                 category=audit_category,
                 message=result.message,
+                source=audit_source,
                 commit=True,
             )
             return result
@@ -344,6 +359,7 @@ class OperatorWorkspaceActionService:
                 category=audit_category,
                 reason_code=str(exc.status_code),
                 message=str(exc.detail)[:500] if exc.detail else None,
+                source=audit_source,
                 commit=True,
             )
             raise
@@ -361,6 +377,7 @@ class OperatorWorkspaceActionService:
                 category=audit_category,
                 reason_code="exception",
                 message=str(exc)[:500],
+                source=audit_source,
                 commit=True,
             )
             raise
