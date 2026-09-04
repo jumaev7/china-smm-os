@@ -28,6 +28,10 @@ out/
 .env.local
 !.env.example
 
+# Mobile Expo local env
+mobile/.env
+mobile/.env.local
+
 # Local verification script output
 backend/scripts/.verify_*_last.json
 
