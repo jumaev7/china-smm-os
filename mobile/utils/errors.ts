@@ -50,7 +50,7 @@ export function userFacingMessage(error: unknown): string {
       case 'forbidden':
         return 'You do not have permission for this action.';
       case 'conflict':
-        return 'Data changed. Pull to refresh and try again.';
+        return 'This item changed since it was loaded. The latest state has been refreshed.';
       case 'rate_limited':
         return 'Too many requests. Please wait a moment.';
       case 'server':

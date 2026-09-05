@@ -91,3 +91,14 @@ export const MUTATION_ACTION_IDS = [
 ] as const;
 
 export type MutationActionId = (typeof MUTATION_ACTION_IDS)[number];
+
+/** Canonical POST …/actions/{action_id} success payload. */
+export interface OperatorWorkspaceActionResult {
+  success: boolean;
+  action_id: string;
+  message: string;
+  canonical_state?: Record<string, unknown> | null;
+  attention_still_relevant?: boolean;
+  refresh_recommended?: boolean;
+  redirect_path?: string | null;
+}

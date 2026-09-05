@@ -5,6 +5,7 @@ import { AttentionCard } from '@/components/AttentionCard';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Screen } from '@/components/Screen';
 import { ScreenState } from '@/components/ScreenState';
+import { useApproveContent } from '@/hooks/useApproveContent';
 import { useApprovals } from '@/hooks/useOperatorQueries';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/hooks/useTheme';
@@ -14,6 +15,7 @@ export default function ApprovalsScreen() {
   const colors = useTheme();
   const { isOffline } = useNetworkStatus();
   const query = useApprovals();
+  const { runApprove, isInFlight } = useApproveContent();
   const items = query.data?.items ?? [];
   const showOffline = isOffline || isNetworkLikeError(query.error);
 
@@ -32,7 +34,7 @@ export default function ApprovalsScreen() {
       >
         <Text style={[styles.heading, { color: colors.text }]}>Approvals</Text>
         <Text style={[styles.sub, { color: colors.textMuted }]}>
-          Internal content review — actions display-only
+          Internal content review — approve when offered by the backend
         </Text>
 
         <ScreenState
@@ -43,7 +45,15 @@ export default function ApprovalsScreen() {
           onRetry={() => void query.refetch()}
         >
           {items.map((item) => (
-            <AttentionCard key={item.id} item={item} />
+            <AttentionCard
+              key={item.id}
+              item={item}
+              executionContext="approvals"
+              submitting={isInFlight(item.id)}
+              onExecuteAction={(action) => {
+                void runApprove(item.id, action);
+              }}
+            />
           ))}
         </ScreenState>
       </ScrollView>

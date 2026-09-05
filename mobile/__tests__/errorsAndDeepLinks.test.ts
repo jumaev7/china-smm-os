@@ -24,6 +24,9 @@ describe('error classification', () => {
     expect(userFacingMessage(new AppError('forbidden', 'x'))).toMatch(
       /permission/,
     );
+    expect(userFacingMessage(new AppError('conflict', 'x'))).toMatch(
+      /changed since it was loaded/i,
+    );
     expect(userFacingMessage(new AppError('offline', 'x'))).toMatch(/network/i);
     expect(
       userFacingMessage(new Error('password=secret traceback dump')),

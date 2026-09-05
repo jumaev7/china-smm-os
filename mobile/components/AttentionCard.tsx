@@ -1,10 +1,16 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { ActionButtons } from '@/components/ActionButtons';
+import {
+  ActionButtons,
+  type ActionExecutionContext,
+} from '@/components/ActionButtons';
 import { PriorityBadge } from '@/components/StatusBadge';
 import { useTheme } from '@/hooks/useTheme';
-import type { OperatorAttentionItem } from '@/types/workspace';
+import type {
+  OperatorAttentionItem,
+  OperatorWorkspaceAction,
+} from '@/types/workspace';
 import { formatRelativeAge } from '@/utils/format';
 
 /** Sanitize free-text fields — never show tokens / paths / secrets. */
@@ -16,7 +22,17 @@ function safePreview(text: string | null | undefined, max = 160): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-export function AttentionCard({ item }: { item: OperatorAttentionItem }) {
+export function AttentionCard({
+  item,
+  executionContext = 'readonly',
+  submitting = false,
+  onExecuteAction,
+}: {
+  item: OperatorAttentionItem;
+  executionContext?: ActionExecutionContext;
+  submitting?: boolean;
+  onExecuteAction?: (action: OperatorWorkspaceAction) => void;
+}) {
   const colors = useTheme();
 
   return (
@@ -57,7 +73,13 @@ export function AttentionCard({ item }: { item: OperatorAttentionItem }) {
         ) : null}
       </View>
 
-      <ActionButtons actions={item.actions ?? []} />
+      <ActionButtons
+        actions={item.actions ?? []}
+        attentionId={item.id}
+        executionContext={executionContext}
+        submitting={submitting}
+        onExecute={onExecuteAction}
+      />
     </View>
   );
 }

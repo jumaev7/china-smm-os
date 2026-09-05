@@ -1,23 +1,34 @@
 /**
  * @jest-environment node
+ *
+ * Remaining mutation hard-blocks after Phase 3A allowlist.
  */
-import { MOBILE_MUTATIONS_ENABLED } from '../config/constants';
-import { assertMutationsEnabled } from '../api/guard';
+import {
+  MOBILE_APPROVE_CONTENT_ENABLED,
+  MOBILE_MUTATIONS_ENABLED,
+  MOBILE_MUTATIONS_UNLOCK_ALL,
+} from '../config/constants';
+import {
+  assertActionAllowed,
+  assertMutationsEnabled,
+  isMobileMutationAllowed,
+} from '../api/guard';
 import {
   acknowledgeAlert,
-  approveContent,
   executeWorkspaceAction,
   resolveAlert,
   retryPublish,
 } from '../api/mutations';
 import { AppError } from '../utils/errors';
 
-describe('mutation hard-block', () => {
-  it('keeps MOBILE_MUTATIONS_ENABLED false in Phase 2', () => {
+describe('mutation hard-block (non-allowlisted)', () => {
+  it('keeps unlock-all false while approve is allowlisted', () => {
+    expect(MOBILE_MUTATIONS_UNLOCK_ALL).toBe(false);
     expect(MOBILE_MUTATIONS_ENABLED).toBe(false);
+    expect(MOBILE_APPROVE_CONTENT_ENABLED).toBe(true);
   });
 
-  it('assertMutationsEnabled throws before any work', () => {
+  it('assertMutationsEnabled still throws (global suite flag off)', () => {
     expect(() => assertMutationsEnabled('approve_content')).toThrow(AppError);
     try {
       assertMutationsEnabled('approve');
@@ -27,14 +38,11 @@ describe('mutation hard-block', () => {
     }
   });
 
-  it('blocks approve / retry / acknowledge / resolve without HTTP', async () => {
+  it('blocks retry / acknowledge / resolve / unknown without HTTP', async () => {
     const originalFetch = global.fetch;
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    await expect(approveContent('att-1')).rejects.toMatchObject({
-      kind: 'mutation_blocked',
-    });
     await expect(retryPublish('att-1')).rejects.toMatchObject({
       kind: 'mutation_blocked',
     });
@@ -45,8 +53,10 @@ describe('mutation hard-block', () => {
       kind: 'mutation_blocked',
     });
     await expect(
-      executeWorkspaceAction({ attentionId: 'att-1', actionId: 'approve_content' }),
+      executeWorkspaceAction({ attentionId: 'att-1', actionId: 'publish' }),
     ).rejects.toMatchObject({ kind: 'mutation_blocked' });
+    expect(() => assertActionAllowed('retry_publish')).toThrow(AppError);
+    expect(isMobileMutationAllowed('retry_publish')).toBe(false);
 
     expect(fetchMock).not.toHaveBeenCalled();
     global.fetch = originalFetch;

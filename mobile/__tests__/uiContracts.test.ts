@@ -2,8 +2,12 @@
  * @jest-environment node
  */
 import type { OperatorWorkspaceAction } from '../types/workspace';
-import { MOBILE_MUTATIONS_ENABLED } from '../config/constants';
-import { isMutationActionId } from '../api/guard';
+import {
+  MOBILE_APPROVE_CONTENT_ENABLED,
+  MOBILE_MUTATIONS_ENABLED,
+  MOBILE_MUTATIONS_UNLOCK_ALL,
+} from '../config/constants';
+import { canExecuteMobileAction, isMutationActionId } from '../api/guard';
 import { formatLastUpdated, formatUptime } from '../utils/format';
 
 describe('actions[] rendering contract', () => {
@@ -40,13 +44,27 @@ describe('actions[] rendering contract', () => {
     expect(isMutationActionId('open')).toBe(false);
   });
 
-  it('phase 2 keeps mutations compile-time disabled', () => {
+  it('Phase 3A: approve executable on Approvals only; unlock-all still off', () => {
+    expect(MOBILE_MUTATIONS_UNLOCK_ALL).toBe(false);
     expect(MOBILE_MUTATIONS_ENABLED).toBe(false);
+    expect(MOBILE_APPROVE_CONTENT_ENABLED).toBe(true);
+    expect(
+      canExecuteMobileAction({
+        actionId: 'approve_content',
+        enabled: true,
+        executionContext: 'approvals',
+      }),
+    ).toBe(true);
+    expect(
+      canExecuteMobileAction({
+        actionId: 'approve_content',
+        enabled: true,
+        executionContext: 'readonly',
+      }),
+    ).toBe(false);
     for (const a of sample) {
-      const blocked =
-        !MOBILE_MUTATIONS_ENABLED || isMutationActionId(a.action_id);
-      if (a.action_id !== 'open') {
-        expect(blocked).toBe(true);
+      if (a.action_id === 'open') {
+        expect(isMutationActionId(a.action_id)).toBe(false);
       }
     }
   });

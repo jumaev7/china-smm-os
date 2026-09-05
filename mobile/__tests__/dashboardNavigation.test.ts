@@ -1,11 +1,14 @@
 /**
  * @jest-environment node
  */
-import { MOBILE_MUTATIONS_ENABLED } from '../config/constants';
-import { assertMutationsEnabled } from '../api/guard';
+import {
+  MOBILE_APPROVE_CONTENT_ENABLED,
+  MOBILE_MUTATIONS_ENABLED,
+  MOBILE_MUTATIONS_UNLOCK_ALL,
+} from '../config/constants';
+import { assertMutationsEnabled, isMobileMutationAllowed } from '../api/guard';
 import {
   acknowledgeAlert,
-  approveContent,
   executeWorkspaceAction,
   resolveAlert,
   retryPublish,
@@ -107,25 +110,25 @@ describe('Today dashboard card navigation (read-only)', () => {
     expect(() => assertMutationsEnabled('dashboard_nav')).toThrow(AppError);
   });
 
-  it('MOBILE_MUTATIONS_ENABLED remains false', () => {
+  it('MOBILE_MUTATIONS_UNLOCK_ALL remains false; Phase 3A allowlists approve only', () => {
+    expect(MOBILE_MUTATIONS_UNLOCK_ALL).toBe(false);
     expect(MOBILE_MUTATIONS_ENABLED).toBe(false);
+    expect(MOBILE_APPROVE_CONTENT_ENABLED).toBe(true);
   });
 });
 
 describe('mutation hard-block still intact after dashboard nav', () => {
-  it('blocks approve / retry / acknowledge / resolve without HTTP', async () => {
+  it('dashboard nav does not unlock non-allowlisted mutations', async () => {
     const originalFetch = global.fetch;
     const fetchMock = jest.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    // Navigating dashboard cards must not unlock mutations.
+    // Navigating dashboard cards must not unlock blocked mutations.
     resolveDashboardCardNavigation('approvals');
     resolveDashboardCardNavigation('attention');
     resolveDashboardCardNavigation('system');
 
-    await expect(approveContent('att-1')).rejects.toMatchObject({
-      kind: 'mutation_blocked',
-    });
+    expect(isMobileMutationAllowed('retry_publish')).toBe(false);
     await expect(retryPublish('att-1')).rejects.toMatchObject({
       kind: 'mutation_blocked',
     });
@@ -138,7 +141,7 @@ describe('mutation hard-block still intact after dashboard nav', () => {
     await expect(
       executeWorkspaceAction({
         attentionId: 'att-1',
-        actionId: 'approve_content',
+        actionId: 'retry_publish',
       }),
     ).rejects.toMatchObject({ kind: 'mutation_blocked' });
 

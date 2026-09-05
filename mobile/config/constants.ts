@@ -1,8 +1,50 @@
 /**
- * Phase 2 fail-closed mutation gate.
- * Must remain false until Phase 3 explicitly enables operator actions.
+ * Phase 3A mobile mutation gates (fail closed).
+ *
+ * Hierarchy for execution (`assertActionAllowed` / `isMobileMutationAllowed`):
+ * 1. MOBILE_MUTATIONS_KILL_SWITCH === true → block ALL mutations (including allowlist)
+ * 2. action_id not in MOBILE_ALLOWED_MUTATIONS → block
+ * 3. otherwise → allow that action only (backend actions[] + server checks still apply)
+ *
+ * MOBILE_MUTATIONS_UNLOCK_ALL is a legacy "enable every mutation helper" switch.
+ * It must stay false in Phase 3A — flipping it must NOT be required for
+ * approve_content, and must NOT be treated as the Phase 3A enablement signal.
+ * approve_content is enabled solely via MOBILE_ALLOWED_MUTATIONS.
  */
-export const MOBILE_MUTATIONS_ENABLED = false as const;
+
+/**
+ * Emergency kill switch. When true, blocks ALL mobile mutations including
+ * the Phase 3A allowlist. Keep false unless an incident requires it.
+ */
+export const MOBILE_MUTATIONS_KILL_SWITCH = false as const;
+
+/**
+ * Legacy unlock-all flag. When true, would mean "generic mutation suite on".
+ * Remains false — do NOT flip to unlock retry/ack/resolve/etc.
+ * Phase 3A enablement is MOBILE_ALLOWED_MUTATIONS only.
+ */
+export const MOBILE_MUTATIONS_UNLOCK_ALL = false as const;
+
+/**
+ * @deprecated Alias of MOBILE_MUTATIONS_UNLOCK_ALL.
+ * Name historically read as "mutations on/off"; that was misleading once
+ * Phase 3A allowlisted approve_content while this stayed false.
+ * Prefer MOBILE_MUTATIONS_UNLOCK_ALL or MOBILE_ALLOWED_MUTATIONS.
+ */
+export const MOBILE_MUTATIONS_ENABLED = MOBILE_MUTATIONS_UNLOCK_ALL;
+
+/**
+ * Phase 3A per-action allowlist (fail closed).
+ * Only listed action_ids may execute; everything else stays blocked.
+ */
+export const MOBILE_ALLOWED_MUTATIONS = ['approve_content'] as const;
+
+export type MobileAllowedMutation = (typeof MOBILE_ALLOWED_MUTATIONS)[number];
+
+/** True when approve_content is allowed under kill switch + allowlist. */
+export const MOBILE_APPROVE_CONTENT_ENABLED =
+  !MOBILE_MUTATIONS_KILL_SWITCH &&
+  (MOBILE_ALLOWED_MUTATIONS as readonly string[]).includes('approve_content');
 
 /** Client source header for backend audit differentiation. */
 export const CLIENT_SOURCE = 'mobile' as const;
@@ -35,4 +77,7 @@ export const SECURE_STORE_KEYS = {
 } as const;
 
 export const MUTATION_BLOCKED_MESSAGE =
-  'Mobile mutations disabled in Phase 2';
+  'This action is not enabled on mobile yet';
+
+export const MUTATION_KILL_SWITCH_MESSAGE =
+  'Mobile mutations temporarily disabled';

@@ -1,9 +1,10 @@
 /**
- * Workspace mutation API — Phase 2 hard-blocked.
- * No HTTP leaves the device while MOBILE_MUTATIONS_ENABLED is false.
+ * Workspace mutation API — Phase 3A allowlists approve_content only.
+ * All other mutation helpers remain fail-closed before HTTP.
  */
-import { assertMutationsEnabled } from '@/api/guard';
+import { assertActionAllowed } from '@/api/guard';
 import { apiRequest } from '@/api/client';
+import type { OperatorWorkspaceActionResult } from '@/types/workspace';
 
 export interface ExecuteActionParams {
   attentionId: string;
@@ -12,17 +13,16 @@ export interface ExecuteActionParams {
 }
 
 /**
- * Intentionally unreachable in Phase 2.
- * Tests assert this throws before any fetch.
+ * POST /operator-workspace/items/{id}/actions/{action_id}
+ * Guarded by assertActionAllowed (kill switch + allowlist).
+ * No automatic retry — callers must not replay on ambiguous failure.
  */
 export async function executeWorkspaceAction(
   params: ExecuteActionParams,
-): Promise<never> {
-  assertMutationsEnabled(params.actionId);
+): Promise<OperatorWorkspaceActionResult> {
+  assertActionAllowed(params.actionId);
 
-  // Unreachable while MOBILE_MUTATIONS_ENABLED === false.
-  // Kept for Phase 3 wiring — still goes through guard first.
-  await apiRequest({
+  return apiRequest<OperatorWorkspaceActionResult>({
     method: 'POST',
     path: `/operator-workspace/items/${encodeURIComponent(params.attentionId)}/actions/${encodeURIComponent(params.actionId)}`,
     body: {
@@ -30,22 +30,31 @@ export async function executeWorkspaceAction(
       source: 'mobile',
     },
   });
-
-  throw new Error('unreachable');
 }
 
-export async function approveContent(attentionId: string): Promise<never> {
-  return executeWorkspaceAction({ attentionId, actionId: 'approve_content' });
+export async function approveContent(
+  attentionId: string,
+  note?: string,
+): Promise<OperatorWorkspaceActionResult> {
+  return executeWorkspaceAction({
+    attentionId,
+    actionId: 'approve_content',
+    note,
+  });
 }
 
-export async function retryPublish(attentionId: string): Promise<never> {
+export async function retryPublish(attentionId: string): Promise<OperatorWorkspaceActionResult> {
   return executeWorkspaceAction({ attentionId, actionId: 'retry_publish' });
 }
 
-export async function acknowledgeAlert(attentionId: string): Promise<never> {
+export async function acknowledgeAlert(
+  attentionId: string,
+): Promise<OperatorWorkspaceActionResult> {
   return executeWorkspaceAction({ attentionId, actionId: 'acknowledge_alert' });
 }
 
-export async function resolveAlert(attentionId: string): Promise<never> {
+export async function resolveAlert(
+  attentionId: string,
+): Promise<OperatorWorkspaceActionResult> {
   return executeWorkspaceAction({ attentionId, actionId: 'resolve_alert' });
 }

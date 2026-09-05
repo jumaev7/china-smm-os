@@ -8,7 +8,10 @@ import {
   setBiometricPreference,
 } from '@/auth/biometrics';
 import { Screen } from '@/components/Screen';
-import { MOBILE_MUTATIONS_ENABLED } from '@/config/constants';
+import {
+  MOBILE_APPROVE_CONTENT_ENABLED,
+  MOBILE_MUTATIONS_UNLOCK_ALL,
+} from '@/config/constants';
 import { getApiBaseUrl } from '@/config/env';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -99,13 +102,23 @@ export default function SettingsScreen() {
           <Text
             style={[
               styles.value,
-              { color: MOBILE_MUTATIONS_ENABLED ? colors.danger : colors.ok },
+              {
+                color: MOBILE_MUTATIONS_UNLOCK_ALL
+                  ? colors.danger
+                  : MOBILE_APPROVE_CONTENT_ENABLED
+                    ? colors.warning
+                    : colors.ok,
+              },
             ]}
           >
-            {MOBILE_MUTATIONS_ENABLED ? 'ENABLED' : 'Disabled (Phase 2)'}
+            {MOBILE_MUTATIONS_UNLOCK_ALL
+              ? 'UNLOCK ALL (unexpected)'
+              : MOBILE_APPROVE_CONTENT_ENABLED
+                ? 'approve_content only (Phase 3A allowlist)'
+                : 'Disabled'}
           </Text>
           <Text style={[styles.hint, { color: colors.textMuted }]}>
-            Push registration is not implemented in this phase.
+            Kill switch / allowlist gate; unlock-all stays off. Push not implemented.
           </Text>
         </View>
 
