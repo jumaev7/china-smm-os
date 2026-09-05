@@ -2,6 +2,7 @@ import React from 'react';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { Screen } from '@/components/Screen';
 import { ScreenState } from '@/components/ScreenState';
 import { StatusChip } from '@/components/StatusBadge';
 import { useMobileSystem } from '@/hooks/useOperatorQueries';
@@ -57,7 +58,7 @@ export default function SystemScreen() {
   })();
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]}>
+    <Screen style={{ backgroundColor: colors.bg }} testID="system-screen">
       <OfflineBanner visible={showOffline && !!status} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -135,12 +136,11 @@ export default function SystemScreen() {
           ) : null}
         </ScreenState>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
   content: { padding: 16, paddingBottom: 40, gap: 10 },
   heading: { fontSize: 28, fontWeight: '800' },
   updated: { marginTop: 4, marginBottom: 8, fontSize: 13 },

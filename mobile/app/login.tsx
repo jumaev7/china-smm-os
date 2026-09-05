@@ -12,6 +12,7 @@ import {
 import { Redirect } from 'expo-router';
 
 import { useAuth } from '@/auth/AuthContext';
+import { Screen } from '@/components/Screen';
 import { useTheme } from '@/hooks/useTheme';
 import { AppError, userFacingMessage } from '@/utils/errors';
 
@@ -49,75 +50,83 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.bg }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <Screen
+      variant="fullscreen"
+      style={{ backgroundColor: colors.bg }}
+      testID="login-screen"
     >
-      <View style={styles.inner}>
-        <Text style={[styles.brand, { color: colors.accent }]}>China SMM OS</Text>
-        <Text style={[styles.title, { color: colors.text }]}>Operator</Text>
-        <Text style={[styles.sub, { color: colors.textMuted }]}>
-          Read-only mobile control — Phase 2
-        </Text>
+      <KeyboardAvoidingView
+        style={styles.root}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.inner}>
+          <Text style={[styles.brand, { color: colors.accent }]}>
+            China SMM OS
+          </Text>
+          <Text style={[styles.title, { color: colors.text }]}>Operator</Text>
+          <Text style={[styles.sub, { color: colors.textMuted }]}>
+            Read-only mobile control — Phase 2
+          </Text>
 
-        <TextInput
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          placeholder="Email"
-          placeholderTextColor={colors.textMuted}
-          value={email}
-          onChangeText={setEmail}
-          editable={!submitting}
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.inputBg,
-              borderColor: colors.inputBorder,
-              color: colors.text,
-            },
-          ]}
-        />
-        <TextInput
-          placeholder="Password"
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          editable={!submitting}
-          style={[
-            styles.input,
-            {
-              backgroundColor: colors.inputBg,
-              borderColor: colors.inputBorder,
-              color: colors.text,
-            },
-          ]}
-        />
+          <TextInput
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            placeholder="Email"
+            placeholderTextColor={colors.textMuted}
+            value={email}
+            onChangeText={setEmail}
+            editable={!submitting}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.inputBg,
+                borderColor: colors.inputBorder,
+                color: colors.text,
+              },
+            ]}
+          />
+          <TextInput
+            placeholder="Password"
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            editable={!submitting}
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.inputBg,
+                borderColor: colors.inputBorder,
+                color: colors.text,
+              },
+            ]}
+          />
 
-        {error ? (
-          <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
-        ) : null}
+          {error ? (
+            <Text style={[styles.error, { color: colors.danger }]}>{error}</Text>
+          ) : null}
 
-        <Pressable
-          onPress={onSubmit}
-          disabled={submitting || !email || !password}
-          style={[
-            styles.btn,
-            {
-              backgroundColor: colors.accent,
-              opacity: submitting || !email || !password ? 0.5 : 1,
-            },
-          ]}
-        >
-          {submitting ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.btnText}>Sign in</Text>
-          )}
-        </Pressable>
-      </View>
-    </KeyboardAvoidingView>
+          <Pressable
+            onPress={onSubmit}
+            disabled={submitting || !email || !password}
+            style={[
+              styles.btn,
+              {
+                backgroundColor: colors.accent,
+                opacity: submitting || !email || !password ? 0.5 : 1,
+              },
+            ]}
+          >
+            {submitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.btnText}>Sign in</Text>
+            )}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Screen>
   );
 }
 

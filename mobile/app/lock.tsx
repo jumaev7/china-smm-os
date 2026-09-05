@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Redirect } from 'expo-router';
 
 import { useAuth } from '@/auth/AuthContext';
+import { Screen } from '@/components/Screen';
 import { useTheme } from '@/hooks/useTheme';
 
 export default function LockScreen() {
@@ -18,35 +19,41 @@ export default function LockScreen() {
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]}>
-      <Text style={[styles.title, { color: colors.text }]}>Session locked</Text>
-      <Text style={[styles.body, { color: colors.textSecondary }]}>
-        Unlock with biometrics to continue. This does not re-authenticate with
-        the server.
-      </Text>
-      <Pressable
-        onPress={async () => {
-          setBusy(true);
-          try {
-            await unlock();
-          } finally {
-            setBusy(false);
-          }
-        }}
-        style={[styles.btn, { backgroundColor: colors.accent }]}
-      >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.btnText}>Unlock</Text>
-        )}
-      </Pressable>
-    </View>
+    <Screen
+      variant="fullscreen"
+      style={{ backgroundColor: colors.bg }}
+      testID="lock-screen"
+    >
+      <View style={styles.inner}>
+        <Text style={[styles.title, { color: colors.text }]}>Session locked</Text>
+        <Text style={[styles.body, { color: colors.textSecondary }]}>
+          Unlock with biometrics to continue. This does not re-authenticate with
+          the server.
+        </Text>
+        <Pressable
+          onPress={async () => {
+            setBusy(true);
+            try {
+              await unlock();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          style={[styles.btn, { backgroundColor: colors.accent }]}
+        >
+          {busy ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.btnText}>Unlock</Text>
+          )}
+        </Pressable>
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  inner: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',

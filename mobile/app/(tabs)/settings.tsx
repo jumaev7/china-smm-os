@@ -7,6 +7,7 @@ import {
   isBiometricPreferenceEnabled,
   setBiometricPreference,
 } from '@/auth/biometrics';
+import { Screen } from '@/components/Screen';
 import { MOBILE_MUTATIONS_ENABLED } from '@/config/constants';
 import { getApiBaseUrl } from '@/config/env';
 import { useTheme } from '@/hooks/useTheme';
@@ -26,101 +27,103 @@ export default function SettingsScreen() {
   }, []);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]}>
-      <Text style={[styles.heading, { color: colors.text }]}>Profile</Text>
+    <Screen style={{ backgroundColor: colors.bg }} testID="profile-screen">
+      <View style={styles.inner}>
+        <Text style={[styles.heading, { color: colors.text }]}>Profile</Text>
 
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <Text style={[styles.label, { color: colors.textMuted }]}>User</Text>
-        <Text style={[styles.value, { color: colors.text }]}>
-          {user?.email ?? '—'}
-        </Text>
-        <Text style={[styles.label, { color: colors.textMuted }]}>Role</Text>
-        <Text style={[styles.value, { color: colors.text }]}>
-          {user?.role ?? '—'}
-        </Text>
-        <Text style={[styles.label, { color: colors.textMuted }]}>Tenant</Text>
-        <Text style={[styles.value, { color: colors.text }]}>
-          {tenant?.company_name ?? '—'}
-        </Text>
-        <Text style={[styles.hint, { color: colors.textMuted }]}>
-          Tenant scope comes from the authenticated session — never from a
-          client-supplied tenant_id.
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <View style={styles.row}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.value, { color: colors.text }]}>
-              Biometric lock
-            </Text>
-            <Text style={[styles.hint, { color: colors.textMuted }]}>
-              {bioAvailable
-                ? 'Local unlock after background — not API auth'
-                : 'Biometrics unavailable on this device'}
-            </Text>
-          </View>
-          <Switch
-            value={bioEnabled && bioAvailable}
-            disabled={!bioAvailable}
-            onValueChange={async (v) => {
-              setBioEnabled(v);
-              await setBiometricPreference(v);
-            }}
-          />
-        </View>
-      </View>
-
-      <View
-        style={[
-          styles.card,
-          { backgroundColor: colors.surface, borderColor: colors.border },
-        ]}
-      >
-        <Text style={[styles.label, { color: colors.textMuted }]}>API</Text>
-        <Text style={[styles.value, { color: colors.text }]}>
-          {getApiBaseUrl()}
-        </Text>
-        <Text style={[styles.label, { color: colors.textMuted }]}>
-          Mutations
-        </Text>
-        <Text
+        <View
           style={[
-            styles.value,
-            { color: MOBILE_MUTATIONS_ENABLED ? colors.danger : colors.ok },
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
           ]}
         >
-          {MOBILE_MUTATIONS_ENABLED ? 'ENABLED' : 'Disabled (Phase 2)'}
-        </Text>
-        <Text style={[styles.hint, { color: colors.textMuted }]}>
-          Push registration is not implemented in this phase.
-        </Text>
-      </View>
+          <Text style={[styles.label, { color: colors.textMuted }]}>User</Text>
+          <Text style={[styles.value, { color: colors.text }]}>
+            {user?.email ?? '—'}
+          </Text>
+          <Text style={[styles.label, { color: colors.textMuted }]}>Role</Text>
+          <Text style={[styles.value, { color: colors.text }]}>
+            {user?.role ?? '—'}
+          </Text>
+          <Text style={[styles.label, { color: colors.textMuted }]}>Tenant</Text>
+          <Text style={[styles.value, { color: colors.text }]}>
+            {tenant?.company_name ?? '—'}
+          </Text>
+          <Text style={[styles.hint, { color: colors.textMuted }]}>
+            Tenant scope comes from the authenticated session — never from a
+            client-supplied tenant_id.
+          </Text>
+        </View>
 
-      <Pressable
-        onPress={() => void logout()}
-        style={[styles.logout, { backgroundColor: colors.dangerSoft }]}
-      >
-        <Text style={[styles.logoutText, { color: colors.danger }]}>
-          Sign out
-        </Text>
-      </Pressable>
-    </View>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.value, { color: colors.text }]}>
+                Biometric lock
+              </Text>
+              <Text style={[styles.hint, { color: colors.textMuted }]}>
+                {bioAvailable
+                  ? 'Local unlock after background — not API auth'
+                  : 'Biometrics unavailable on this device'}
+              </Text>
+            </View>
+            <Switch
+              value={bioEnabled && bioAvailable}
+              disabled={!bioAvailable}
+              onValueChange={async (v) => {
+                setBioEnabled(v);
+                await setBiometricPreference(v);
+              }}
+            />
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.surface, borderColor: colors.border },
+          ]}
+        >
+          <Text style={[styles.label, { color: colors.textMuted }]}>API</Text>
+          <Text style={[styles.value, { color: colors.text }]}>
+            {getApiBaseUrl()}
+          </Text>
+          <Text style={[styles.label, { color: colors.textMuted }]}>
+            Mutations
+          </Text>
+          <Text
+            style={[
+              styles.value,
+              { color: MOBILE_MUTATIONS_ENABLED ? colors.danger : colors.ok },
+            ]}
+          >
+            {MOBILE_MUTATIONS_ENABLED ? 'ENABLED' : 'Disabled (Phase 2)'}
+          </Text>
+          <Text style={[styles.hint, { color: colors.textMuted }]}>
+            Push registration is not implemented in this phase.
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => void logout()}
+          style={[styles.logout, { backgroundColor: colors.dangerSoft }]}
+        >
+          <Text style={[styles.logoutText, { color: colors.danger }]}>
+            Sign out
+          </Text>
+        </Pressable>
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, padding: 16, gap: 12 },
+  inner: { flex: 1, padding: 16, gap: 12 },
   heading: { fontSize: 28, fontWeight: '800', marginBottom: 4 },
   card: {
     borderWidth: 1,

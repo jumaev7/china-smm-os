@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { priorityColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/useTheme';
@@ -14,7 +14,17 @@ export function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
-export function StatusChip({ label, tone }: { label: string; tone?: string }) {
+export function StatusChip({
+  label,
+  tone,
+  onPress,
+  testID,
+}: {
+  label: string;
+  tone?: string;
+  onPress?: () => void;
+  testID?: string;
+}) {
   const colors = useTheme();
   const color =
     tone === 'ok'
@@ -24,10 +34,41 @@ export function StatusChip({ label, tone }: { label: string; tone?: string }) {
         : tone === 'warning'
           ? colors.warning
           : colors.textMuted;
-  return (
-    <View style={[styles.chip, { backgroundColor: colors.surfaceMuted }]}>
+
+  const content = (
+    <>
       <View style={[styles.dot, { backgroundColor: color }]} />
       <Text style={[styles.chipText, { color: colors.text }]}>{label}</Text>
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable
+        testID={testID}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={({ pressed }) => [
+          styles.chip,
+          {
+            backgroundColor: colors.surfaceMuted,
+            opacity: pressed ? 0.7 : 1,
+          },
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+
+  return (
+    <View
+      testID={testID}
+      accessibilityRole="text"
+      style={[styles.chip, { backgroundColor: colors.surfaceMuted }]}
+    >
+      {content}
     </View>
   );
 }

@@ -7,17 +7,30 @@ import {
   Text,
   View,
 } from 'react-native';
+import { router } from 'expo-router';
 
 import { AttentionCard } from '@/components/AttentionCard';
 import { MetricTile } from '@/components/MetricTile';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { Screen } from '@/components/Screen';
 import { ScreenState } from '@/components/ScreenState';
 import { StatusChip } from '@/components/StatusBadge';
 import { useMobileHome } from '@/hooks/useOperatorQueries';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/hooks/useTheme';
+import {
+  resolveDashboardCardNavigation,
+  type DashboardCardId,
+} from '@/utils/dashboardNavigation';
 import { formatLastUpdated } from '@/utils/format';
 import { isNetworkLikeError } from '@/utils/errors';
+
+function navigateDashboardCard(card: DashboardCardId): void {
+  const target = resolveDashboardCardNavigation(card);
+  if (target.navigable) {
+    router.navigate(target.href);
+  }
+}
 
 export default function TodayScreen() {
   const colors = useTheme();
@@ -25,9 +38,8 @@ export default function TodayScreen() {
   const query = useMobileHome();
   const data = query.data;
   const showOffline = isOffline || isNetworkLikeError(query.error);
-
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]}>
+    <Screen style={{ backgroundColor: colors.bg }} testID="today-screen">
       <OfflineBanner visible={showOffline && !!data} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -54,13 +66,27 @@ export default function TodayScreen() {
             <>
               <View style={styles.grid}>
                 <MetricTile
+                  testID="tile-attention"
                   label="Attention"
                   value={data.attention_summary.total}
                   tone={data.attention_summary.total > 0 ? 'danger' : 'ok'}
+                  onPress={() => navigateDashboardCard('attention')}
                 />
-                <MetricTile label="Approvals" value={data.approvals_count} />
-                <MetricTile label="Problems" value={data.problems_count} />
                 <MetricTile
+                  testID="tile-approvals"
+                  label="Approvals"
+                  value={data.approvals_count}
+                  onPress={() => navigateDashboardCard('approvals')}
+                />
+                <MetricTile
+                  testID="tile-problems"
+                  label="Problems"
+                  value={data.problems_count}
+                  onPress={() => navigateDashboardCard('problems')}
+                />
+                {/* Waiting: no onPress — no Waiting route; keep visually non-tappable. */}
+                <MetricTile
+                  testID="tile-waiting"
                   label="Waiting"
                   value={data.waiting_for_client}
                 />
@@ -68,6 +94,7 @@ export default function TodayScreen() {
 
               <View style={styles.systemRow}>
                 <StatusChip
+                  testID="chip-system"
                   label={`System ${data.system_status.overall}`}
                   tone={
                     data.system_status.overall === 'ok'
@@ -76,9 +103,11 @@ export default function TodayScreen() {
                         ? 'danger'
                         : 'warning'
                   }
+                  onPress={() => navigateDashboardCard('system')}
                 />
                 {data.unread_notifications > 0 ? (
                   <StatusChip
+                    testID="chip-unread"
                     label={`${data.unread_notifications} unread`}
                     tone="warning"
                   />
@@ -109,12 +138,11 @@ export default function TodayScreen() {
           ) : null}
         </ScreenState>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
   heading: { fontSize: 28, fontWeight: '800' },
   updated: { marginTop: 4, marginBottom: 16, fontSize: 13 },

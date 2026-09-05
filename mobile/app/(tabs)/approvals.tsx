@@ -1,8 +1,9 @@
 import React from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { AttentionCard } from '@/components/AttentionCard';
 import { OfflineBanner } from '@/components/OfflineBanner';
+import { Screen } from '@/components/Screen';
 import { ScreenState } from '@/components/ScreenState';
 import { useApprovals } from '@/hooks/useOperatorQueries';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
@@ -17,7 +18,7 @@ export default function ApprovalsScreen() {
   const showOffline = isOffline || isNetworkLikeError(query.error);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.bg }]}>
+    <Screen style={{ backgroundColor: colors.bg }} testID="approvals-screen">
       <OfflineBanner visible={showOffline && items.length > 0} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -46,12 +47,11 @@ export default function ApprovalsScreen() {
           ))}
         </ScreenState>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
   heading: { fontSize: 28, fontWeight: '800' },
   sub: { marginTop: 4, marginBottom: 16, fontSize: 13 },
