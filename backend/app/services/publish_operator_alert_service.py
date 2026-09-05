@@ -819,15 +819,33 @@ class PublishOperatorAlertService:
         *,
         actor_id: UUID | None = None,
     ) -> PublishAlertAcknowledgeResponse:
-        row = await cls._get_for_tenant(db, tenant_id, alert_id)
+        """Acknowledge under SELECT … FOR UPDATE (held until caller commit).
+
+        Concurrent acks serialize on the row lock. Exactly one open→acknowledged
+        transition stamps ``acknowledged_by`` / ``acknowledged_at``; losers and
+        sequential duplicates return idempotent success without overwriting
+        attribution. Resolved (and other terminal) states keep canonical errors.
+        """
+        row = await cls._get_for_tenant(db, tenant_id, alert_id, for_update=True)
         if row.state == "resolved":
             raise HTTPException(status_code=400, detail="Alert is already resolved")
-        if row.state != "acknowledged":
-            row.state = "acknowledged"
-            row.acknowledged_at = utc_now()
-            row.acknowledged_by = actor_id
-            await db.flush()
-            logger.info("[PublishAlert] acknowledged alert_id=%s tenant=%s", alert_id, tenant_id)
+        if row.state == "acknowledged":
+            # Idempotent: do not overwrite acknowledged_at / acknowledged_by.
+            return PublishAlertAcknowledgeResponse(
+                id=row.id,
+                state=row.state,  # type: ignore[arg-type]
+                acknowledged_at=row.acknowledged_at,
+            )
+        if row.state != "open":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Alert is not eligible for acknowledgement (state={row.state})",
+            )
+        row.state = "acknowledged"
+        row.acknowledged_at = utc_now()
+        row.acknowledged_by = actor_id
+        await db.flush()
+        logger.info("[PublishAlert] acknowledged alert_id=%s tenant=%s", alert_id, tenant_id)
         return PublishAlertAcknowledgeResponse(
             id=row.id,
             state=row.state,  # type: ignore[arg-type]
@@ -844,15 +862,29 @@ class PublishOperatorAlertService:
         actor_id: UUID | None = None,
         note: str | None = None,
     ) -> PublishAlertResolveResponse:
-        row = await cls._get_for_tenant(db, tenant_id, alert_id)
-        if row.state != "resolved":
-            row.state = "resolved"
-            row.resolved_at = utc_now()
-            row.resolved_by = actor_id
-            row.resolved_by_system = False
-            row.resolve_note = sanitize_error_message(note)
-            await db.flush()
-            logger.info("[PublishAlert] manually resolved alert_id=%s tenant=%s", alert_id, tenant_id)
+        """Resolve under SELECT … FOR UPDATE (held until caller commit).
+
+        Shares the same row lock as ``acknowledge`` so ack-vs-resolve races
+        serialize: whichever valid transition acquires the lock first wins;
+        a subsequent acknowledge observing ``resolved`` fails canonically
+        without overwriting terminal fields.
+        """
+        row = await cls._get_for_tenant(db, tenant_id, alert_id, for_update=True)
+        if row.state == "resolved":
+            # Idempotent: do not overwrite resolved_at / resolved_by / note.
+            return PublishAlertResolveResponse(
+                id=row.id,
+                state=row.state,  # type: ignore[arg-type]
+                resolved_at=row.resolved_at,
+                resolve_note=row.resolve_note,
+            )
+        row.state = "resolved"
+        row.resolved_at = utc_now()
+        row.resolved_by = actor_id
+        row.resolved_by_system = False
+        row.resolve_note = sanitize_error_message(note)
+        await db.flush()
+        logger.info("[PublishAlert] manually resolved alert_id=%s tenant=%s", alert_id, tenant_id)
         return PublishAlertResolveResponse(
             id=row.id,
             state=row.state,  # type: ignore[arg-type]
@@ -866,15 +898,24 @@ class PublishOperatorAlertService:
         db: AsyncSession,
         tenant_id: UUID,
         alert_id: UUID,
+        *,
+        for_update: bool = False,
     ) -> PublishOperatorAlert:
-        row = (
-            await db.execute(
-                select(PublishOperatorAlert).where(
-                    PublishOperatorAlert.id == alert_id,
-                    PublishOperatorAlert.tenant_id == tenant_id,
-                ),
-            )
-        ).scalar_one_or_none()
+        """Load a tenant-scoped alert; optionally lock the row (FOR UPDATE).
+
+        ``for_update=True`` emits ``SELECT … FOR UPDATE`` and refreshes any
+        already-loaded identity-map instance (``populate_existing``) so a
+        prior unlocked read in the same session cannot mask a concurrent
+        committed transition. Lock is held until the surrounding transaction
+        commits or rolls back.
+        """
+        stmt = select(PublishOperatorAlert).where(
+            PublishOperatorAlert.id == alert_id,
+            PublishOperatorAlert.tenant_id == tenant_id,
+        )
+        if for_update:
+            stmt = stmt.with_for_update().execution_options(populate_existing=True)
+        row = (await db.execute(stmt)).scalar_one_or_none()
         if row is None:
             raise HTTPException(status_code=404, detail="Alert not found")
         return row
