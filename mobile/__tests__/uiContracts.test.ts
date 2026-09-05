@@ -44,7 +44,7 @@ describe('actions[] rendering contract', () => {
     expect(isMutationActionId('open')).toBe(false);
   });
 
-  it('Phase 3A: approve executable on Approvals only; unlock-all still off', () => {
+  it('Phase 3B: approve on Approvals, acknowledge on Problems; unlock-all still off', () => {
     expect(MOBILE_MUTATIONS_UNLOCK_ALL).toBe(false);
     expect(MOBILE_MUTATIONS_ENABLED).toBe(false);
     expect(MOBILE_APPROVE_CONTENT_ENABLED).toBe(true);
@@ -60,6 +60,20 @@ describe('actions[] rendering contract', () => {
         actionId: 'approve_content',
         enabled: true,
         executionContext: 'readonly',
+      }),
+    ).toBe(false);
+    expect(
+      canExecuteMobileAction({
+        actionId: 'acknowledge_alert',
+        enabled: true,
+        executionContext: 'problems',
+      }),
+    ).toBe(true);
+    expect(
+      canExecuteMobileAction({
+        actionId: 'acknowledge_alert',
+        enabled: true,
+        executionContext: 'approvals',
       }),
     ).toBe(false);
     for (const a of sample) {

@@ -10,16 +10,18 @@ import {
 import {
   canExecuteMobileAction,
   isMobileMutationAllowed,
+  type ActionExecutionContext,
 } from '@/api/guard';
 import { useTheme } from '@/hooks/useTheme';
 import type { OperatorWorkspaceAction } from '@/types/workspace';
 
-export type ActionExecutionContext = 'approvals' | 'readonly';
+export type { ActionExecutionContext };
 
 /**
  * Renders backend-provided actions[] metadata.
- * Phase 3A: approve_content is executable only on Approvals when allowlisted
- * and present in backend actions[]. All other mutations stay disabled.
+ * Phase 3B: approve_content (Approvals) and acknowledge_alert (Problems)
+ * are executable only when allowlisted and present in backend actions[].
+ * All other mutations stay disabled.
  */
 export function ActionButtons({
   actions,
@@ -31,7 +33,7 @@ export function ActionButtons({
 }: {
   actions: OperatorWorkspaceAction[];
   attentionId?: string;
-  /** Approvals-only execution; Today/Problems remain read-only. */
+  /** Screen-scoped execution; Today remains read-only. */
   executionContext?: ActionExecutionContext;
   submitting?: boolean;
   onExecute?: (action: OperatorWorkspaceAction) => void;
@@ -59,14 +61,16 @@ export function ActionButtons({
           !!onExecute;
 
         const executable = canExecuteHere && !submitting;
-        // Later-phase note for anything not executable via Phase 3A allowlist.
-        // Do not use it when approve is offered but currently disabled by backend.
+        // Later-phase note for anything not executable via Phase 3 allowlist.
+        // Do not use it when the allowlisted action is offered but backend-disabled.
         const showLaterPhase =
           !canExecuteHere &&
           !(
             allowlisted &&
-            action.action_id === 'approve_content' &&
-            executionContext === 'approvals'
+            ((action.action_id === 'approve_content' &&
+              executionContext === 'approvals') ||
+              (action.action_id === 'acknowledge_alert' &&
+                executionContext === 'problems'))
           );
         return (
           <View key={`${action.action_id}-${action.label}`} style={styles.row}>
@@ -112,7 +116,9 @@ export function ActionButtons({
                 {action.external_side_effect ? ' · external' : ''}
                 {action.destructive ? ' · destructive' : ''}
               </Text>
-              {canExecuteHere && action.requires_confirmation ? (
+              {canExecuteHere &&
+              (action.requires_confirmation ||
+                action.action_id === 'acknowledge_alert') ? (
                 <Text style={[styles.phase, { color: colors.textMuted }]}>
                   Confirmation required
                 </Text>

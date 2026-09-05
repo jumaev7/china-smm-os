@@ -5,6 +5,7 @@ import { AttentionCard } from '@/components/AttentionCard';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { Screen } from '@/components/Screen';
 import { ScreenState } from '@/components/ScreenState';
+import { useAcknowledgeAlert } from '@/hooks/useAcknowledgeAlert';
 import { useProblems } from '@/hooks/useOperatorQueries';
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/hooks/useTheme';
@@ -14,6 +15,7 @@ export default function ProblemsScreen() {
   const colors = useTheme();
   const { isOffline } = useNetworkStatus();
   const query = useProblems();
+  const { runAcknowledge, isInFlight } = useAcknowledgeAlert();
   const items = query.data?.items ?? [];
   const showOffline = isOffline || isNetworkLikeError(query.error);
 
@@ -32,7 +34,7 @@ export default function ProblemsScreen() {
       >
         <Text style={[styles.heading, { color: colors.text }]}>Problems</Text>
         <Text style={[styles.sub, { color: colors.textMuted }]}>
-          Publishing, alerts, integrations — no retry/ack/resolve yet
+          Publishing & alerts — acknowledge when offered; retry/resolve later
         </Text>
 
         <ScreenState
@@ -43,7 +45,15 @@ export default function ProblemsScreen() {
           onRetry={() => void query.refetch()}
         >
           {items.map((item) => (
-            <AttentionCard key={item.id} item={item} />
+            <AttentionCard
+              key={item.id}
+              item={item}
+              executionContext="problems"
+              submitting={isInFlight(item.id)}
+              onExecuteAction={(action) => {
+                void runAcknowledge(item.id, action);
+              }}
+            />
           ))}
         </ScreenState>
       </ScrollView>

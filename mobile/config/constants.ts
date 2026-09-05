@@ -1,5 +1,5 @@
 /**
- * Phase 3A mobile mutation gates (fail closed).
+ * Phase 3B mobile mutation gates (fail closed).
  *
  * Hierarchy for execution (`assertActionAllowed` / `isMobileMutationAllowed`):
  * 1. MOBILE_MUTATIONS_KILL_SWITCH === true → block ALL mutations (including allowlist)
@@ -7,21 +7,20 @@
  * 3. otherwise → allow that action only (backend actions[] + server checks still apply)
  *
  * MOBILE_MUTATIONS_UNLOCK_ALL is a legacy "enable every mutation helper" switch.
- * It must stay false in Phase 3A — flipping it must NOT be required for
- * approve_content, and must NOT be treated as the Phase 3A enablement signal.
- * approve_content is enabled solely via MOBILE_ALLOWED_MUTATIONS.
+ * It must stay false — flipping it must NOT be required for allowlisted actions,
+ * and must NOT unlock retry/resolve/etc. Enablement is MOBILE_ALLOWED_MUTATIONS only.
  */
 
 /**
  * Emergency kill switch. When true, blocks ALL mobile mutations including
- * the Phase 3A allowlist. Keep false unless an incident requires it.
+ * the Phase 3 allowlist. Keep false unless an incident requires it.
  */
 export const MOBILE_MUTATIONS_KILL_SWITCH = false as const;
 
 /**
  * Legacy unlock-all flag. When true, would mean "generic mutation suite on".
- * Remains false — do NOT flip to unlock retry/ack/resolve/etc.
- * Phase 3A enablement is MOBILE_ALLOWED_MUTATIONS only.
+ * Remains false — do NOT flip to unlock retry/resolve/etc.
+ * Phase 3 enablement is MOBILE_ALLOWED_MUTATIONS only.
  */
 export const MOBILE_MUTATIONS_UNLOCK_ALL = false as const;
 
@@ -34,10 +33,13 @@ export const MOBILE_MUTATIONS_UNLOCK_ALL = false as const;
 export const MOBILE_MUTATIONS_ENABLED = MOBILE_MUTATIONS_UNLOCK_ALL;
 
 /**
- * Phase 3A per-action allowlist (fail closed).
+ * Phase 3B per-action allowlist (fail closed).
  * Only listed action_ids may execute; everything else stays blocked.
  */
-export const MOBILE_ALLOWED_MUTATIONS = ['approve_content'] as const;
+export const MOBILE_ALLOWED_MUTATIONS = [
+  'approve_content',
+  'acknowledge_alert',
+] as const;
 
 export type MobileAllowedMutation = (typeof MOBILE_ALLOWED_MUTATIONS)[number];
 
@@ -45,6 +47,11 @@ export type MobileAllowedMutation = (typeof MOBILE_ALLOWED_MUTATIONS)[number];
 export const MOBILE_APPROVE_CONTENT_ENABLED =
   !MOBILE_MUTATIONS_KILL_SWITCH &&
   (MOBILE_ALLOWED_MUTATIONS as readonly string[]).includes('approve_content');
+
+/** True when acknowledge_alert is allowed under kill switch + allowlist. */
+export const MOBILE_ACKNOWLEDGE_ALERT_ENABLED =
+  !MOBILE_MUTATIONS_KILL_SWITCH &&
+  (MOBILE_ALLOWED_MUTATIONS as readonly string[]).includes('acknowledge_alert');
 
 /** Client source header for backend audit differentiation. */
 export const CLIENT_SOURCE = 'mobile' as const;

@@ -19,6 +19,11 @@ const EXTERNAL_TELEGRAM_APPROVE_CONFIRM =
 const TELEGRAM_EXTERNAL_CLAUSE =
   'Approval may send a review preview or notification to the client via Telegram.';
 
+/** Voluntary acknowledge copy — bookkeeping only, non-reversible. */
+export const ACKNOWLEDGE_CONFIRM_MESSAGE =
+  'This marks the alert as acknowledged. It does not resolve or fix the issue, ' +
+  'and does not retry publishing or send anything externally.';
+
 /**
  * Resolve confirmation body from the action contract.
  * Uses external_side_effect — never category/status inference.
@@ -47,6 +52,9 @@ export function resolveConfirmationMessage(
   }
   if (action.action_id === 'approve_content') {
     return INTERNAL_APPROVE_CONFIRM;
+  }
+  if (action.action_id === 'acknowledge_alert') {
+    return ACKNOWLEDGE_CONFIRM_MESSAGE;
   }
   return `Confirm: ${action.label}`;
 }
@@ -79,6 +87,33 @@ export function confirmWorkspaceAction(
       {
         text: action.label,
         style: action.destructive ? 'destructive' : 'default',
+        onPress: () => resolve(true),
+      },
+    ]);
+  });
+}
+
+/**
+ * Acknowledge confirmation.
+ * Backend currently sets requires_confirmation=false; we still confirm because
+ * acknowledge is non-reversible and easy to confuse with Resolve on Problems.
+ */
+export function confirmAcknowledgeAlert(
+  action: OperatorWorkspaceAction,
+): Promise<boolean> {
+  if (action.requires_confirmation) {
+    return confirmWorkspaceAction(action);
+  }
+
+  return new Promise((resolve) => {
+    Alert.alert('Acknowledge', ACKNOWLEDGE_CONFIRM_MESSAGE, [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+        onPress: () => resolve(false),
+      },
+      {
+        text: action.label || 'Acknowledge',
         onPress: () => resolve(true),
       },
     ]);

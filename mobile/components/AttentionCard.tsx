@@ -1,10 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import {
-  ActionButtons,
-  type ActionExecutionContext,
-} from '@/components/ActionButtons';
+import { ActionButtons } from '@/components/ActionButtons';
+import type { ActionExecutionContext } from '@/api/guard';
 import { PriorityBadge } from '@/components/StatusBadge';
 import { useTheme } from '@/hooks/useTheme';
 import type {

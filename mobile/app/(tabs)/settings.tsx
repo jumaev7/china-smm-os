@@ -9,6 +9,7 @@ import {
 } from '@/auth/biometrics';
 import { Screen } from '@/components/Screen';
 import {
+  MOBILE_ACKNOWLEDGE_ALERT_ENABLED,
   MOBILE_APPROVE_CONTENT_ENABLED,
   MOBILE_MUTATIONS_UNLOCK_ALL,
 } from '@/config/constants';
@@ -105,7 +106,8 @@ export default function SettingsScreen() {
               {
                 color: MOBILE_MUTATIONS_UNLOCK_ALL
                   ? colors.danger
-                  : MOBILE_APPROVE_CONTENT_ENABLED
+                  : MOBILE_APPROVE_CONTENT_ENABLED ||
+                      MOBILE_ACKNOWLEDGE_ALERT_ENABLED
                     ? colors.warning
                     : colors.ok,
               },
@@ -113,9 +115,12 @@ export default function SettingsScreen() {
           >
             {MOBILE_MUTATIONS_UNLOCK_ALL
               ? 'UNLOCK ALL (unexpected)'
-              : MOBILE_APPROVE_CONTENT_ENABLED
-                ? 'approve_content only (Phase 3A allowlist)'
-                : 'Disabled'}
+              : MOBILE_APPROVE_CONTENT_ENABLED &&
+                  MOBILE_ACKNOWLEDGE_ALERT_ENABLED
+                ? 'approve + acknowledge (Phase 3B allowlist)'
+                : MOBILE_APPROVE_CONTENT_ENABLED
+                  ? 'approve_content only'
+                  : 'Disabled'}
           </Text>
           <Text style={[styles.hint, { color: colors.textMuted }]}>
             Kill switch / allowlist gate; unlock-all stays off. Push not implemented.

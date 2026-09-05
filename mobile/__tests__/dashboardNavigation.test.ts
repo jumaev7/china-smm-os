@@ -8,7 +8,6 @@ import {
 } from '../config/constants';
 import { assertMutationsEnabled, isMobileMutationAllowed } from '../api/guard';
 import {
-  acknowledgeAlert,
   executeWorkspaceAction,
   resolveAlert,
   retryPublish,
@@ -110,7 +109,7 @@ describe('Today dashboard card navigation (read-only)', () => {
     expect(() => assertMutationsEnabled('dashboard_nav')).toThrow(AppError);
   });
 
-  it('MOBILE_MUTATIONS_UNLOCK_ALL remains false; Phase 3A allowlists approve only', () => {
+  it('MOBILE_MUTATIONS_UNLOCK_ALL remains false; Phase 3B allowlists approve+ack', () => {
     expect(MOBILE_MUTATIONS_UNLOCK_ALL).toBe(false);
     expect(MOBILE_MUTATIONS_ENABLED).toBe(false);
     expect(MOBILE_APPROVE_CONTENT_ENABLED).toBe(true);
@@ -129,10 +128,9 @@ describe('mutation hard-block still intact after dashboard nav', () => {
     resolveDashboardCardNavigation('system');
 
     expect(isMobileMutationAllowed('retry_publish')).toBe(false);
+    expect(isMobileMutationAllowed('resolve_alert')).toBe(false);
+    expect(isMobileMutationAllowed('acknowledge_alert')).toBe(true);
     await expect(retryPublish('att-1')).rejects.toMatchObject({
-      kind: 'mutation_blocked',
-    });
-    await expect(acknowledgeAlert('att-1')).rejects.toMatchObject({
       kind: 'mutation_blocked',
     });
     await expect(resolveAlert('att-1')).rejects.toMatchObject({

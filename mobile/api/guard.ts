@@ -40,7 +40,7 @@ export function isMobileMutationAllowed(actionId: string): boolean {
 /**
  * Legacy global check used by Phase 2 tests / dashboard invariants.
  * Reflects MOBILE_MUTATIONS_UNLOCK_ALL only — does NOT unlock the allowlist
- * and does NOT mean Phase 3A approve_content is off.
+ * and does NOT mean Phase 3 allowlisted actions are off.
  * Prefer assertActionAllowed / isMobileMutationAllowed for execution.
  */
 export function assertMutationsEnabled(actionLabel = 'mutation'): void {
@@ -91,18 +91,30 @@ export function isMutationActionId(actionId: string): actionId is MutationAction
   );
 }
 
+export type ActionExecutionContext = 'approvals' | 'problems' | 'readonly';
+
 /**
  * UI eligibility for executing a backend action on mobile.
  * Backend actions[] presence is caller's responsibility (pass action.enabled).
- * Approvals-only: Today/Problems keep executionContext='readonly'.
+ *
+ * Screen binding (fail closed):
+ * - approve_content → Approvals only
+ * - acknowledge_alert → Problems only
+ * - everything else → never executable here
  */
 export function canExecuteMobileAction(opts: {
   actionId: string;
   enabled: boolean;
-  executionContext: 'approvals' | 'readonly';
+  executionContext: ActionExecutionContext;
 }): boolean {
-  if (opts.executionContext !== 'approvals') return false;
-  if (opts.actionId !== 'approve_content') return false;
   if (!opts.enabled) return false;
-  return isMobileMutationAllowed(opts.actionId);
+  if (!isMobileMutationAllowed(opts.actionId)) return false;
+
+  if (opts.actionId === 'approve_content') {
+    return opts.executionContext === 'approvals';
+  }
+  if (opts.actionId === 'acknowledge_alert') {
+    return opts.executionContext === 'problems';
+  }
+  return false;
 }

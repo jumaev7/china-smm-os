@@ -1,5 +1,5 @@
 /**
- * Workspace mutation API — Phase 3A allowlists approve_content only.
+ * Workspace mutation API — Phase 3B allowlists approve_content + acknowledge_alert.
  * All other mutation helpers remain fail-closed before HTTP.
  */
 import { assertActionAllowed } from '@/api/guard';
