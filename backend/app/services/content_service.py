@@ -136,6 +136,25 @@ class ContentService:
         return item
 
     @staticmethod
+    async def get_for_update(db: AsyncSession, content_id: UUID) -> ContentItem:
+        """Fetch a ContentItem with a row lock (SELECT … FOR UPDATE).
+
+        Serializes concurrent approve / state-transition writers across workers.
+        Lock is held until the surrounding transaction commits or rolls back.
+        """
+        result = await db.execute(
+            select(ContentItem)
+            .where(ContentItem.id == content_id)
+            .options(selectinload(ContentItem.media_file))
+            .with_for_update()
+        )
+        item = result.scalar_one_or_none()
+        if not item:
+            raise HTTPException(status_code=404, detail="Content item not found")
+        guard_resource_client_id(item.client_id)
+        return item
+
+    @staticmethod
     async def list_all(
         db: AsyncSession,
         client_id: UUID | None = None,
@@ -225,10 +244,40 @@ class ContentService:
         await db.commit()
         return await ContentService.get(db, content_id)
 
+    # Statuses eligible for the internal approve transition (unchanged business set).
+    _APPROVE_ELIGIBLE_STATUSES = (
+        "ready",
+        "draft",
+        "ready_for_approval",
+        "changes_requested",
+        "needs_review",
+        "needs_caption",
+        "new",
+    )
+
     @staticmethod
     async def approve(db: AsyncSession, content_id: UUID) -> ContentItem:
-        item = await ContentService.get(db, content_id)
-        if item.status not in ("ready", "draft", "ready_for_approval", "changes_requested", "needs_review", "needs_caption", "new"):
+        """Approve content under a row lock; Telegram side effects run once.
+
+        Concurrent callers serialize on ``SELECT … FOR UPDATE``. Exactly one
+        request may transition an eligible row to ``approved`` and invoke
+        ``after_admin_approve`` (Telegram client-review preview). A concurrent
+        loser observes the approved row and returns an idempotent no-op without
+        re-dispatching Telegram.
+
+        Telegram dispatch stays *after* the approve commit so the row lock is
+        not held across external I/O and ambiguous delivery failures do not
+        roll back the canonical approval.
+        """
+        item = await ContentService.get_for_update(db, content_id)
+
+        # Idempotent: already approved (sequential duplicate or concurrent loser).
+        if item.status == "approved" and item.approved_at is not None:
+            # Release FOR UPDATE immediately; no Telegram side effect.
+            await db.commit()
+            return item
+
+        if item.status not in ContentService._APPROVE_ELIGIBLE_STATUSES:
             raise HTTPException(status_code=400, detail="Only draft/ready content can be approved")
 
         item.status = "approved"

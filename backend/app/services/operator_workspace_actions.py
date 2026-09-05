@@ -621,6 +621,8 @@ class OperatorWorkspaceActionService:
                 detail="Content is waiting for client review — internal approve is not available",
             )
 
+        # Concurrent safety: ContentService.approve uses SELECT … FOR UPDATE so
+        # only one request transitions + runs after_admin_approve (Telegram).
         approved = await ContentService.approve(db, content_id)
         return (
             OperatorWorkspaceActionResult(
