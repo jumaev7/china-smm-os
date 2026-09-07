@@ -151,17 +151,23 @@ Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resol
 
 No new analytics subsystem or migration was introduced for this phase.
 
-## Durable publish retry commands (Phase 3C.1B)
+## Durable publish retry commands (Phase 3C.1B / 3C.1C-A / 3C.1C-B)
 
-Infrastructure-only foundation (`publish_retry_commands` + `PublishRetryCommandService`).
+Infrastructure foundation (`publish_retry_commands` + create/get service + claim worker).
 
-- Feature flag: `PUBLISH_RETRY_COMMANDS_ENABLED` (default **false**)
+- Feature flags (all default **false**):
+  - `PUBLISH_RETRY_COMMANDS_ENABLED` — global create/get + claim subsystem gate
+  - `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` — worker process/poll loop
+  - `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` — permission to mutate pending→claimed / stale reclaim
+  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — future provider-execution gate (**unimplemented** in 3C.1C-B)
+- Precedence for claim/reclaim: commands **and** worker **and** claim must all be true
 - Creating a command records operator retry intent only — **does not publish**
+- Claim worker (`publish-retry-command-worker`) owns pending→claimed / stale claimed reclaim only
 - Canonical `evaluate_manual_retry_eligibility` still gates creation (allowlist remains empty)
-- Workspace / mobile / admin synchronous retry paths are **unchanged** in this phase
+- Workspace / mobile / admin synchronous retry paths are **unchanged**
 - Read-only status: `GET /api/v1/publishing/retry-commands/{command_id}`
-- No worker claim/execution loop yet (3C.1C)
 - **DB lineage invariants (3C.1C-A):** unique non-null `publish_attempts.retry_command_id`, unique non-null `publish_retry_commands.resulting_attempt_id`, worker lookup index `(status, created_at)`, CHECK that `provider_write_started` requires `provider_write_started_at`
+- **Claim/lease foundation (3C.1C-B):** `FOR UPDATE SKIP LOCKED`, DB `now()` leases, reclaim only when `status=claimed` and `provider_write_started_at IS NULL`. Never crosses the provider-write barrier.
 
 ## Future (not in scope)
 
@@ -172,4 +178,4 @@ Infrastructure-only foundation (`publish_retry_commands` + `PublishRetryCommandS
 - Automation requeue from workspace
 - OAuth reconnect from workspace
 - Listening/Advertising intelligence feeds (unless operational failure)
-- Async publish-retry worker execution (3C.1C+)
+- Async publish-retry provider execution (3C.1C-C+)

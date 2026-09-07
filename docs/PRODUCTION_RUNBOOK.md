@@ -159,10 +159,23 @@ allowlist** (never client intake groups or publish channels):
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED` | `false` | Allow tenant owners to mint Connect Telegram deep links |
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_TOKEN_TTL_SECONDS` | `600` | Enrollment token TTL (clamped 60–1800) |
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_POLL_SECONDS` | `3` | UI poll interval while waiting for `/start` |
-| `PUBLISH_RETRY_COMMANDS_ENABLED` | `false` | Durable retry-command create/get (3C.1B; no worker / no Workspace adoption) |
+| `PUBLISH_RETRY_COMMANDS_ENABLED` | `false` | Durable retry-command create/get subsystem gate (3C.1B) |
+| `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` | `false` | Claim/lease worker process loop (3C.1C-B; idles when false) |
+| `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` | `false` | Permit pending→claimed / stale claimed reclaim mutations |
+| `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` | `false` | Future provider-execution gate (unimplemented in 3C.1C-B) |
+| `PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS` | `5` | Worker poll interval |
+| `PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE` | `1` | Max commands claimed/reclaimed per tick (capped at 5) |
+| `PUBLISH_RETRY_COMMAND_LEASE_SECONDS` | `180` | Claim lease duration (DB clock; clamped 30–3600) |
 | `PUBLISH_ALERT_TELEGRAM_MAX_CONFIRMED_RECIPIENTS` | `1` | Max confirmed operator recipients per tenant |
 | `TELEGRAM_BOT_USERNAME` | *(empty)* | Public bot username for deep links (validated; `getMe` fallback) |
 | `PUBLISH_ALERT_APP_BASE_URL` | `https://app.chinasmmos.com` | Deep-link origin in Telegram messages |
+
+**Retry-command claim worker (3C.1C-B):** Compose service `publish-retry-command-worker`
+idles when `PUBLISH_RETRY_COMMAND_WORKER_ENABLED=false` (default). Claim/reclaim mutations
+require **all** of `PUBLISH_RETRY_COMMANDS_ENABLED`, `PUBLISH_RETRY_COMMAND_WORKER_ENABLED`,
+and `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED`. Provider execution remains unimplemented;
+`PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` is a fail-closed placeholder only. Prefer keeping
+the container undeployed or fully flag-off until staged claim observation is intentional.
 
 **Enrollment vs delivery:** Enabling enrollment (`PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED=true`)
 only lets an authenticated tenant owner generate a short-lived Connect Telegram deep link

@@ -105,8 +105,17 @@ class Settings(BaseSettings):
     # Publish operator alerts (in-app always on; outbound channels opt-in)
     PUBLISH_ALERT_REPEATED_FAILURE_THRESHOLD: int = 3
     PUBLISH_ALERT_REPEATED_FAILURE_WINDOW_MINUTES: int = 60
-    # Durable publish-retry commands (3C.1B foundation; no worker / no Workspace adoption yet)
+    # Durable publish-retry commands (3C.1B foundation; no Workspace adoption yet)
     PUBLISH_RETRY_COMMANDS_ENABLED: bool = False
+    # Claim/lease worker process lifecycle (3C.1C-B). Independent of command creation.
+    PUBLISH_RETRY_COMMAND_WORKER_ENABLED: bool = False
+    # Permission to mutate pending→claimed / stale claimed ownership. Default off.
+    PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: bool = False
+    # Future provider-execution gate (3C.1C-C+). Unimplemented in B — keep false.
+    PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: bool = False
+    PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: float = 5.0
+    PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: int = 1
+    PUBLISH_RETRY_COMMAND_LEASE_SECONDS: int = 180
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

@@ -64,6 +64,7 @@ def test_production_compose_wires_ih_flags_on_backend_only_fail_closed():
         "telegram-webhook-worker",
         "listening-worker",
         "publish-alert-telegram-worker",
+        "publish-retry-command-worker",
         "migrate",
     ):
         body = services.get(name, "")
