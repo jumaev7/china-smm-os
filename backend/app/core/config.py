@@ -105,6 +105,8 @@ class Settings(BaseSettings):
     # Publish operator alerts (in-app always on; outbound channels opt-in)
     PUBLISH_ALERT_REPEATED_FAILURE_THRESHOLD: int = 3
     PUBLISH_ALERT_REPEATED_FAILURE_WINDOW_MINUTES: int = 60
+    # Durable publish-retry commands (3C.1B foundation; no worker / no Workspace adoption yet)
+    PUBLISH_RETRY_COMMANDS_ENABLED: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

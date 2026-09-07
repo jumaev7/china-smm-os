@@ -159,6 +159,7 @@ allowlist** (never client intake groups or publish channels):
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED` | `false` | Allow tenant owners to mint Connect Telegram deep links |
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_TOKEN_TTL_SECONDS` | `600` | Enrollment token TTL (clamped 60–1800) |
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_POLL_SECONDS` | `3` | UI poll interval while waiting for `/start` |
+| `PUBLISH_RETRY_COMMANDS_ENABLED` | `false` | Durable retry-command create/get (3C.1B; no worker / no Workspace adoption) |
 | `PUBLISH_ALERT_TELEGRAM_MAX_CONFIRMED_RECIPIENTS` | `1` | Max confirmed operator recipients per tenant |
 | `TELEGRAM_BOT_USERNAME` | *(empty)* | Public bot username for deep links (validated; `getMe` fallback) |
 | `PUBLISH_ALERT_APP_BASE_URL` | `https://app.chinasmmos.com` | Deep-link origin in Telegram messages |

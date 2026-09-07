@@ -19,6 +19,7 @@ from app.schemas.publishing import (
     PublishAttemptListResponse,
     PublishAttemptResponse,
     PublishAttemptActionResponse,
+    PublishRetryCommandResponse,
 )
 from app.schemas.publish_alerts import (
     PublishAlertAcknowledgeResponse,
@@ -41,6 +42,10 @@ from app.services.publishing_account_service import PublishingAccountService
 from app.services.publishing_calendar_service import PublishingCalendarService
 from app.services.publishing_queue_service import PublishingQueueService
 from app.services.publish_attempt_ops_service import PublishAttemptOpsService
+from app.services.publish_retry_command_service import (
+    PublishRetryCommandService,
+    serialize_retry_command,
+)
 from app.services.publish_operator_alert_service import PublishOperatorAlertService
 from app.services.publish_alert_telegram_enrollment_service import (
     PublishAlertTelegramEnrollmentService,
@@ -279,6 +284,25 @@ async def retry_publish_attempt(
     return await PublishAttemptOpsService.manual_retry(
         db, attempt_id, tenant_id=scope_tenant_id,
     )
+
+
+@router.get(
+    "/retry-commands/{command_id}",
+    response_model=PublishRetryCommandResponse,
+)
+async def get_publish_retry_command(
+    command_id: UUID,
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+):
+    """Read-only tenant-scoped retry command status (no mutation / no provider I/O)."""
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    command = await PublishRetryCommandService.get_command(
+        db, command_id, tenant_id=scope_tenant_id,
+    )
+    return serialize_retry_command(command)
 
 
 @router.get("/alerts/counts", response_model=PublishAlertCountsResponse)

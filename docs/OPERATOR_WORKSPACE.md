@@ -151,6 +151,17 @@ Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resol
 
 No new analytics subsystem or migration was introduced for this phase.
 
+## Durable publish retry commands (Phase 3C.1B)
+
+Infrastructure-only foundation (`publish_retry_commands` + `PublishRetryCommandService`).
+
+- Feature flag: `PUBLISH_RETRY_COMMANDS_ENABLED` (default **false**)
+- Creating a command records operator retry intent only — **does not publish**
+- Canonical `evaluate_manual_retry_eligibility` still gates creation (allowlist remains empty)
+- Workspace / mobile / admin synchronous retry paths are **unchanged** in this phase
+- Read-only status: `GET /api/v1/publishing/retry-commands/{command_id}`
+- No worker claim/execution loop yet (3C.1C)
+
 ## Future (not in scope)
 
 - Autonomous remediation (no auto-execute of eligible actions)
@@ -160,3 +171,4 @@ No new analytics subsystem or migration was introduced for this phase.
 - Automation requeue from workspace
 - OAuth reconnect from workspace
 - Listening/Advertising intelligence feeds (unless operational failure)
+- Async publish-retry worker execution (3C.1C+)

@@ -58,5 +58,12 @@ class PublishAttempt(Base):
     lease_owner: Mapped[str | None] = mapped_column(String(120), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     retry_after_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Optional lineage to a durable retry command (Phase 3C.1B; unused at runtime yet)
+    retry_command_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("publish_retry_commands.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     account: Mapped["PublishingAccount | None"] = relationship()  # noqa: F821

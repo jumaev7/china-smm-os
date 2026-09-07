@@ -123,6 +123,28 @@ class PublishAttemptActionResponse(BaseModel):
     publish_result: Optional[dict] = None
 
 
+class PublishRetryCommandResponse(BaseModel):
+    """Safe read model for durable retry commands (no secrets / lease owner)."""
+
+    command_id: UUID
+    status: str
+    platform: str
+    original_attempt_id: UUID
+    resulting_attempt_id: Optional[UUID] = None
+    content_id: UUID
+    client_id: Optional[UUID] = None
+    requested_source: str
+    reason_code: Optional[str] = None
+    provider_outcome: Optional[str] = None
+    publish_version: Optional[str] = None
+    destination_key: Optional[str] = None
+    correlation_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    claimed_at: Optional[datetime] = None
+    provider_write_started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
 class ScheduledPublishDebugItem(BaseModel):
     id: UUID
     status: str
