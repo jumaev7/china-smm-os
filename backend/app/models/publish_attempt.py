@@ -19,6 +19,13 @@ class PublishAttempt(Base):
             unique=True,
             postgresql_where=text("status = 'in_progress' AND idempotency_key IS NOT NULL"),
         ),
+        # DB 1:1 lineage — one retry command → at most one PublishAttempt.
+        Index(
+            "uq_publish_attempts_retry_command_id",
+            "retry_command_id",
+            unique=True,
+            postgresql_where=text("retry_command_id IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -63,7 +70,6 @@ class PublishAttempt(Base):
         UUID(as_uuid=True),
         ForeignKey("publish_retry_commands.id", ondelete="SET NULL"),
         nullable=True,
-        index=True,
     )
 
     account: Mapped["PublishingAccount | None"] = relationship()  # noqa: F821

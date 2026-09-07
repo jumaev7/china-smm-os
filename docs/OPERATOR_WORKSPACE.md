@@ -161,6 +161,7 @@ Infrastructure-only foundation (`publish_retry_commands` + `PublishRetryCommandS
 - Workspace / mobile / admin synchronous retry paths are **unchanged** in this phase
 - Read-only status: `GET /api/v1/publishing/retry-commands/{command_id}`
 - No worker claim/execution loop yet (3C.1C)
+- **DB lineage invariants (3C.1C-A):** unique non-null `publish_attempts.retry_command_id`, unique non-null `publish_retry_commands.resulting_attempt_id`, worker lookup index `(status, created_at)`, CHECK that `provider_write_started` requires `provider_write_started_at`
 
 ## Future (not in scope)
 

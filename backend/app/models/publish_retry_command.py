@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -69,6 +69,12 @@ class PublishRetryCommand(Base):
         Index("ix_publish_retry_commands_tenant_content", "tenant_id", "content_id"),
         Index("ix_publish_retry_commands_original_attempt", "original_attempt_id"),
         Index("ix_publish_retry_commands_correlation", "correlation_id"),
+        # Future worker claim: status='pending' ORDER BY created_at (3C.1C-B).
+        Index(
+            "ix_publish_retry_commands_status_created_at",
+            "status",
+            "created_at",
+        ),
         Index(
             "uq_publish_retry_commands_active_idempotency",
             "idempotency_key",
@@ -76,6 +82,18 @@ class PublishRetryCommand(Base):
             postgresql_where=text(
                 "status IN ('pending', 'claimed', 'provider_write_started')"
             ),
+        ),
+        # DB 1:1 lineage — one resulting attempt per command (nullable until execution).
+        Index(
+            "uq_publish_retry_commands_resulting_attempt_id",
+            "resulting_attempt_id",
+            unique=True,
+            postgresql_where=text("resulting_attempt_id IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "status <> 'provider_write_started' "
+            "OR provider_write_started_at IS NOT NULL",
+            name="ck_publish_retry_commands_provider_write_ts",
         ),
     )
 
