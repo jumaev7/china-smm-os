@@ -36,6 +36,48 @@ def test_transient_failures_are_retryable():
     assert classify_publish_failure("Meta Graph API error: try again later")[2] is True
 
 
+def test_telegram_publish_classification_mappings():
+    """Exact mappings for Telegram-shaped errors through classify_publish_failure.
+
+    telegram_publisher returns only ``error: str(exc)`` — no http_status /
+    is_timeout / is_connection_error flags — so text heuristics apply.
+    """
+    # Explicit 429 + rate text (as Meta/adapters may pass) → rate_limited
+    assert classify_publish_failure("rate limited", http_status=429) == (
+        "rate_limited", "provider", True,
+    )
+    # Real Telegram Bot API flood description WITHOUT http_status → NOT rate_limited
+    # (no "rate"/"throttle" substring) → adapter_failure
+    code, cat, retryable = classify_publish_failure(
+        "Too Many Requests: retry after 42",
+    )
+    assert code == "adapter_failure"
+    assert cat == "provider"
+    assert retryable is True
+
+    # Timeouts / connection / 5xx / malformed — ambiguous for write boundary
+    assert classify_publish_failure("ReadTimeout", is_timeout=True)[0] == "publish_timeout"
+    assert classify_publish_failure("timed out")[0] == "publish_timeout"
+    assert classify_publish_failure(
+        "Connection reset by peer", is_connection_error=True,
+    )[0] == "connection_error"
+    assert classify_publish_failure("connecterror")[0] == "connection_error"
+    assert classify_publish_failure("Telegram API error (500)", http_status=500)[0] == (
+        "provider_unavailable"
+    )
+    assert classify_publish_failure("Telegram API invalid response (200)")[0] == (
+        "adapter_failure"
+    )
+
+    # provider_transient only via Meta Graph text path — not Telegram-native
+    assert classify_publish_failure(
+        "Meta Graph API error: please try again later",
+    )[0] == "provider_transient"
+    assert classify_publish_failure(
+        "Telegram temporary error try again later",
+    )[0] != "provider_transient"
+
+
 def test_terminal_failures_are_not_retryable():
     code, category, retryable = classify_publish_failure(
         "Invalid OAuth access token", meta_code=190,

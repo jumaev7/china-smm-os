@@ -14,6 +14,11 @@ from app.models.client import Client
 from app.models.content import ContentItem
 from app.models.publish_attempt import PublishAttempt
 from app.schemas.publishing import PublishContentRequest
+from app.services.manual_retry_eligibility import (
+    build_manual_retry_live_state,
+    evaluate_manual_retry_eligibility,
+    log_manual_retry_denied,
+)
 from app.services.publish_resilience import (
     OPS_LIST_STATUSES,
     STATUS_EXHAUSTED,
@@ -140,33 +145,42 @@ class PublishAttemptOpsService:
         attempt_id: UUID,
         *,
         tenant_id: UUID | None = None,
+        source: str = "admin",
+        actor_role: str | None = "admin",
+        skip_eligibility: bool = False,
     ) -> dict:
-        attempt = await cls._load_attempt(db, attempt_id, tenant_id=tenant_id)
-        allowed, reason = PublishResilienceService.manual_retry_allowed(attempt)
-        if not allowed:
-            return {
-                "ok": False,
-                "message": reason or "Manual retry unavailable",
-                "attempt_id": attempt_id,
-                "content_id": attempt.content_id,
-                "status": attempt.status,
-                "retry_blocked_reason": reason,
-            }
+        """Manual retry for an attempt.
 
-        # Guard against duplicate external posts.
-        if attempt.idempotency_key:
-            prior = await PublishResilienceService.find_live_success(
-                db, idempotency_key=attempt.idempotency_key,
+        All manual paths converge on ``evaluate_manual_retry_eligibility``.
+        Ambiguous / permanent-block outcomes are not bypassable via admin role.
+        Automatic scheduled retries do not call this method.
+        """
+        attempt = await cls._load_attempt(db, attempt_id, tenant_id=tenant_id)
+        content = await PublishService._get_content(db, attempt.content_id)
+
+        if not skip_eligibility:
+            live_state = await build_manual_retry_live_state(db, attempt, content=content)
+            eligibility = evaluate_manual_retry_eligibility(
+                attempt,
+                live_state,
+                source=source,
+                actor_role=actor_role,
             )
-            if prior is not None:
+            if not eligibility.allowed:
+                log_manual_retry_denied(
+                    eligibility,
+                    attempt_id=attempt_id,
+                    tenant_id=tenant_id,
+                    source=source,
+                )
                 return {
                     "ok": False,
-                    "message": "Destination already published — retry blocked to prevent duplicates",
+                    "message": eligibility.operator_message or "Manual retry unavailable",
                     "attempt_id": attempt_id,
                     "content_id": attempt.content_id,
                     "status": attempt.status,
-                    "retry_blocked_reason": "already_published",
-                    "existing_post_id": prior.external_post_id,
+                    "retry_blocked_reason": eligibility.reason_code,
+                    "safety_class": eligibility.safety_class,
                 }
 
         if attempt.status == STATUS_IN_PROGRESS:
@@ -180,6 +194,8 @@ class PublishAttemptOpsService:
             }
 
         # Clear scheduled auto-retry so manual path owns the next attempt.
+        # operator_review is no longer cleared by eligibility-allowed retries
+        # (policy denies it); keep the branch for defensive compatibility.
         if attempt.status in (STATUS_RETRYING, STATUS_OPERATOR_REVIEW, STATUS_EXHAUSTED, STATUS_FAILED):
             attempt.next_retry_at = None
             if attempt.status == STATUS_RETRYING:

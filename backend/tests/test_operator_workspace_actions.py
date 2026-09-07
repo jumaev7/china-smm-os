@@ -117,23 +117,57 @@ def test_alert_acknowledged_exposes_resolve_as_primary():
     assert actions[0].primary is True
 
 
-def test_failed_publish_exposes_retry():
+def test_failed_publish_does_not_expose_enabled_retry_under_empty_allowlist():
+    """3C.1A final gate: even Telegram rate_limited is navigation/disabled only."""
     attempt_id = str(uuid.uuid4())
     actions = OperatorWorkspaceActionService.derive_actions(
         _item(
             id=f"publish-attempt:{attempt_id}",
             resource_id=attempt_id,
             current_state=STATUS_FAILED,
-            metadata={"reason_code": "publish_failed", "attempt_id": attempt_id},
+            metadata={
+                "reason_code": "publish_failed",
+                "attempt_id": attempt_id,
+                "platform": "telegram",
+                "failure_code": "rate_limited",
+                "attempt_number": 1,
+                "has_live_success": False,
+                "content_status": "failed",
+                "publish_version": "pv_1",
+                "current_publish_version": "pv_1",
+            },
             action_path="/content/x",
         ),
     )
-    retry = next(a for a in actions if a.action_id == ACTION_RETRY_PUBLISH)
-    assert retry.enabled is True
-    assert retry.requires_confirmation is True
-    assert retry.confirmation_tier == "medium"
-    assert retry.external_side_effect is True
-    assert "publication again" in (retry.confirmation_message or "")
+    assert all(not (a.action_id == ACTION_RETRY_PUBLISH and a.enabled) for a in actions)
+    open_action = next(a for a in actions if a.action_id == ACTION_OPEN)
+    assert open_action.enabled is True
+    assert open_action.action_type == "navigation"
+
+
+def test_failed_publish_without_safe_code_omits_enabled_retry():
+    attempt_id = str(uuid.uuid4())
+    actions = OperatorWorkspaceActionService.derive_actions(
+        _item(
+            id=f"publish-attempt:{attempt_id}",
+            resource_id=attempt_id,
+            current_state=STATUS_FAILED,
+            metadata={
+                "reason_code": "publish_failed",
+                "attempt_id": attempt_id,
+                "platform": "telegram",
+                "failure_code": None,
+                "has_live_success": False,
+                "content_status": "failed",
+            },
+            action_path="/content/x",
+        ),
+    )
+    assert all(a.action_id != ACTION_RETRY_PUBLISH or a.enabled is False for a in actions)
+    assert all(
+        not (a.action_id == ACTION_RETRY_PUBLISH and a.enabled)
+        for a in actions
+    )
 
 
 def test_operator_review_does_not_expose_retry():
@@ -225,14 +259,21 @@ def test_workspace_retry_blocks_operator_review():
     assert reason and "verification" in reason.lower()
 
 
-def test_workspace_retry_allows_failed():
-    with patch(
-        "app.services.operator_workspace_actions.PublishResilienceService.manual_retry_allowed",
-        return_value=(True, None),
-    ):
-        allowed, reason = workspace_retry_allowed(_attempt(status=STATUS_FAILED))
-    assert allowed is True
-    assert reason is None
+def test_workspace_retry_snapshot_fails_closed_without_live_state():
+    """Compat wrapper has no live_state — must not falsely allow."""
+    attempt = SimpleNamespace(
+        status=STATUS_FAILED,
+        platform="telegram",
+        failure_code="rate_limited",
+        attempt_number=1,
+        external_post_id=None,
+        next_retry_at=None,
+        publish_version="pv_1",
+        account=None,
+    )
+    allowed, reason = workspace_retry_allowed(attempt)
+    assert allowed is False
+    assert reason
 
 
 def test_workspace_retry_blocks_in_progress():
@@ -423,17 +464,25 @@ def test_acknowledge_resolved_alert_returns_conflict():
     asyncio.run(_run())
 
 
-def test_retry_delegates_to_canonical_manual_retry():
+def test_retry_empty_allowlist_blocks_before_canonical_manual_retry():
+    """3C.1A: Telegram rate_limited is not eligible — no PublishAttemptOps retry I/O."""
+    from app.services.manual_retry_eligibility import ManualRetryLiveState
+
     tenant_id = uuid.uuid4()
     attempt_id = uuid.uuid4()
     content_id = uuid.uuid4()
     attempt = SimpleNamespace(
         id=attempt_id,
         status=STATUS_FAILED,
+        platform="telegram",
+        failure_code="rate_limited",
+        attempt_number=1,
         external_post_id=None,
         next_retry_at=None,
         idempotency_key="k1",
         content_id=content_id,
+        publish_version="pv_1",
+        account=None,
     )
 
     async def _run():
@@ -446,32 +495,38 @@ def test_retry_delegates_to_canonical_manual_retry():
                     new=AsyncMock(return_value=attempt),
                 ),
                 patch(
-                    "app.services.operator_workspace_actions.PublishResilienceService.find_live_success",
-                    new=AsyncMock(return_value=None),
+                    "app.services.operator_workspace_actions.PublishService._get_content",
+                    new=AsyncMock(return_value=SimpleNamespace(
+                        id=content_id, client_id=uuid.uuid4(), status="failed",
+                        caption_long_ru="", caption_long_en="", caption_short_ru="",
+                        hashtags="", media_file_id=None, platforms=["telegram"],
+                        updated_at=None,
+                    )),
                 ),
                 patch(
-                    "app.services.operator_workspace_actions.PublishResilienceService.manual_retry_allowed",
-                    return_value=(True, None),
+                    "app.services.operator_workspace_actions.build_manual_retry_live_state",
+                    new=AsyncMock(return_value=ManualRetryLiveState(
+                        has_live_success=False,
+                        content_status="failed",
+                        current_publish_version="pv_1",
+                        account_status="connected",
+                    )),
                 ),
                 patch(
                     "app.services.operator_workspace_actions.PublishAttemptOpsService.manual_retry",
-                    new=AsyncMock(return_value={
-                        "ok": True,
-                        "message": "Publish completed",
-                        "content_id": content_id,
-                        "status": "published",
-                    }),
+                    new=AsyncMock(),
                 ) as retry,
             ):
-                result = await OperatorWorkspaceActionService.execute(
-                    db,
-                    attention_id=f"publish-attempt:{attempt_id}",
-                    action_id=ACTION_RETRY_PUBLISH,
-                    actor_id=None,
-                    tenant_id=tenant_id,
-                )
-            retry.assert_awaited_once_with(db, attempt_id, tenant_id=tenant_id)
-            assert result.success is True
+                with pytest.raises(HTTPException) as exc:
+                    await OperatorWorkspaceActionService.execute(
+                        db,
+                        attention_id=f"publish-attempt:{attempt_id}",
+                        action_id=ACTION_RETRY_PUBLISH,
+                        actor_id=None,
+                        tenant_id=tenant_id,
+                    )
+            assert exc.value.status_code == 409
+            retry.assert_not_awaited()
         finally:
             _auth_ctx.reset(token)
 
@@ -479,15 +534,23 @@ def test_retry_delegates_to_canonical_manual_retry():
 
 
 def test_retry_operator_review_returns_conflict():
+    from app.services.manual_retry_eligibility import ManualRetryLiveState
+
     tenant_id = uuid.uuid4()
     attempt_id = uuid.uuid4()
+    content_id = uuid.uuid4()
     attempt = SimpleNamespace(
         id=attempt_id,
         status=STATUS_OPERATOR_REVIEW,
+        platform="facebook",
+        failure_code="stale_in_progress",
+        attempt_number=1,
         external_post_id=None,
         next_retry_at=None,
         idempotency_key="k1",
-        content_id=uuid.uuid4(),
+        content_id=content_id,
+        publish_version="pv_1",
+        account=None,
     )
 
     async def _run():
@@ -498,6 +561,16 @@ def test_retry_operator_review_returns_conflict():
                 patch(
                     "app.services.operator_workspace_actions.PublishAttemptOpsService._load_attempt",
                     new=AsyncMock(return_value=attempt),
+                ),
+                patch(
+                    "app.services.operator_workspace_actions.PublishService._get_content",
+                    new=AsyncMock(return_value=SimpleNamespace(
+                        id=content_id, client_id=uuid.uuid4(), status="failed",
+                    )),
+                ),
+                patch(
+                    "app.services.operator_workspace_actions.build_manual_retry_live_state",
+                    new=AsyncMock(return_value=ManualRetryLiveState(has_live_success=False)),
                 ),
                 patch(
                     "app.services.operator_workspace_actions.PublishAttemptOpsService.manual_retry",
@@ -521,24 +594,44 @@ def test_retry_operator_review_returns_conflict():
 
 
 def test_retry_in_progress_returns_conflict():
+    from app.services.manual_retry_eligibility import ManualRetryLiveState
+
     tenant_id = uuid.uuid4()
     attempt_id = uuid.uuid4()
+    content_id = uuid.uuid4()
     attempt = SimpleNamespace(
         id=attempt_id,
         status=STATUS_IN_PROGRESS,
+        platform="telegram",
+        failure_code=None,
+        attempt_number=1,
         external_post_id=None,
         next_retry_at=None,
         idempotency_key=None,
-        content_id=uuid.uuid4(),
+        content_id=content_id,
+        publish_version="pv_1",
+        account=None,
     )
 
     async def _run():
         db = AsyncMock()
         token = _auth_ctx.set(ApiAuthContext(kind="tenant", tenant_id=tenant_id, client_ids=()))
         try:
-            with patch(
-                "app.services.operator_workspace_actions.PublishAttemptOpsService._load_attempt",
-                new=AsyncMock(return_value=attempt),
+            with (
+                patch(
+                    "app.services.operator_workspace_actions.PublishAttemptOpsService._load_attempt",
+                    new=AsyncMock(return_value=attempt),
+                ),
+                patch(
+                    "app.services.operator_workspace_actions.PublishService._get_content",
+                    new=AsyncMock(return_value=SimpleNamespace(
+                        id=content_id, client_id=uuid.uuid4(), status="publishing",
+                    )),
+                ),
+                patch(
+                    "app.services.operator_workspace_actions.build_manual_retry_live_state",
+                    new=AsyncMock(return_value=ManualRetryLiveState(has_live_success=False)),
+                ),
             ):
                 with pytest.raises(HTTPException) as exc:
                     await OperatorWorkspaceActionService.execute(

@@ -44,13 +44,14 @@ Derived on each items response (`actions[]`). Not persisted.
 |-----------|-----------|--------------|--------------|-------|
 | `acknowledge_alert` | `publish-alert:*` (open) | `PublishOperatorAlertService.acknowledge` | No | Idempotent if already acknowledged |
 | `resolve_alert` | `publish-alert:*` (open/ack) | `PublishOperatorAlertService.resolve_manual` | Yes | Removes from actionable set |
-| `retry_publish` | `publish-attempt:*` failed / exhausted / due retrying | `PublishAttemptOpsService.manual_retry` | Yes | **Not** exposed for `operator_review` |
+| `retry_publish` | `publish-attempt:*` when canonical `evaluate_manual_retry_eligibility` allows (Workspace/web) | `PublishAttemptOpsService.manual_retry` after live revalidation | Yes | **Phase 3C.1A: allowlist is EMPTY** — no enabled Retry for Telegram/Meta/null/unknown/ambiguous codes, exhausted budget, mock platforms, or mobile source. Navigation / disabled affordances only. |
 | `approve_content` | `content-review:*` | `ContentService.approve` | Yes | Does not bypass client approval; may start client review / Telegram preview via existing path |
 | `open` | all | — | — | Navigation only; mutation endpoint rejects it |
 
 ### Explicitly excluded (navigation / deep-link only)
 
 - Meta `operator_review` republish (ambiguous outcomes — fail-closed)
+- Telegram `rate_limited` / `provider_transient` one-click retry (3C.1A: Bot API 429 is not structured into `failure_code`; `provider_transient` is Meta-text only — both fail closed)
 - OAuth reconnect / credential mutation
 - Automation dead-letter replay
 - Client approval on behalf of client

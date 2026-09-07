@@ -285,7 +285,14 @@ async def _collect_publish_items(db: FakeWorkspaceDb):
             seen.add(item.id)
             items.append(item)
 
-    db.queue_execute(db.publish_rows, db.stuck_rows)
+    # Collector issues: publish attempts → optional live-success keys → stuck publishing.
+    has_keys = any(
+        getattr(row[0], "idempotency_key", None) for row in db.publish_rows
+    )
+    if has_keys:
+        db.queue_execute(db.publish_rows, [], db.stuck_rows)
+    else:
+        db.queue_execute(db.publish_rows, db.stuck_rows)
     await OperatorWorkspaceService._collect_publishing_issues(db, None, _now(), add)
     return items
 

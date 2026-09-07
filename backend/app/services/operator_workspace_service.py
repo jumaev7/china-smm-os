@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.api_auth_context import apply_tenant_direct_scope, get_auth_context
 from app.core.client_scope_guard import scope_select
@@ -40,6 +41,8 @@ from app.services.publish_resilience import (
     STATUS_IN_PROGRESS,
     STATUS_OPERATOR_REVIEW,
     STATUS_RETRYING,
+    STATUS_SUCCESS,
+    compute_publish_version,
     sanitize_error_message,
 )
 from app.services.scheduled_publish_diagnostics_service import ScheduledPublishDiagnosticsService
@@ -443,6 +446,7 @@ class OperatorWorkspaceService:
             select(PublishAttempt, ContentItem, Client)
             .join(ContentItem, ContentItem.id == PublishAttempt.content_id)
             .join(Client, Client.id == ContentItem.client_id)
+            .options(selectinload(PublishAttempt.account))
             .where(
                 or_(
                     and_(
@@ -478,6 +482,29 @@ class OperatorWorkspaceService:
         rows = (await db.execute(query)).all()
         _warn_if_pathological("publish_attempts", len(rows))
 
+        # Smallest safe projection for manual-retry actions[]: batch live-success keys.
+        # Missing/unknown live success fails closed in the canonical eligibility policy.
+        idem_keys = [
+            key
+            for attempt, _content, _client in rows
+            if (key := getattr(attempt, "idempotency_key", None))
+        ]
+        live_success_keys: set[str] = set()
+        if idem_keys:
+            live_rows = (
+                await db.execute(
+                    select(PublishAttempt.idempotency_key).where(
+                        PublishAttempt.idempotency_key.in_(tuple(idem_keys)),
+                        PublishAttempt.status == STATUS_SUCCESS,
+                        or_(
+                            PublishAttempt.external_post_id.isnot(None),
+                            PublishAttempt.response.isnot(None),
+                        ),
+                    )
+                )
+            ).scalars().all()
+            live_success_keys = {key for key in live_rows if key}
+
         for attempt, content, client in rows:
             status = attempt.status
             priority = _priority_for_publish_status(status)
@@ -492,6 +519,18 @@ class OperatorWorkspaceService:
             error_msg = sanitize_error_message(attempt.error) if attempt.error else None
             platform = attempt.platform or "unknown"
             reason = error_msg or "Publish attempt requires attention"
+            account = getattr(attempt, "account", None)
+            account_status = getattr(account, "status", None) if account is not None else None
+            idem_key = getattr(attempt, "idempotency_key", None)
+            if idem_key:
+                has_live_success: bool | None = idem_key in live_success_keys
+            else:
+                has_live_success = None
+
+            try:
+                current_publish_version = compute_publish_version(content)
+            except Exception:
+                current_publish_version = None
 
             add(OperatorAttentionItem(
                 id=f"publish-attempt:{attempt.id}",
@@ -513,7 +552,19 @@ class OperatorWorkspaceService:
                     "reason_code": reason_code,
                     "platform": platform,
                     "attempt_id": str(attempt.id),
-                    "failure_code": attempt.failure_code,
+                    "failure_code": getattr(attempt, "failure_code", None),
+                    "attempt_number": getattr(attempt, "attempt_number", 1) or 1,
+                    "publish_version": getattr(attempt, "publish_version", None),
+                    "current_publish_version": current_publish_version,
+                    "content_status": content.status,
+                    "has_live_success": has_live_success,
+                    "account_status": account_status,
+                    "next_retry_at": (
+                        attempt.next_retry_at.isoformat()
+                        if getattr(attempt, "next_retry_at", None) is not None
+                        else None
+                    ),
+                    "external_post_id": getattr(attempt, "external_post_id", None),
                 },
             ))
 

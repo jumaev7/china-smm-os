@@ -2,6 +2,10 @@
 
 Workspace remains a projection/aggregation layer. All mutations delegate to existing
 domain services (alerts, publishing, content). No duplicate business logic.
+
+Manual ``retry_publish`` eligibility is owned by
+``app.services.manual_retry_eligibility`` (Phase 3C.1A) — the same policy decides
+both action exposure and execution-time validation.
 """
 from __future__ import annotations
 
@@ -27,19 +31,20 @@ from app.services.content_review_service import (
     CLIENT_REVIEW_PENDING,
 )
 from app.services.content_service import ContentService
+from app.services.manual_retry_eligibility import (
+    build_manual_retry_live_state,
+    eligibility_from_attention_metadata,
+    evaluate_manual_retry_eligibility,
+    log_manual_retry_denied,
+)
 from app.services.operator_workspace_metrics import OperatorWorkspaceMetricsService
 from app.services.operator_workspace_service import INTERNAL_REVIEW_STATUSES
 from app.services.publish_attempt_ops_service import PublishAttemptOpsService
 from app.services.publish_operator_alert_service import PublishOperatorAlertService
 from app.services.publish_resilience import (
-    STATUS_EXHAUSTED,
-    STATUS_FAILED,
-    STATUS_IN_PROGRESS,
     STATUS_OPERATOR_REVIEW,
-    STATUS_RETRYING,
-    STATUS_SUCCESS,
-    PublishResilienceService,
 )
+from app.services.publish_service import PublishService
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +61,6 @@ MUTATION_ACTIONS = frozenset({
     ACTION_RETRY_PUBLISH,
     ACTION_APPROVE_CONTENT,
 })
-
-# Workspace is stricter than PublishResilienceService.manual_retry_allowed:
-# operator_review requires human verification of ambiguous Meta outcomes — no
-# one-click retry from the daily queue.
-_WORKSPACE_RETRY_STATUSES = frozenset({STATUS_FAILED, STATUS_EXHAUSTED, STATUS_RETRYING})
 
 _ATTENTION_PREFIXES = frozenset({
     "content-review",
@@ -100,7 +100,10 @@ def _open_action(href: str, *, label: str = "Open") -> OperatorWorkspaceAction:
 
 
 def _confirmation_tier_for(action_id: str, *, requires_confirmation: bool) -> str:
-    if action_id in (ACTION_RESOLVE_ALERT, ACTION_RETRY_PUBLISH, ACTION_APPROVE_CONTENT):
+    # External publish retry can create a real provider-side post.
+    if action_id == ACTION_RETRY_PUBLISH:
+        return "high"
+    if action_id in (ACTION_RESOLVE_ALERT, ACTION_APPROVE_CONTENT):
         return "medium"
     if requires_confirmation:
         return "medium"
@@ -130,7 +133,7 @@ def _mutation(
         confirmation_tier=_confirmation_tier_for(
             action_id, requires_confirmation=requires_confirmation,
         ),
-        disabled_reason=disabled_reason,
+        disabled_reason=None if enabled else disabled_reason,
         destructive=destructive,
         external_side_effect=external_side_effect,
         target_resource=target_resource,
@@ -139,19 +142,18 @@ def _mutation(
 
 
 def workspace_retry_allowed(attempt: PublishAttempt) -> tuple[bool, str | None]:
-    """Stricter than canonical manual_retry_allowed — blocks operator_review."""
-    if attempt.status == STATUS_OPERATOR_REVIEW:
-        return False, "Ambiguous publish outcome requires operator verification before retry"
-    if attempt.status == STATUS_IN_PROGRESS:
-        return False, "Publish is currently in progress"
-    if attempt.status == STATUS_SUCCESS and attempt.external_post_id:
-        return False, "Destination already published"
-    if attempt.status not in _WORKSPACE_RETRY_STATUSES:
-        return False, f"Retry not available for status={attempt.status}"
-    allowed, reason = PublishResilienceService.manual_retry_allowed(attempt)
-    if not allowed:
-        return False, reason
-    return True, None
+    """Compat wrapper — delegates to the canonical manual retry safety policy.
+
+    Snapshot-only (no live_state). Prefer ``evaluate_manual_retry_eligibility``
+    with a loaded ``ManualRetryLiveState`` at execution time.
+    """
+    eligibility = evaluate_manual_retry_eligibility(
+        attempt,
+        None,
+        source="workspace",
+        actor_role=None,
+    )
+    return eligibility.as_tuple()
 
 
 class OperatorWorkspaceActionService:
@@ -203,31 +205,68 @@ class OperatorWorkspaceActionService:
                 actions.append(_open_action(href, label="Review"))
                 return actions
 
-            retry_ok = status in _WORKSPACE_RETRY_STATUSES
-            disabled_reason = None
-            if status == STATUS_IN_PROGRESS:
-                retry_ok = False
-                disabled_reason = "Publish is currently in progress"
-            elif status == STATUS_SUCCESS:
-                retry_ok = False
-                disabled_reason = "Attempt already succeeded"
-            elif not retry_ok:
-                disabled_reason = "Retry not available for this publish state"
+            eligibility = eligibility_from_attention_metadata(
+                status=status,
+                metadata=item.metadata,
+                platform=(item.metadata or {}).get("platform"),
+                source="workspace",
+            )
+            retry_ok = eligibility.allowed
+            disabled_reason = None if retry_ok else eligibility.operator_message
 
-            if retry_ok or disabled_reason:
+            if retry_ok:
                 actions.append(
                     _mutation(
                         ACTION_RETRY_PUBLISH,
                         label="Retry publish",
-                        enabled=retry_ok,
+                        enabled=True,
                         requires_confirmation=True,
-                        confirmation_message="This will schedule/attempt publication again.",
-                        disabled_reason=None if retry_ok else disabled_reason,
+                        confirmation_message=(
+                            "This may create a real external post. Confirm only if you "
+                            "have verified the destination is not already published."
+                        ),
                         external_side_effect=True,
                         target_resource=target,
-                        primary=retry_ok,
+                        primary=True,
                     ),
                 )
+            elif disabled_reason:
+                # Surface a disabled Retry only for clear operational states where
+                # the operator benefits from seeing why one-click retry is withheld.
+                # Fail-closed / review cases stay navigation-only (no false affordance).
+                show_disabled = eligibility.reason_code in {
+                    "in_progress",
+                    "auto_retry_scheduled",
+                    "retry_budget_exhausted",
+                    "live_success_exists",
+                    "incompatible_content_state",
+                    "stale_publish_version",
+                    "account_unavailable",
+                    "platform_execution_unavailable",
+                    "mock_platform",
+                    "publish_blocked",
+                    "auth_or_permission",
+                    "credential_decryption_failed",
+                    "validation_error",
+                    "unsupported_media",
+                }
+                if show_disabled:
+                    actions.append(
+                        _mutation(
+                            ACTION_RETRY_PUBLISH,
+                            label="Retry publish",
+                            enabled=False,
+                            requires_confirmation=True,
+                            confirmation_message=(
+                                "This may create a real external post. Confirm only if you "
+                                "have verified the destination is not already published."
+                            ),
+                            disabled_reason=disabled_reason,
+                            external_side_effect=True,
+                            target_resource=target,
+                            primary=False,
+                        ),
+                    )
             actions.append(_open_action(href, label="Review"))
             return actions
 
@@ -283,6 +322,14 @@ class OperatorWorkspaceActionService:
             raise HTTPException(status_code=400, detail="Unknown or unsupported action")
 
         audit_source = source if source in ("web", "mobile") else "web"
+        # Backend fail-closed: mobile cannot execute publish retry even if the
+        # client somehow posts to this endpoint (mobile allowlist is defense-in-depth).
+        if action_id == ACTION_RETRY_PUBLISH and audit_source == "mobile":
+            raise HTTPException(
+                status_code=403,
+                detail="Mobile publish retry is not enabled",
+            )
+
         prefix, resource_key = parse_attention_id(attention_id)
         audit_tenant = tenant_id
         audit_client: UUID | None = None
@@ -311,6 +358,7 @@ class OperatorWorkspaceActionService:
                     attempt_id=UUID(resource_key),
                     tenant_id=tenant_id,
                     actor_id=actor_id,
+                    source=audit_source,
                 )
                 audit_category = "publishing_issue"
             elif action_id == ACTION_APPROVE_CONTENT:
@@ -510,12 +558,13 @@ class OperatorWorkspaceActionService:
         attempt_id: UUID,
         tenant_id: UUID | None,
         actor_id: UUID | None = None,
+        source: str = "web",
     ) -> tuple[OperatorWorkspaceActionResult, UUID | None, UUID | None]:
-        del actor_id  # recorded by execute() wrapper
         ctx = get_auth_context()
         scope_tenant = tenant_id
         if ctx and ctx.is_tenant:
             scope_tenant = ctx.tenant_id
+        actor_role = "admin" if (ctx and ctx.is_admin) else "operator"
 
         attempt = await PublishAttemptOpsService._load_attempt(
             db, attempt_id, tenant_id=scope_tenant,
@@ -526,27 +575,38 @@ class OperatorWorkspaceActionService:
         if not isinstance(client_id, UUID):
             client_id = None
 
-        # Re-check Workspace eligibility (stricter than canonical).
-        allowed, reason = workspace_retry_allowed(attempt)
-        if not allowed:
+        content = await PublishService._get_content(db, attempt.content_id)
+        if client_id is None:
+            client_id = getattr(content, "client_id", None)
+
+        live_state = await build_manual_retry_live_state(db, attempt, content=content)
+        eligibility = evaluate_manual_retry_eligibility(
+            attempt,
+            live_state,
+            source="mobile" if source == "mobile" else "workspace",
+            actor_role=actor_role,
+        )
+        if not eligibility.allowed:
+            log_manual_retry_denied(
+                eligibility,
+                attempt_id=attempt_id,
+                tenant_id=scope_tenant,
+                actor_id=actor_id,
+                source=source,
+            )
             raise HTTPException(
                 status_code=409,
-                detail=reason or "Retry is no longer available — refresh the workspace",
+                detail=eligibility.operator_message
+                or "Retry is no longer available — refresh the workspace",
             )
-
-        # Extra live-success guard before delegating (canonical also checks).
-        if attempt.idempotency_key:
-            prior = await PublishResilienceService.find_live_success(
-                db, idempotency_key=attempt.idempotency_key,
-            )
-            if prior is not None:
-                raise HTTPException(
-                    status_code=409,
-                    detail="Destination already published — retry blocked to prevent duplicates",
-                )
 
         result = await PublishAttemptOpsService.manual_retry(
-            db, attempt_id, tenant_id=scope_tenant,
+            db,
+            attempt_id,
+            tenant_id=scope_tenant,
+            source="workspace",
+            actor_role=actor_role,
+            skip_eligibility=True,  # already validated with fresh live state above
         )
         if not result.get("ok"):
             blocked = result.get("retry_blocked_reason") or result.get("message")
@@ -564,6 +624,8 @@ class OperatorWorkspaceActionService:
                     "attempt_id": str(attempt_id),
                     "content_id": str(result.get("content_id")) if result.get("content_id") else None,
                     "status": result.get("status"),
+                    "reason_code": eligibility.reason_code,
+                    "safety_class": eligibility.safety_class,
                 },
                 attention_still_relevant=not bool(result.get("ok")),
                 refresh_recommended=True,
