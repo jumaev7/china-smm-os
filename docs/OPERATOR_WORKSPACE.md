@@ -159,8 +159,9 @@ Infrastructure foundation (`publish_retry_commands` + create/get service + claim
   - `PUBLISH_RETRY_COMMANDS_ENABLED` — global create/get + claim subsystem gate
   - `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` — worker process/poll loop
   - `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` — permission to mutate pending→claimed / stale reclaim
-  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — future provider-execution gate (**unimplemented** in 3C.1C-B)
+  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — preparation + future provider-execution gate (keep false; not wired to worker)
 - Precedence for claim/reclaim: commands **and** worker **and** claim must all be true
+- Precedence for pre-I/O preparation (3C.1C-C): claim gates **and** execution must be true; **not** invoked by claim worker
 - Creating a command records operator retry intent only — **does not publish**
 - Claim worker (`publish-retry-command-worker`) owns pending→claimed / stale claimed reclaim only
 - Canonical `evaluate_manual_retry_eligibility` still gates creation (allowlist remains empty)
@@ -168,6 +169,7 @@ Infrastructure foundation (`publish_retry_commands` + create/get service + claim
 - Read-only status: `GET /api/v1/publishing/retry-commands/{command_id}`
 - **DB lineage invariants (3C.1C-A):** unique non-null `publish_attempts.retry_command_id`, unique non-null `publish_retry_commands.resulting_attempt_id`, worker lookup index `(status, created_at)`, CHECK that `provider_write_started` requires `provider_write_started_at`
 - **Claim/lease foundation (3C.1C-B):** `FOR UPDATE SKIP LOCKED`, DB `now()` leases, reclaim only when `status=claimed` and `provider_write_started_at IS NULL`. Never crosses the provider-write barrier.
+- **Pre-I/O preparation (3C.1C-C):** claimed command → eligibility + newer-success revalidation → create/reuse one linked `PublishAttempt` (`status=operator_review`, provider write not started) → bidirectional lineage → commit. No `PublishService.publish_content`, no adapters, no `provider_write_started`.
 
 ## Future (not in scope)
 
@@ -178,4 +180,4 @@ Infrastructure foundation (`publish_retry_commands` + create/get service + claim
 - Automation requeue from workspace
 - OAuth reconnect from workspace
 - Listening/Advertising intelligence feeds (unless operational failure)
-- Async publish-retry provider execution (3C.1C-C+)
+- Async publish-retry provider write barrier / execution (3C.1C-D+)

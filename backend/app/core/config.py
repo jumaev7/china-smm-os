@@ -111,7 +111,9 @@ class Settings(BaseSettings):
     PUBLISH_RETRY_COMMAND_WORKER_ENABLED: bool = False
     # Permission to mutate pending→claimed / stale claimed ownership. Default off.
     PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: bool = False
-    # Future provider-execution gate (3C.1C-C+). Unimplemented in B — keep false.
+    # Provider-execution / preparation gate (3C.1C-C+). Keep false in production.
+    # 3C.1C-C preparation requires this flag (plus commands/worker/claim) but is
+    # not wired into the claim worker — explicit internal/test entry only.
     PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: bool = False
     PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: float = 5.0
     PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: int = 1
