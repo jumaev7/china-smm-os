@@ -1,6 +1,7 @@
-"""Low-cardinality in-process counters for retry-command claim/prepare.
+"""Low-cardinality in-process counters for retry-command claim/prepare/barrier.
 
-Metrics failures must never affect claim/prepare correctness. No tenant or command IDs.
+Metrics failures must never affect claim/prepare/barrier correctness.
+No tenant or command IDs.
 """
 from __future__ import annotations
 
@@ -21,6 +22,9 @@ _counters: Dict[str, int] = {
     "retry_command_prepare_reuse_total": 0,
     "retry_command_prepare_blocked_total": 0,
     "retry_command_prepare_invariant_error_total": 0,
+    "retry_command_barrier_crossed_total": 0,
+    "retry_command_barrier_denied_total": 0,
+    "retry_command_barrier_invariant_error_total": 0,
 }
 
 

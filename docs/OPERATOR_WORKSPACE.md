@@ -151,17 +151,17 @@ Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resol
 
 No new analytics subsystem or migration was introduced for this phase.
 
-## Durable publish retry commands (Phase 3C.1B / 3C.1C-A / 3C.1C-B)
+## Durable publish retry commands (Phase 3C.1B / 3C.1C-A / 3C.1C-B / 3C.1C-C / 3C.1C-D1)
 
-Infrastructure foundation (`publish_retry_commands` + create/get service + claim worker).
+Infrastructure foundation (`publish_retry_commands` + create/get service + claim worker + preparation + DB write barrier).
 
 - Feature flags (all default **false**):
   - `PUBLISH_RETRY_COMMANDS_ENABLED` — global create/get + claim subsystem gate
   - `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` — worker process/poll loop
   - `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` — permission to mutate pending→claimed / stale reclaim
-  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — preparation + future provider-execution gate (keep false; not wired to worker)
+  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — preparation + DB write-barrier gate (keep false; not wired to worker)
 - Precedence for claim/reclaim: commands **and** worker **and** claim must all be true
-- Precedence for pre-I/O preparation (3C.1C-C): claim gates **and** execution must be true; **not** invoked by claim worker
+- Precedence for pre-I/O preparation (3C.1C-C) and DB write barrier (3C.1C-D1): claim gates **and** execution must be true; **not** invoked by claim worker
 - Creating a command records operator retry intent only — **does not publish**
 - Claim worker (`publish-retry-command-worker`) owns pending→claimed / stale claimed reclaim only
 - Canonical `evaluate_manual_retry_eligibility` still gates creation (allowlist remains empty)
@@ -170,6 +170,7 @@ Infrastructure foundation (`publish_retry_commands` + create/get service + claim
 - **DB lineage invariants (3C.1C-A):** unique non-null `publish_attempts.retry_command_id`, unique non-null `publish_retry_commands.resulting_attempt_id`, worker lookup index `(status, created_at)`, CHECK that `provider_write_started` requires `provider_write_started_at`
 - **Claim/lease foundation (3C.1C-B):** `FOR UPDATE SKIP LOCKED`, DB `now()` leases, reclaim only when `status=claimed` and `provider_write_started_at IS NULL`. Never crosses the provider-write barrier.
 - **Pre-I/O preparation (3C.1C-C):** claimed command → eligibility + newer-success revalidation → create/reuse one linked `PublishAttempt` (`status=operator_review`, provider write not started) → bidirectional lineage → commit. No `PublishService.publish_content`, no adapters, no `provider_write_started`.
+- **DB-only write barrier (3C.1C-D1):** claimed + prepared → `provider_write_started` with durable `provider_write_started_at` (DB `now()`); linked attempt stays `operator_review` with `failure_code=retry_command_write_started`. Lease expiry cleared; lease owner preserved for forensics. No provider I/O, no fake provider, not wired to worker. Explicit/test entrypoint only.
 
 ## Future (not in scope)
 
@@ -180,4 +181,4 @@ Infrastructure foundation (`publish_retry_commands` + create/get service + claim
 - Automation requeue from workspace
 - OAuth reconnect from workspace
 - Listening/Advertising intelligence feeds (unless operational failure)
-- Async publish-retry provider write barrier / execution (3C.1C-D+)
+- Provider execution after write barrier (3C.1C-D2+)
