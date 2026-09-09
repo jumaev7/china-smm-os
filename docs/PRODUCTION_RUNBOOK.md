@@ -163,7 +163,9 @@ allowlist** (never client intake groups or publish channels):
 | `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` | `false` | Claim/orchestration worker process loop (idles when false) |
 | `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` | `false` | Permit pending→claimed / stale claimed reclaim mutations |
 | `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` | `false` | Preparation + barrier + executor gate (keep false) |
-| `PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND` | `none` | D2-B1: only `none` is runnable (safe pre-executor stop). Missing → `none`. `fake` reserved for D2-B2. |
+| `PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND` | `none` | D2-B1/B2a: only `none` is worker-runnable. Missing → `none`. `fake` is staging-harness-only (D2-B2a), not worker-executable. |
+| `PUBLISH_RETRY_COMMAND_FAKE_EXECUTION_ALLOWED` | `false` | Explicit ack required (with APP_ENV=staging + china_smm_os_staging) before staging harness may resolve fake |
+| `PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE` | `success` | Staging CLI/harness fake outcome mode only |
 | `PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS` | `5` | Worker poll interval |
 | `PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE` | `1` | Max commands claimed/reclaimed per tick (capped at 5) |
 | `PUBLISH_RETRY_COMMAND_LEASE_SECONDS` | `180` | Claim lease duration (DB clock; clamped 30–3600) |

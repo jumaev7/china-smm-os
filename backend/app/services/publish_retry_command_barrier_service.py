@@ -51,6 +51,12 @@ from app.services.manual_retry_eligibility import (
     evaluate_manual_retry_eligibility,
     log_manual_retry_denied,
 )
+from app.services.publish_retry_command_eligibility import (
+    RetryCommandEligibilityContext,
+    RetryCommandEligibilityEvaluator,
+    default_eligibility_evaluator,
+    synthetic_tenant_marker,
+)
 from app.services.platform_audit_service import PlatformAuditService
 from app.services.publish_resilience import (
     STATUS_OPERATOR_REVIEW,
@@ -128,7 +134,21 @@ def barrier_gates_open() -> tuple[bool, str]:
 
 
 class PublishRetryCommandBarrierService:
-    """DB-only claimed+prepared → provider_write_started barrier."""
+    """DB-only claimed+prepared → provider_write_started barrier.
+
+    Constructor default uses CanonicalManualRetryEligibility. Staging behavior
+    requires explicit evaluator injection — never derived from APP_ENV.
+    """
+
+    def __init__(
+        self,
+        eligibility_evaluator: RetryCommandEligibilityEvaluator | None = None,
+    ) -> None:
+        self.eligibility_evaluator = (
+            eligibility_evaluator
+            if eligibility_evaluator is not None
+            else default_eligibility_evaluator()
+        )
 
     @classmethod
     async def cross_barrier(
@@ -139,6 +159,7 @@ class PublishRetryCommandBarrierService:
         worker_id: str,
         correlation_id: str | None = None,
         commit: bool = True,
+        eligibility_evaluator: RetryCommandEligibilityEvaluator | None = None,
     ) -> BarrierResult:
         """Cross the write barrier: validate, mutate, commit, stop.
 
@@ -156,12 +177,14 @@ class PublishRetryCommandBarrierService:
                 message="Retry command write barrier is disabled",
             )
 
+        evaluator = eligibility_evaluator
         try:
             result = await cls._cross_locked(
                 db,
                 command_id=command_id,
                 worker_id=worker_id,
                 correlation_id=correlation_id,
+                eligibility_evaluator=evaluator,
             )
             if commit:
                 await db.commit()
@@ -193,6 +216,7 @@ class PublishRetryCommandBarrierService:
         command_id: UUID,
         worker_id: str,
         correlation_id: str | None = None,
+        eligibility_evaluator: RetryCommandEligibilityEvaluator | None = None,
     ) -> BarrierResult:
         """Cross barrier with commit, then best-effort audit in a separate session."""
         result = await cls.cross_barrier(
@@ -201,6 +225,7 @@ class PublishRetryCommandBarrierService:
             worker_id=worker_id,
             correlation_id=correlation_id,
             commit=True,
+            eligibility_evaluator=eligibility_evaluator,
         )
         await cls.record_barrier_audit(
             session_factory,
@@ -217,6 +242,7 @@ class PublishRetryCommandBarrierService:
         command_id: UUID,
         worker_id: str,
         correlation_id: str | None,
+        eligibility_evaluator: RetryCommandEligibilityEvaluator | None,
     ) -> BarrierResult:
         # Revalidate gates inside the locked path (defense in depth).
         allowed, gate_reason = barrier_gates_open()
@@ -305,21 +331,37 @@ class PublishRetryCommandBarrierService:
         lineage = await cls._load_and_validate_original_lineage(db, command)
         if isinstance(lineage, BarrierResult):
             return lineage
-        original, content, _client, account = lineage
+        original, content, client, account = lineage
 
         linked = await cls._load_and_validate_linked_attempt(db, command)
         if isinstance(linked, BarrierResult):
             return linked
         attempt = linked
 
-        # Eligibility against ORIGINAL attempt (canonical policy; allowlist empty).
+        # Eligibility against ORIGINAL attempt.
+        # Default path uses module-global evaluate_manual_retry_eligibility
+        # (patch-compatible). Injected staging evaluators bypass.
         live_state = await build_manual_retry_live_state(db, original, content=content)
         source = (command.requested_source or "admin").strip().lower()
-        eligibility = evaluate_manual_retry_eligibility(
-            original,
-            live_state,
-            source=source if source != "api" else "admin",
-        )
+        source_norm = source if source != "api" else "admin"
+        if eligibility_evaluator is None:
+            eligibility = evaluate_manual_retry_eligibility(
+                original,
+                live_state,
+                source=source_norm,
+            )
+        else:
+            eligibility = eligibility_evaluator.evaluate(
+                RetryCommandEligibilityContext(
+                    attempt=original,
+                    live_state=live_state,
+                    source=source_norm,
+                    correlation_id=corr,
+                    tenant_company_name=synthetic_tenant_marker(client),
+                    command_id=command.id,
+                    tenant_id=command.tenant_id,
+                ),
+            )
         if not eligibility.allowed:
             log_manual_retry_denied(
                 eligibility,
@@ -539,7 +581,7 @@ class PublishRetryCommandBarrierService:
                         ContentItem.platforms,
                         ContentItem.updated_at,
                     ),
-                    load_only(Client.id, Client.tenant_id),
+                    load_only(Client.id, Client.tenant_id, Client.company_name),
                 ),
             )
         ).one_or_none()

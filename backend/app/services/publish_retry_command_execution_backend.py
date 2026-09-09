@@ -1,10 +1,13 @@
-"""Fail-closed execution-backend resolver (Phase 3C.1C-D2-B1).
+"""Fail-closed execution-backend resolver (Phase 3C.1C-D2-B1 / D2-B2a).
 
-D2-B1 allows only ``none`` as a runnable configuration. That value means a
-safe pre-executor stop after claim/reclaim — no Preparation, Barrier,
+D2-B1 allows only ``none`` as a runnable worker configuration. That value means
+a safe pre-executor stop after claim/reclaim — no Preparation, Barrier,
 provider, or Finalizer invocation.
 
-``fake`` is recognized as reserved for D2-B2 but is unimplemented here.
+``fake`` is recognized as reserved for the D2-B2a staging harness but remains
+**not worker-runnable**. Harness fake resolution requires
+VerifiedRetryCommandStagingContext and lives outside this worker path.
+
 Real platform names and unknown values fail closed. This module must never
 import publishers, ADAPTERS, httpx, FakeProviderExecutor, or the executor.
 """
@@ -19,10 +22,11 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Only "none" is executable in D2-B1. Missing/blank env normalizes to none.
+# Only "none" is executable by the worker in D2-B1/B2a. Missing/blank → none.
 D2B1_EXECUTABLE_BACKEND: Final[str] = "none"
 
-# Recognized but intentionally unsupported until a later phase.
+# Recognized for staging harness (D2-B2a) but intentionally unimplemented for
+# the long-running worker path.
 RESERVED_UNIMPLEMENTED_BACKENDS: Final[frozenset[str]] = frozenset({"fake"})
 
 # Explicit real/platform strings — always refuse; never map to adapters.
@@ -115,7 +119,7 @@ def assert_worker_execution_backend_or_exit() -> None:
         return
     logger.error(
         "[RetryCommandWorker] refusing start: PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND=%r "
-        "reason=%s (D2-B1 allows only 'none'; fake reserved for D2-B2; "
+        "reason=%s (D2-B1/B2a allows only 'none'; fake is staging-harness-only; "
         "real platforms unsupported)",
         resolution.value,
         resolution.reason,

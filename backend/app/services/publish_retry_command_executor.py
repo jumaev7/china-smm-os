@@ -1,4 +1,4 @@
-"""Unwired retry-command executor (Phase 3C.1C-D2-A).
+"""Unwired retry-command executor (Phase 3C.1C-D2-A / D2-B2a harness hooks).
 
 Orchestrates:
 
@@ -9,8 +9,8 @@ Orchestrates:
   → CommandFinalizationService  (TX3 COMMIT)
   → STOP
 
-Not invoked by PublishRetryCommandWorker under D2-B1 (EXECUTION_BACKEND=none
-stops before this orchestrator). No real provider adapters.
+Not invoked by PublishRetryCommandWorker under D2-B1/B2a (EXECUTION_BACKEND=none
+stops before this orchestrator; fake is harness-only). No real provider adapters.
 No PublishService.publish_content. No begin_attempt / raw finalize_attempt.
 
 Transaction / kill-switch semantics
@@ -25,10 +25,14 @@ Transaction / kill-switch semantics
 Concurrent callers: BarrierService ``FOR UPDATE`` ensures only one
 ``barrier_crossed``; others get ``already_barriered`` (ok=False) and never
 invoke the provider.
+
+Optional ``ExecutorHooks`` exist for staging/harness crash-boundary tests
+only — not production-reachable configuration.
 """
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 from uuid import UUID
@@ -39,6 +43,9 @@ from app.services.publish_retry_command_barrier_service import (
     PublishRetryCommandBarrierService,
 )
 from app.services.publish_retry_command_claim_service import scrubbed_worker_instance
+from app.services.publish_retry_command_eligibility import (
+    RetryCommandEligibilityEvaluator,
+)
 from app.services.publish_retry_command_finalization_service import (
     PublishRetryCommandFinalizationService,
 )
@@ -78,6 +85,19 @@ _PREP_OK = frozenset({
     "repaired_attempt_side_link",
 })
 
+HookFn = Callable[[], Awaitable[None] | None]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutorHooks:
+    """Deterministic crash/injection hooks for staging harness tests only."""
+
+    after_prepare: HookFn | None = None
+    after_barrier: HookFn | None = None
+    before_provider: HookFn | None = None
+    after_provider: HookFn | None = None
+    before_finalize: HookFn | None = None
+
 
 @dataclass(frozen=True)
 class ExecutorResult:
@@ -104,6 +124,14 @@ class ExecutorResult:
     finalization_outcome: str | None = None
 
 
+async def _run_hook(hook: HookFn | None) -> None:
+    if hook is None:
+        return
+    result = hook()
+    if result is not None and hasattr(result, "__await__"):
+        await result  # type: ignore[misc]
+
+
 class PublishRetryCommandExecutor:
     """Coordinates prepare → barrier → one fake provider call → finalize."""
 
@@ -116,12 +144,14 @@ class PublishRetryCommandExecutor:
         worker_id: str,
         provider: RetryCommandProviderPort,
         correlation_id: str | None = None,
+        eligibility_evaluator: RetryCommandEligibilityEvaluator | None = None,
+        hooks: ExecutorHooks | None = None,
     ) -> ExecutorResult:
         """Run the D2-A orchestration path once for a claimed command.
 
-        ``provider`` must be injected explicitly (tests: FakeProviderExecutor).
+        ``provider`` must be injected explicitly (tests/harness: FakeProvider /
+        staging fake). Optional ``eligibility_evaluator`` defaults to canonical.
         """
-        # Pre-barrier kill switch — do not start preparation when closed.
         allowed, gate_reason = prepare_gates_open()
         if not allowed:
             return ExecutorResult(
@@ -132,7 +162,6 @@ class PublishRetryCommandExecutor:
                 message="Retry command execution is disabled",
             )
 
-        # --- TX1: Preparation ---
         async with session_factory() as db:
             prep = await PublishRetryCommandPreparationService.prepare(
                 db,
@@ -140,6 +169,7 @@ class PublishRetryCommandExecutor:
                 worker_id=worker_id,
                 correlation_id=correlation_id,
                 commit=True,
+                eligibility_evaluator=eligibility_evaluator,
             )
         try:
             await PublishRetryCommandPreparationService.record_preparation_audit(
@@ -147,14 +177,13 @@ class PublishRetryCommandExecutor:
                 prep,
                 worker_id=worker_id,
             )
-        except Exception:  # noqa: BLE001 — audit must not alter orchestration
+        except Exception:  # noqa: BLE001
             logger.exception(
                 "[RetryCommandExecutor] prep audit failed command_id=%s",
                 command_id,
             )
 
         if prep.outcome == "blocked_terminal_or_post_write":
-            # Already barriered or terminal — NEVER replay provider.
             return ExecutorResult(
                 ok=True,
                 outcome=(
@@ -201,7 +230,8 @@ class PublishRetryCommandExecutor:
                 preparation_outcome=prep.outcome,
             )
 
-        # --- TX2: Barrier ---
+        await _run_hook(hooks.after_prepare if hooks else None)
+
         async with session_factory() as db:
             barrier = await PublishRetryCommandBarrierService.cross_barrier(
                 db,
@@ -209,6 +239,7 @@ class PublishRetryCommandExecutor:
                 worker_id=worker_id,
                 correlation_id=correlation_id or prep.correlation_id,
                 commit=True,
+                eligibility_evaluator=eligibility_evaluator,
             )
         try:
             await PublishRetryCommandBarrierService.record_barrier_audit(
@@ -266,7 +297,8 @@ class PublishRetryCommandExecutor:
                 barrier_outcome=barrier.outcome,
             )
 
-        # Point of no return. Do NOT re-check EXECUTION before provider call.
+        await _run_hook(hooks.after_barrier if hooks else None)
+
         assert barrier.resulting_attempt_id is not None
         request = ProviderExecutionRequest(
             command_id=command_id,
@@ -286,15 +318,13 @@ class PublishRetryCommandExecutor:
                 correlation_id=request.correlation_id,
                 resulting_attempt_id=request.resulting_attempt_id,
             )
-        except Exception:  # noqa: BLE001 — audit must never skip the provider call
+        except Exception:  # noqa: BLE001
             logger.exception(
                 "[RetryCommandExecutor] provider_call_started audit raised "
                 "command_id=%s",
                 command_id,
             )
 
-        # --- NO DB TX: exactly one provider invocation ---
-        # Metrics must not gate or skip the provider call.
         try:
             cmd_metrics.inc("retry_command_provider_calls_total")
         except Exception:  # noqa: BLE001
@@ -303,13 +333,15 @@ class PublishRetryCommandExecutor:
                 exc_info=True,
             )
 
+        await _run_hook(hooks.before_provider if hooks else None)
+
         provider_invoked = False
         classified: ClassifiedProviderOutcome
         try:
             raw = await provider.execute(request)
             provider_invoked = True
             classified = classify_provider_result(raw)
-        except Exception as exc:  # noqa: BLE001 — post-barrier → AMBIGUOUS
+        except Exception as exc:  # noqa: BLE001
             provider_invoked = True
             classified = classify_provider_exception(exc)
             logger.warning(
@@ -319,9 +351,11 @@ class PublishRetryCommandExecutor:
                 classified.reason_code,
             )
 
+        await _run_hook(hooks.after_provider if hooks else None)
         cls._record_provider_outcome_metrics(classified)
 
-        # --- TX3: Finalization ---
+        await _run_hook(hooks.before_finalize if hooks else None)
+
         try:
             async with session_factory() as db:
                 fin = await PublishRetryCommandFinalizationService.finalize(
@@ -373,7 +407,6 @@ class PublishRetryCommandExecutor:
             )
 
         if not fin.ok:
-            # Finalizer rejected (invariant) after provider — treat as local ambiguous state.
             return ExecutorResult(
                 ok=False,
                 outcome="post_provider_finalize_failed",
@@ -476,7 +509,7 @@ class PublishRetryCommandExecutor:
                     details=details,
                     commit=True,
                 )
-        except Exception:  # noqa: BLE001 — audit must not skip/alter provider call
+        except Exception:  # noqa: BLE001
             logger.exception(
                 "[RetryCommandExecutor] provider_call_started audit failed "
                 "command_id=%s",
