@@ -31,6 +31,10 @@ _counters: Dict[str, int] = {
     "retry_command_provider_failure_total": 0,
     "retry_command_provider_ambiguous_total": 0,
     "retry_command_finalize_total": 0,
+    # D2-B1 worker orchestration (no tenant/account/command labels)
+    "retry_command_worker_execution_disabled_total": 0,
+    "retry_command_worker_backend_none_total": 0,
+    "retry_command_worker_backend_invalid_total": 0,
 }
 
 

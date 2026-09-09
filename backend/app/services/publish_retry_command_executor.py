@@ -9,7 +9,8 @@ Orchestrates:
   → CommandFinalizationService  (TX3 COMMIT)
   → STOP
 
-NOT wired into PublishRetryCommandWorker. No real provider adapters.
+Not invoked by PublishRetryCommandWorker under D2-B1 (EXECUTION_BACKEND=none
+stops before this orchestrator). No real provider adapters.
 No PublishService.publish_content. No begin_attempt / raw finalize_attempt.
 
 Transaction / kill-switch semantics

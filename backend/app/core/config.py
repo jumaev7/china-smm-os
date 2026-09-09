@@ -112,9 +112,12 @@ class Settings(BaseSettings):
     # Permission to mutate pending→claimed / stale claimed ownership. Default off.
     PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: bool = False
     # Provider-execution / preparation gate (3C.1C-C+). Keep false in production.
-    # 3C.1C-C preparation requires this flag (plus commands/worker/claim) but is
-    # not wired into the claim worker — explicit internal/test entry only.
+    # D2-B1 worker may observe this flag after claim, but EXECUTION_BACKEND=none
+    # still stops before Preparation/Barrier/provider/Finalizer.
     PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: bool = False
+    # D2-B1: only "none" is runnable (safe pre-executor stop). Missing → none.
+    # "fake" reserved for D2-B2 (unimplemented). Real platforms fail closed.
+    PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: str = "none"
     PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: float = 5.0
     PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: int = 1
     PUBLISH_RETRY_COMMAND_LEASE_SECONDS: int = 180

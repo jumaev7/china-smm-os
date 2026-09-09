@@ -160,9 +160,10 @@ allowlist** (never client intake groups or publish channels):
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_TOKEN_TTL_SECONDS` | `600` | Enrollment token TTL (clamped 60–1800) |
 | `PUBLISH_ALERT_TELEGRAM_ENROLLMENT_POLL_SECONDS` | `3` | UI poll interval while waiting for `/start` |
 | `PUBLISH_RETRY_COMMANDS_ENABLED` | `false` | Durable retry-command create/get subsystem gate (3C.1B) |
-| `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` | `false` | Claim/lease worker process loop (3C.1C-B; idles when false) |
+| `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` | `false` | Claim/orchestration worker process loop (idles when false) |
 | `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` | `false` | Permit pending→claimed / stale claimed reclaim mutations |
-| `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` | `false` | Preparation + DB write-barrier + unwired fake-executor gate (3C.1C-C / D1 / D2-A; not wired to worker) |
+| `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` | `false` | Preparation + barrier + executor gate (keep false) |
+| `PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND` | `none` | D2-B1: only `none` is runnable (safe pre-executor stop). Missing → `none`. `fake` reserved for D2-B2. |
 | `PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS` | `5` | Worker poll interval |
 | `PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE` | `1` | Max commands claimed/reclaimed per tick (capped at 5) |
 | `PUBLISH_RETRY_COMMAND_LEASE_SECONDS` | `180` | Claim lease duration (DB clock; clamped 30–3600) |
@@ -170,14 +171,17 @@ allowlist** (never client intake groups or publish channels):
 | `TELEGRAM_BOT_USERNAME` | *(empty)* | Public bot username for deep links (validated; `getMe` fallback) |
 | `PUBLISH_ALERT_APP_BASE_URL` | `https://app.chinasmmos.com` | Deep-link origin in Telegram messages |
 
-**Retry-command claim worker (3C.1C-B):** Compose service `publish-retry-command-worker`
-idles when `PUBLISH_RETRY_COMMAND_WORKER_ENABLED=false` (default). Claim/reclaim mutations
-require **all** of `PUBLISH_RETRY_COMMANDS_ENABLED`, `PUBLISH_RETRY_COMMAND_WORKER_ENABLED`,
-and `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED`. Real provider execution remains unimplemented.
-`PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` gates preparation, the DB-only write barrier
-(3C.1C-D1: claimed→`provider_write_started`), and the unwired fake executor (3C.1C-D2-A);
-none of those are wired to the claim worker. Prefer keeping the container undeployed or
-fully flag-off until staged claim observation is intentional.
+**Retry-command worker (3C.1C-D2-B1):** Compose service `publish-retry-command-worker` is
+profile-gated (`profiles: [retry-command]`). Normal `docker compose up -d` does **not**
+instantiate it; start only with an explicit profile (e.g. `--profile retry-command`).
+Even when profile-started, the process idles when `PUBLISH_RETRY_COMMAND_WORKER_ENABLED=false`
+(default). Claim/reclaim requires **all** of `PUBLISH_RETRY_COMMANDS_ENABLED`,
+`PUBLISH_RETRY_COMMAND_WORKER_ENABLED`, and `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED`.
+`PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND` defaults to `none`: after claim the worker records
+observation/metrics and **stops** before Preparation / Barrier / provider / Finalizer.
+If WORKER=true and backend ≠ `none`, startup exits non-zero (fail closed). Real provider
+execution remains unimplemented (F1/F2/F3). Prefer keeping the profile unselected and all
+flags false until staged claim observation is intentional.
 
 **Enrollment vs delivery:** Enabling enrollment (`PUBLISH_ALERT_TELEGRAM_ENROLLMENT_ENABLED=true`)
 only lets an authenticated tenant owner generate a short-lived Connect Telegram deep link

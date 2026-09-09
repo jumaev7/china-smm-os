@@ -56,6 +56,7 @@ x-backend-common: &backend-common
     PUBLISH_RETRY_COMMAND_WORKER_ENABLED: ${PUBLISH_RETRY_COMMAND_WORKER_ENABLED:-false}
     PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: ${PUBLISH_RETRY_COMMAND_CLAIM_ENABLED:-false}
     PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: ${PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED:-false}
+    PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: ${PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND:-none}
     PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-5}
     PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: ${PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE:-1}
     PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-180}
@@ -165,11 +166,14 @@ services:
       DB_MAX_OVERFLOW: "2"
     command: python scripts/run_publish_alert_telegram_worker.py
 
-  # Ownership-only claim/lease worker (3C.1C-B). Completely inert with default flags.
-  # Does not execute retries, create attempts, or call providers.
+  # Claim + D2-B1 orchestration worker (backend=none stop). Completely inert
+  # with default flags. Profile-gated so broad `docker compose up` never starts it.
+  # Does not execute providers, create attempts, or cross the write barrier.
   # Does not host Auto-Ack / Integration Health / scheduled-publish schedulers.
   publish-retry-command-worker:
     <<: *backend-common
+    profiles:
+      - retry-command
     environment:
       <<: *backend-environment
       SCHEDULED_PUBLISH_ENABLED: "false"
@@ -178,6 +182,7 @@ services:
       PUBLISH_RETRY_COMMAND_WORKER_ENABLED: ${PUBLISH_RETRY_COMMAND_WORKER_ENABLED:-false}
       PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: ${PUBLISH_RETRY_COMMAND_CLAIM_ENABLED:-false}
       PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: ${PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED:-false}
+      PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: ${PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND:-none}
       PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-5}
       PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: ${PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE:-1}
       PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-180}

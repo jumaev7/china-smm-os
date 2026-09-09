@@ -1,4 +1,4 @@
-"""Run the publish-retry-command claim/lease worker (3C.1C-B ownership only)."""
+"""Run the publish-retry-command worker (3C.1C-D2-B1; backend=none stop)."""
 from __future__ import annotations
 
 import sys

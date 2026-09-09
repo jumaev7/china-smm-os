@@ -619,14 +619,38 @@ def test_ab_ac_executor_source_avoids_begin_finalize_and_adapters():
 
 
 def test_worker_does_not_call_executor_or_finalizer():
+    """D2-B1: worker may structure future handoff but must not invoke executor."""
+    import textwrap
+
     worker_src = inspect.getsource(PublishRetryCommandWorker)
     assert "PublishRetryCommandExecutor" not in worker_src
     assert "FinalizationService" not in worker_src
     assert "FakeProvider" not in worker_src
+    orch_tree = ast.parse(
+        textwrap.dedent(inspect.getsource(PublishRetryCommandWorker._orchestrate_after_claim)),
+    )
+    called: set[str] = set()
+    for node in ast.walk(orch_tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if isinstance(func, ast.Name):
+                called.add(func.id)
+            elif isinstance(func, ast.Attribute):
+                called.add(func.attr)
+        if isinstance(node, ast.Name):
+            assert node.id not in {
+                "PublishRetryCommandExecutor",
+                "PublishRetryCommandPreparationService",
+                "PublishRetryCommandBarrierService",
+                "PublishRetryCommandFinalizationService",
+                "FakeProviderExecutor",
+            }
+    assert "_future_executor_handoff" not in called
+    assert "execute" not in called
     run_once = inspect.getsource(PublishRetryCommandWorker.run_once)
     assert "PreparationService" not in run_once
     assert "BarrierService" not in run_once
-    assert "execute(" not in run_once or "claim" in run_once.lower()
+    assert "PublishRetryCommandExecutor" not in run_once
 
 
 def test_selector_safety_statuses_chosen_by_finalizer():

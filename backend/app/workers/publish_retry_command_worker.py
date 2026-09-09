@@ -1,8 +1,9 @@
-"""Publish retry-command claim worker (Phase 3C.1C-B).
+"""Publish retry-command worker (Phase 3C.1C-D2-B1).
 
-Dedicated process for command ownership only. Does not execute retries,
-create PublishAttempts, or call providers. Intended for compose service
-``publish-retry-command-worker``.
+Claim/reclaim ownership, then safe pre-executor orchestration under
+``EXECUTION_BACKEND=none``. Does not invoke Preparation, Barrier, provider,
+Finalizer, or ``PublishRetryCommandExecutor``. Compose profile
+``retry-command`` isolates this process from broad ``docker compose up``.
 """
 from __future__ import annotations
 
@@ -11,15 +12,20 @@ import logging
 import os
 import signal
 import socket
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
+from app.services import publish_retry_command_metrics as cmd_metrics
 from app.services.publish_retry_command_claim_service import (
     ClaimResult,
     PublishRetryCommandClaimService,
     claim_gates_open,
     scrubbed_worker_instance,
+)
+from app.services.publish_retry_command_execution_backend import (
+    assert_worker_execution_backend_or_exit,
+    resolve_execution_backend,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,7 +38,11 @@ def build_worker_identity() -> str:
 
 
 class PublishRetryCommandWorker:
-    """Bounded poll loop: claim/reclaim when gates open; never executes providers."""
+    """Bounded poll loop: claim/reclaim, then D2-B1 none-backend stop.
+
+    Future executor handoff structure exists but is unreachable under every
+    D2-B1-allowed configuration (executor invocation count must remain 0).
+    """
 
     def __init__(self, worker_id: str | None = None) -> None:
         self.worker_id = worker_id or build_worker_identity()
@@ -40,11 +50,21 @@ class PublishRetryCommandWorker:
         self._stop = asyncio.Event()
 
     def request_stop(self) -> None:
-        """Graceful shutdown: stop polling. Do not reset claimed rows to pending."""
+        """Graceful shutdown: stop new claims / orchestration starts.
+
+        Do not mass-release leases. Do not cancel a future post-barrier
+        execution once it has started (Phase E / real execution contract;
+        D2-B1 never crosses the barrier).
+        """
         self._stop.set()
 
     async def run_once(self) -> list[ClaimResult]:
-        """One claim/reclaim tick. CLAIM-OBSERVATION only — leave status claimed."""
+        """One claim/reclaim tick, then sequential post-claim orchestration.
+
+        Claim transaction commits and the session closes before any
+        orchestration. Only rows returned by this tick are considered —
+        no scan of arbitrary claimed / provider_write_started rows.
+        """
         allowed, reason = claim_gates_open()
         if not allowed:
             logger.debug(
@@ -60,6 +80,7 @@ class PublishRetryCommandWorker:
                 worker_id=self.worker_id,
                 commit=True,
             )
+        # Claim session is closed here — no DB TX across orchestration.
 
         # Best-effort audit after successful commit (separate sessions).
         await PublishRetryCommandClaimService.record_claim_audits(
@@ -68,24 +89,93 @@ class PublishRetryCommandWorker:
             worker_id=self.worker_id,
         )
 
-        # B observation mode: intentionally do NOT progress beyond claimed.
-        # Execution gate / PublishService / adapters are out of scope.
+        # Sequential only. No asyncio.gather / fan-out.
         for item in results:
-            if item.kind in ("claimed", "reclaimed"):
+            if item.kind not in ("claimed", "reclaimed"):
+                continue
+            if self._stop.is_set():
+                # SIGTERM after claim: leave lease; do not start orchestration.
                 logger.info(
-                    "[RetryCommandWorker] %s command_id=%s correlation=%s instance=%s",
-                    item.kind,
+                    "[RetryCommandWorker] stop requested after claim; "
+                    "leaving command_id=%s for lease expiry instance=%s",
                     item.command_id,
-                    item.correlation_id,
+                    self.worker_instance,
+                )
+                break
+            assert item.command_id is not None
+            try:
+                await self._orchestrate_after_claim(command_id=item.command_id)
+            except Exception:  # noqa: BLE001 — per-command; no immediate retry
+                logger.exception(
+                    "[RetryCommandWorker] orchestration failed command_id=%s "
+                    "instance=%s (no immediate retry; lease/reclaim only)",
+                    item.command_id,
                     self.worker_instance,
                 )
         return results
 
+    async def _orchestrate_after_claim(self, *, command_id: UUID) -> None:
+        """Post-claim handoff. Owns only command_id + worker_id.
+
+        D2-B1 reachable paths:
+          EXECUTION=false → observation metric, stop
+          EXECUTION=true + backend=none → observation metric, stop
+          any other backend → fail closed (defense in depth; startup should
+          already have exited for non-none when WORKER=true)
+
+        Never calls Preparation / Barrier / provider / Finalizer / executor.
+        Never calls ``_future_executor_handoff`` (reserved for D2-B2+).
+        """
+        if not settings.PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED:
+            cmd_metrics.inc("retry_command_worker_execution_disabled_total")
+            logger.info(
+                "[RetryCommandWorker] execution disabled; observation only "
+                "command_id=%s instance=%s",
+                command_id,
+                self.worker_instance,
+            )
+            return
+
+        resolution = resolve_execution_backend()
+        if resolution.value == "none":
+            cmd_metrics.inc("retry_command_worker_backend_none_total")
+            logger.info(
+                "[RetryCommandWorker] backend=none; safe pre-executor stop "
+                "command_id=%s instance=%s",
+                command_id,
+                self.worker_instance,
+            )
+            return
+
+        # Fail closed — no executor under fake/real/invalid in D2-B1.
+        cmd_metrics.inc("retry_command_worker_backend_invalid_total")
+        logger.error(
+            "[RetryCommandWorker] refusing orchestration backend=%s reason=%s "
+            "command_id=%s instance=%s",
+            resolution.value,
+            resolution.reason,
+            command_id,
+            self.worker_instance,
+        )
+
+    async def _future_executor_handoff(self, *, command_id: UUID) -> None:
+        """Reserved for D2-B2+. Must remain unreachable under D2-B1 configs.
+
+        Would receive only ``command_id`` + ``worker_id`` after claim TX close.
+        Must never instantiate test provider ports or real publishers here.
+        Architecture tests prove ``_orchestrate_after_claim`` never calls this.
+        """
+        raise RuntimeError(
+            "D2-B1: executor handoff is unreachable; "
+            f"command_id={command_id} worker_id={self.worker_id}"
+        )
+
     async def run_forever(self) -> None:
         poll = max(1.0, float(settings.PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS))
+        backend = resolve_execution_backend()
         logger.info(
             "[RetryCommandWorker] started instance=%s poll=%s batch=%s lease=%s "
-            "commands=%s worker=%s claim=%s execution=%s(unimplemented)",
+            "commands=%s worker=%s claim=%s execution=%s backend=%s",
             self.worker_instance,
             poll,
             settings.PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE,
@@ -94,6 +184,7 @@ class PublishRetryCommandWorker:
             settings.PUBLISH_RETRY_COMMAND_WORKER_ENABLED,
             settings.PUBLISH_RETRY_COMMAND_CLAIM_ENABLED,
             settings.PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED,
+            backend.value,
         )
         while not self._stop.is_set():
             try:
@@ -123,7 +214,11 @@ class PublishRetryCommandWorker:
 
 
 async def amain() -> None:
-    """Entrypoint. Idles forever when worker flag is false (compose-safe)."""
+    """Entrypoint. Idles forever when worker flag is false (compose-safe).
+
+    When WORKER=true: fail closed with non-zero exit if EXECUTION_BACKEND is
+    not ``none`` (D2-B1 startup decision — visible misconfiguration).
+    """
     if not settings.PUBLISH_RETRY_COMMAND_WORKER_ENABLED:
         logger.warning(
             "[RetryCommandWorker] PUBLISH_RETRY_COMMAND_WORKER_ENABLED=false; idling",
@@ -137,6 +232,8 @@ async def amain() -> None:
                 signal.signal(sig, lambda *_: stop.set())
         await stop.wait()
         return
+
+    assert_worker_execution_backend_or_exit()
 
     worker = PublishRetryCommandWorker()
     loop = asyncio.get_running_loop()

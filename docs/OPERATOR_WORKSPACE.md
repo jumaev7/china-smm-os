@@ -151,27 +151,29 @@ Actor attribution for alert ack/resolve uses existing `acknowledged_by` / `resol
 
 No new analytics subsystem or migration was introduced for this phase.
 
-## Durable publish retry commands (Phase 3C.1B / 3C.1C-A / 3C.1C-B / 3C.1C-C / 3C.1C-D1 / 3C.1C-D2-A)
+## Durable publish retry commands (Phase 3C.1B / 3C.1C-A / 3C.1C-B / 3C.1C-C / 3C.1C-D1 / 3C.1C-D2-A / 3C.1C-D2-B1)
 
-Infrastructure foundation (`publish_retry_commands` + create/get service + claim worker + preparation + DB write barrier + unwired fake executor).
+Infrastructure foundation (`publish_retry_commands` + create/get + claim worker + preparation + DB write barrier + unwired fake executor + D2-B1 safe orchestration with `EXECUTION_BACKEND=none`).
 
-- Feature flags (all default **false**):
+- Feature flags (all default **false** except backend default **none**):
   - `PUBLISH_RETRY_COMMANDS_ENABLED` — global create/get + claim subsystem gate
   - `PUBLISH_RETRY_COMMAND_WORKER_ENABLED` — worker process/poll loop
   - `PUBLISH_RETRY_COMMAND_CLAIM_ENABLED` — permission to mutate pending→claimed / stale reclaim
-  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — preparation + barrier + fake-executor gate (keep false; not wired to worker)
+  - `PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED` — preparation + barrier + executor gate (keep false)
+  - `PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND` — D2-B1 runnable value is only `none` (safe pre-executor stop). Missing env → `none`. `fake` reserved for D2-B2 (unimplemented). Real platforms fail closed.
 - Precedence for claim/reclaim: commands **and** worker **and** claim must all be true
-- Precedence for pre-I/O preparation (3C.1C-C), DB write barrier (3C.1C-D1), and unwired fake executor (3C.1C-D2-A): claim gates **and** execution must be true; **not** invoked by claim worker
+- Precedence for preparation / barrier / executor: claim gates **and** execution must be true **and** a future executable backend (not `none`). Under D2-B1 `backend=none`, the worker stops after claim with observation/metrics only — zero Preparation / Barrier / provider / Finalizer calls.
 - Creating a command records operator retry intent only — **does not publish**
-- Claim worker (`publish-retry-command-worker`) owns pending→claimed / stale claimed reclaim only
+- Worker (`publish-retry-command-worker`) is compose-profile-gated (`profiles: [retry-command]`); broad `docker compose up` does not start it. Flags remain fail-closed even when the profile is selected.
 - Canonical `evaluate_manual_retry_eligibility` still gates creation (allowlist remains empty)
 - Workspace / mobile / admin synchronous retry paths are **unchanged**
 - Read-only status: `GET /api/v1/publishing/retry-commands/{command_id}`
 - **DB lineage invariants (3C.1C-A):** unique non-null `publish_attempts.retry_command_id`, unique non-null `publish_retry_commands.resulting_attempt_id`, worker lookup index `(status, created_at)`, CHECK that `provider_write_started` requires `provider_write_started_at`
 - **Claim/lease foundation (3C.1C-B):** `FOR UPDATE SKIP LOCKED`, DB `now()` leases, reclaim only when `status=claimed` and `provider_write_started_at IS NULL`. Never crosses the provider-write barrier.
 - **Pre-I/O preparation (3C.1C-C):** claimed command → eligibility + newer-success revalidation → create/reuse one linked `PublishAttempt` (`status=operator_review`, provider write not started) → bidirectional lineage → commit. No `PublishService.publish_content`, no adapters, no `provider_write_started`.
-- **DB-only write barrier (3C.1C-D1):** claimed + prepared → `provider_write_started` with durable `provider_write_started_at` (DB `now()`); linked attempt stays `operator_review` with `failure_code=retry_command_write_started`. Lease expiry cleared; lease owner preserved for forensics. No provider I/O, no fake provider, not wired to worker. Explicit/test entrypoint only.
-- **Unwired fake executor (3C.1C-D2-A):** `PublishRetryCommandExecutor` coordinates prepare → barrier → exactly one injected fake provider call → command-specific finalization. No real Telegram/Meta adapters. Not wired to worker/API/Workspace/mobile. Post-barrier outcomes are only success / definitive failure / ambiguous (never auto-retry). Duplicate or concurrent executor calls never re-invoke the provider after barrier.
+- **DB-only write barrier (3C.1C-D1):** claimed + prepared → `provider_write_started` with durable `provider_write_started_at` (DB `now()`); linked attempt stays `operator_review` with `failure_code=retry_command_write_started`. Lease expiry cleared; lease owner preserved for forensics. No provider I/O, no fake provider. Explicit/test entrypoint only.
+- **Unwired fake executor (3C.1C-D2-A):** `PublishRetryCommandExecutor` coordinates prepare → barrier → exactly one injected fake provider call → command-specific finalization. Test abstraction only — not production-reachable via D2-B1 worker.
+- **Safe worker orchestration (3C.1C-D2-B1):** after claim TX commit/close, worker may resolve `EXECUTION_BACKEND`; `none` records observation and stops. Batch size 1, sequential only. No FakeProviderExecutor instantiation. Invalid/`fake`/real backends refuse (startup non-zero exit when WORKER=true and backend ≠ `none`).
 
 ## Future (not in scope)
 
@@ -182,5 +184,11 @@ Infrastructure foundation (`publish_retry_commands` + create/get service + claim
 - Automation requeue from workspace
 - OAuth reconnect from workspace
 - Listening/Advertising intelligence feeds (unless operational failure)
-- Phase E reconciliation for stale `provider_write_started` / post-provider finalize gaps
-- Real provider adapters after barrier (3C.1C-D2-B / F+) — requires F0 selector hard-exclusion of `retry_command_id IS NOT NULL` before any real I/O
+- **D2-B2:** staging-only fake execution (still no real providers)
+- **Phase E:** post-barrier ambiguity/reconciliation; no replay
+- **F0:** selector hardening (`retry_command_id IS NOT NULL` hard exclusion) before any real I/O
+- **F1:** Telegram real provider adapter
+- **F2:** Facebook/Meta real provider adapter
+- **F3:** Instagram real provider adapter
+- **G:** staging observation
+- Real provider execution only after all required gates (E + F0 + platform phase)
