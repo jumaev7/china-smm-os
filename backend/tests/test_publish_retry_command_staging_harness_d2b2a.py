@@ -1,7 +1,7 @@
 """Phase 3C.1C-D2-B2a — staging identity + full fake integration harness.
 
 LOCAL/CI disposable PostgreSQL only (china_smm_os_staging).
-Worker remains non-executing for backend=fake. No real providers.
+Worker fake path requires B2b1-A verified execution context. No real providers.
 """
 from __future__ import annotations
 
@@ -1004,13 +1004,14 @@ def test_canonical_policy_still_blocks_without_injection():
     asyncio.run(_with_staging_pg(body))
 
 
-def test_worker_still_refuses_fake_backend():
+def test_worker_without_execution_context_still_refuses_fake_backend():
     async def _inner():
         with _flags(
             PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND="fake",
             PUBLISH_RETRY_COMMAND_WORKER_ENABLED=True,
         ):
             worker = PublishRetryCommandWorker(worker_id=WORKER_A)
+            assert worker._execution is None
             await worker._orchestrate_after_claim(command_id=uuid.uuid4())
 
     asyncio.run(_inner())

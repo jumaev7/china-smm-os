@@ -175,7 +175,8 @@ Infrastructure foundation (`publish_retry_commands` + create/get + claim worker 
 - **DB-only write barrier (3C.1C-D1):** claimed + prepared → `provider_write_started` with durable `provider_write_started_at` (DB `now()`); linked attempt stays `operator_review` with `failure_code=retry_command_write_started`. Lease expiry cleared; lease owner preserved for forensics. No provider I/O, no fake provider. Explicit/test entrypoint only.
 - **Unwired fake executor (3C.1C-D2-A):** `PublishRetryCommandExecutor` coordinates prepare → barrier → exactly one injected fake provider call → command-specific finalization. Test abstraction only — not production-reachable via D2-B1 worker.
 - **Safe worker orchestration (3C.1C-D2-B1):** after claim TX commit/close, worker may resolve `EXECUTION_BACKEND`; `none` records observation and stops. Batch size 1, sequential only. No FakeProviderExecutor instantiation. Invalid/`fake`/real backends refuse (startup non-zero exit when WORKER=true and backend ≠ `none`).
-- **Staging fake harness (3C.1C-D2-B2a):** local/CI disposable `china_smm_os_staging` + verified staging capability + synthetic fixtures + durable fake sink. See `docs/STAGING_RETRY_COMMAND_HARNESS.md`. Worker remains non-executing for `fake`.
+- **Staging fake harness (3C.1C-D2-B2a):** local/CI disposable `china_smm_os_staging` + verified staging capability + synthetic fixtures + durable fake sink. See `docs/STAGING_RETRY_COMMAND_HARNESS.md`.
+- **Staging fake worker bootstrap (3C.1C-D2-B2b1-A):** long-running worker may run `backend=fake` only after live staging identity bootstrap; see `docs/STAGING_RETRY_COMMAND_WORKER.md` and `docker-compose.staging.yml`.
 
 ## Future (not in scope)
 

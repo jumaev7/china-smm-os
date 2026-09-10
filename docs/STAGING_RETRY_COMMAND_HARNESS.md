@@ -47,8 +47,11 @@ No HTTP route. No FastAPI. No schedule.
 
 ## Worker boundary
 
-`PublishRetryCommandWorker` remains D2-B1: `backend=fake` is **not** worker-runnable.
-Fake execution is harness-only via `VerifiedRetryCommandStagingContext`.
+Long-running worker fake path is **B2b1-A** (`docs/STAGING_RETRY_COMMAND_WORKER.md`):
+`backend=fake` is worker-runnable **only** after staging bootstrap succeeds
+(live `china_smm_os_staging` identity). Without a verified
+`RetryCommandWorkerExecutionContext`, the worker still refuses fake orchestration
+(D2-B1 defense in depth). This harness remains the one-shot CLI proof path.
 
 ## Synthetic markers
 

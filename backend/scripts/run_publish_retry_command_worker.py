@@ -1,4 +1,4 @@
-"""Run the publish-retry-command worker (3C.1C-D2-B1; backend=none stop)."""
+"""Run the publish-retry-command worker (D2-B1 none-stop / B2b1-A staging fake)."""
 from __future__ import annotations
 
 import sys

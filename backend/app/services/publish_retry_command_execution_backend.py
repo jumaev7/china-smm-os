@@ -1,15 +1,15 @@
-"""Fail-closed execution-backend resolver (Phase 3C.1C-D2-B1 / D2-B2a).
+"""Fail-closed execution-backend resolver (Phase 3C.1C-D2-B1 / B2b1-A).
 
-D2-B1 allows only ``none`` as a runnable worker configuration. That value means
-a safe pre-executor stop after claim/reclaim — no Preparation, Barrier,
-provider, or Finalizer invocation.
+Classifies ``PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND`` only.
 
-``fake`` is recognized as reserved for the D2-B2a staging harness but remains
-**not worker-runnable**. Harness fake resolution requires
-VerifiedRetryCommandStagingContext and lives outside this worker path.
+- ``none`` — D2-B1 runnable (safe pre-executor stop after claim).
+- ``fake`` — recognized / requested, **not** approved here. Staging worker
+  bootstrap (B2b1-A) must verify identity before constructing a worker with
+  a frozen fake execution context.
+- real / platform / unknown — fail closed.
 
-Real platform names and unknown values fail closed. This module must never
-import publishers, ADAPTERS, httpx, FakeProviderExecutor, or the executor.
+This module must never import publishers, ADAPTERS, httpx, FakeProviderExecutor,
+the executor, or staging identity guards.
 """
 from __future__ import annotations
 
@@ -22,12 +22,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Only "none" is executable by the worker in D2-B1/B2a. Missing/blank → none.
+# Only "none" is D2-B1-executable without staging bootstrap.
 D2B1_EXECUTABLE_BACKEND: Final[str] = "none"
 
-# Recognized for staging harness (D2-B2a) but intentionally unimplemented for
-# the long-running worker path.
-RESERVED_UNIMPLEMENTED_BACKENDS: Final[frozenset[str]] = frozenset({"fake"})
+# Recognized as a requested staging-fake backend. Approval is NOT granted here.
+REQUESTED_FAKE_BACKEND: Final[str] = "fake"
+RESERVED_UNIMPLEMENTED_BACKENDS: Final[frozenset[str]] = frozenset({REQUESTED_FAKE_BACKEND})
 
 # Explicit real/platform strings — always refuse; never map to adapters.
 UNSUPPORTED_REAL_BACKENDS: Final[frozenset[str]] = frozenset(
@@ -52,6 +52,7 @@ class ExecutionBackendResolution:
     value: str
     kind: ExecutionBackendKind
     # True only when D2-B1 may proceed past claim into the none-stop path.
+    # Fake is never d2b1_runnable — entrypoint must bootstrap separately.
     d2b1_runnable: bool
     reason: str
 
@@ -67,7 +68,7 @@ def normalize_execution_backend(raw: str | None) -> str:
 
 
 def resolve_execution_backend(raw: str | None = None) -> ExecutionBackendResolution:
-    """Resolve backend from explicit raw or settings. Never falls back to adapters."""
+    """Classify backend from explicit raw or settings. Never approves fake."""
     source = (
         settings.PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND
         if raw is None
@@ -88,7 +89,7 @@ def resolve_execution_backend(raw: str | None = None) -> ExecutionBackendResolut
             value=value,
             kind=ExecutionBackendKind.RESERVED_UNIMPLEMENTED,
             d2b1_runnable=False,
-            reason="backend_unimplemented",
+            reason="backend_fake_requires_staging_bootstrap",
         )
     if value in UNSUPPORTED_REAL_BACKENDS:
         return ExecutionBackendResolution(
@@ -108,18 +109,18 @@ def resolve_execution_backend(raw: str | None = None) -> ExecutionBackendResolut
 
 
 def assert_worker_execution_backend_or_exit() -> None:
-    """Startup gate when the worker process is intentionally enabled.
+    """Startup gate for the backend=none D2-B1 path only.
 
-    Decision (D2-B1): non-zero process exit if WORKER=true and backend != none.
-    Prefer fail-visible over silent hard-disable so misconfiguration cannot
-    look like healthy claim observation under an unimplemented backend.
+    Non-zero exit if backend is not ``none``. Entrypoint must NOT call this
+    when dispatching the staging-fake bootstrap path — bootstrap owns fake
+    approval. Prefer fail-visible over silent hard-disable.
     """
     resolution = resolve_execution_backend()
     if resolution.d2b1_runnable and resolution.value == D2B1_EXECUTABLE_BACKEND:
         return
     logger.error(
         "[RetryCommandWorker] refusing start: PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND=%r "
-        "reason=%s (D2-B1/B2a allows only 'none'; fake is staging-harness-only; "
+        "reason=%s (D2-B1 allows only 'none' here; fake requires staging bootstrap; "
         "real platforms unsupported)",
         resolution.value,
         resolution.reason,

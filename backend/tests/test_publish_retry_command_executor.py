@@ -618,8 +618,8 @@ def test_ab_ac_executor_source_avoids_begin_finalize_and_adapters():
     assert "telegram_publisher" not in src
 
 
-def test_worker_does_not_call_executor_or_finalizer():
-    """D2-B1: worker may structure future handoff but must not invoke executor."""
+def test_worker_does_not_import_executor_or_finalizer_directly():
+    """Worker may hand off via verified context; must not import executor/services."""
     import textwrap
 
     worker_src = inspect.getsource(PublishRetryCommandWorker)
@@ -645,7 +645,8 @@ def test_worker_does_not_call_executor_or_finalizer():
                 "PublishRetryCommandFinalizationService",
                 "FakeProviderExecutor",
             }
-    assert "_future_executor_handoff" not in called
+    # Fake path may call handoff; executor invocation lives inside verified context.
+    assert "_future_executor_handoff" in called
     assert "execute" not in called
     run_once = inspect.getsource(PublishRetryCommandWorker.run_once)
     assert "PreparationService" not in run_once

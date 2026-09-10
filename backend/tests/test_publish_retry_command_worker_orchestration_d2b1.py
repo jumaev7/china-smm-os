@@ -290,7 +290,7 @@ def test_normalize_blank_to_none():
     "raw,kind,runnable,reason",
     [
         ("none", ExecutionBackendKind.NONE, True, "backend_none"),
-        ("fake", ExecutionBackendKind.RESERVED_UNIMPLEMENTED, False, "backend_unimplemented"),
+        ("fake", ExecutionBackendKind.RESERVED_UNIMPLEMENTED, False, "backend_fake_requires_staging_bootstrap"),
         ("telegram", ExecutionBackendKind.UNSUPPORTED_REAL, False, "backend_unsupported"),
         ("facebook", ExecutionBackendKind.UNSUPPORTED_REAL, False, "backend_unsupported"),
         ("instagram", ExecutionBackendKind.UNSUPPORTED_REAL, False, "backend_unsupported"),
@@ -391,10 +391,10 @@ def def_names_called_in(method) -> set[str]:
     return names
 
 
-def test_future_handoff_unreachable_from_orchestrate():
+def test_future_handoff_unreachable_without_execution_context():
+    """backend=none / bare worker: orchestrate must not invoke executor handoff."""
     called = def_names_called_in(PublishRetryCommandWorker._orchestrate_after_claim)
-    assert "_future_executor_handoff" not in called
-    assert "execute" not in called
+    # Handoff may be named in the fake branch; runtime requires verified context.
     assert "prepare" not in called
     assert "cross_barrier" not in called
     assert "finalize" not in called
@@ -408,6 +408,45 @@ def test_future_handoff_unreachable_from_orchestrate():
                 "PublishRetryCommandFinalizationService",
                 "FakeProviderExecutor",
             }
+
+    async def scenario(factory):
+        cmd_metrics.reset_for_tests()
+        async with factory() as db:
+            cid = await _insert_command(db, status="pending")
+        worker = PublishRetryCommandWorker(worker_id="d2b1-handoff:1:aaa")
+        handoff = AsyncMock()
+        with _gates_on(
+            PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED=True,
+            PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND="none",
+        ):
+            with patch.object(worker, "_future_executor_handoff", handoff):
+                await _run_worker_once(factory, worker)
+        assert handoff.await_count == 0
+        async with factory() as db:
+            assert (await _load(db, cid)).status == "claimed"
+
+    _run(scenario)
+
+
+def test_fake_without_execution_context_still_refuses_handoff():
+    """Defense in depth: fake settings alone do not authorize executor."""
+    async def scenario(factory):
+        cmd_metrics.reset_for_tests()
+        async with factory() as db:
+            await _insert_command(db, status="pending")
+        worker = PublishRetryCommandWorker(worker_id="d2b1-nofake-ctx:1:aaa")
+        handoff = AsyncMock()
+        with _gates_on(
+            PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED=True,
+            PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND="fake",
+        ):
+            with patch.object(worker, "_future_executor_handoff", handoff):
+                await _run_worker_once(factory, worker)
+        assert handoff.await_count == 0
+        snap = cmd_metrics.snapshot()
+        assert snap["retry_command_worker_backend_invalid_total"] >= 1
+
+    _run(scenario)
 
 
 def test_t_sequential_no_gather_in_worker():

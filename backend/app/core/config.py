@@ -115,15 +115,18 @@ class Settings(BaseSettings):
     # D2-B1 worker may observe this flag after claim, but EXECUTION_BACKEND=none
     # still stops before Preparation/Barrier/provider/Finalizer.
     PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: bool = False
-    # D2-B1: only "none" is runnable (safe pre-executor stop). Missing → none.
-    # "fake" reserved for D2-B2a staging harness (NOT worker-runnable).
-    # Real platforms fail closed. Worker must never execute fake in B2a.
+    # D2-B1: "none" = safe pre-executor stop (production default).
+    # "fake" is classified by the resolver but only approved after staging
+    # worker bootstrap (B2b1-A) with live china_smm_os_staging identity.
+    # Real platforms fail closed.
     PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: str = "none"
     # Explicit ack required (with APP_ENV=staging + china_smm_os_staging DB)
-    # before the staging harness may resolve a fake provider. Default false.
+    # before staging fake harness / worker bootstrap may resolve a fake provider.
     PUBLISH_RETRY_COMMAND_FAKE_EXECUTION_ALLOWED: bool = False
-    # Optional deterministic fake outcome for staging CLI/harness only.
+    # Optional deterministic fake outcome for staging CLI/harness/worker only.
     PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: str = "success"
+    # Optional durable fake-invocation sink path (staging observation only).
+    PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: str = ""
     PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: float = 5.0
     PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: int = 1
     PUBLISH_RETRY_COMMAND_LEASE_SECONDS: int = 180

@@ -1,0 +1,84 @@
+# Isolated staging Compose skeleton (Phase 3C.1C-D2-B2b1-A)
+#
+# Topology: dedicated staging Postgres + retry-command worker only.
+# Does NOT include production DB/volume, Cloudflare, public API, frontend,
+# webhook worker, R2, or provider networking requirements.
+#
+# Usage:
+#   docker compose -f docker-compose.staging.yml --env-file .env.staging.example \
+#     --profile retry-command up --build
+#
+# Requires an explicit staging env file. Do not fall back to .env.production.
+
+name: china-smm-os-staging
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-china_smm_os_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+    command: postgres -c max_connections=50
+    volumes:
+      - staging_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - staging-internal
+
+  publish-retry-command-worker:
+    build:
+      context: ./backend
+    profiles:
+      - retry-command
+    restart: "no"
+    env_file:
+      - ${STAGING_ENV_FILE:-.env.staging.example}
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-china_smm_os_staging}
+      PUBLISH_RETRY_COMMANDS_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_WORKER_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: fake
+      PUBLISH_RETRY_COMMAND_FAKE_EXECUTION_ALLOWED: "true"
+      PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: ${PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE:-success}
+      PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: "1"
+      PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-5}
+      PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-180}
+      PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: /tmp/china-smm-os-staging-fake-sink/fake-invocations.jsonl
+      TELEGRAM_BOT_TOKEN: ""
+      META_APP_SECRET: ""
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      DB_POOL_SIZE: "3"
+      DB_MAX_OVERFLOW: "2"
+      # Placeholders so Settings can load without production secrets.
+      SECRET_KEY: staging-local-only-not-for-production
+      ADMIN_SECRET_KEY: staging-local-only-admin-not-for-production
+      TENANT_SECRET_KEY: staging-local-only-tenant-not-for-production
+    volumes:
+      - staging_fake_sink:/tmp/china-smm-os-staging-fake-sink
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - staging-internal
+    command: python scripts/run_publish_retry_command_worker.py
+
+networks:
+  staging-internal:
+    driver: bridge
+
+volumes:
+  staging_pgdata:
+    name: china-smm-os-staging-pgdata
+  staging_fake_sink:
+    name: china-smm-os-staging-fake-sink
