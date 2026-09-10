@@ -34,14 +34,19 @@ SIGINT ≡ SIGTERM → `worker.request_stop()` (sets Event only; **never** `task
 |-------|----------|
 | Idle / between commands | exit loop; exit code **0** |
 | After claim, before executor | leave lease; no executor; exit **0** |
-| Pre-barrier (after prepare) | `should_stop_before_barrier` → outcome `stopped_before_barrier`; no barrier/provider/finalizer; exit **0** |
+| Pre-barrier (after prepare) | `should_stop_before_barrier` → outcome `stopped_before_barrier`; no barrier/provider/finalizer; exit **0** (no hard exit) |
+| Final pre-barrier check returned false | **drain territory** — SIGTERM must not cancel; await barrier + provider + finalizer |
 | Post-barrier | ignore stop for current command; drain provider+finalizer once; then exit; no next claim |
-| Drain timeout | exit code **3**; **no** replay/reset/ambiguous-from-timeout; DB left as-is (Phase E later) |
+| Drain timeout (drain territory only) | **`os._exit(3)`** — abrupt process death; **no** `asyncio.run` cleanup cancellation; **no** replay/reset; DB left as-is (Phase E later) |
 | Bootstrap identity failure | exit code **2** |
 
-Drain bound: `PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS` (default **60**).
+Drain bound: `PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS` (default **60**). Applies only after the executor enters drain territory (final pre-barrier stop check returned false / `cross_barrier` in progress or later).
 
-Implementation: `await wait_for(shield(active_executor_task), drain_seconds)` only after stop while in-flight. Shield prevents `wait_for` from cancelling a post-barrier executor.
+Implementation notes:
+
+* `await wait_for(shield(active_executor_task), drain_seconds)` only after stop while in drain territory. Shield prevents `wait_for` from cancelling the executor.
+* Returning `SystemExit(3)` through `asyncio.run` is **unsafe**: `Runner.close` → `_cancel_all_tasks` would still deliver `CancelledError` into the pending provider/finalizer. Post-barrier drain timeout therefore uses `os._exit(3)` after flushing log handlers only (non-authoritative diagnostics). Correctness relies on durable DB state, not Python cleanup.
+* Pre-barrier stop never uses `os._exit`.
 
 ### Process exit codes
 
@@ -49,7 +54,7 @@ Implementation: `await wait_for(shield(active_executor_task), drain_seconds)` on
 |------|---------|
 | 0 | graceful idle stop / pre-barrier stop / successful post-barrier drain |
 | 2 | bootstrap / backend refusal |
-| 3 | drain timeout |
+| 3 | post-barrier drain timeout (`os._exit`; staging fake worker only) |
 | 4 | unexpected worker invariant failure |
 
 ## Marker hooks (SIGTERM campaigns)

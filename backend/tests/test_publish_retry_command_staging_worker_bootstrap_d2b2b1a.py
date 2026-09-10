@@ -703,6 +703,11 @@ def test_request_stop_does_not_cancel_running_executor():
     handoff = inspect.getsource(PublishRetryCommandWorker._future_executor_handoff)
     assert "task.cancel()" not in handoff
     assert "_should_stop_before_barrier" in handoff
+    term_src = inspect.getsource(
+        PublishRetryCommandWorker._terminate_after_post_barrier_drain_timeout,
+    )
+    assert "os._exit" in term_src
+    assert "EXIT_DRAIN_TIMEOUT" in term_src
 
 
 def test_generic_worker_has_no_staging_identity_policy():

@@ -6,7 +6,8 @@ Proves:
 - should_stop_before_barrier → stopped_before_barrier (no barrier/provider)
 - post-barrier drain (no cancel / no replay)
 - no new claim after stop
-- drain timeout non-zero exit without replay/reset
+- drain timeout → hard process exit semantics (no asyncio cancellation)
+- signal after final pre-barrier check stays in drain territory
 - marker-hook coordination (DI only)
 - FAKE_SINK_PATH cannot enable fake execution alone
 """
@@ -15,10 +16,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
+import subprocess
+import sys
 import tempfile
+import textwrap
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -29,6 +34,9 @@ from app.core.config import settings
 from app.models.publish_attempt import PublishAttempt
 from app.models.publish_retry_command import PublishRetryCommand
 from app.services import publish_retry_command_metrics as cmd_metrics
+from app.services.publish_retry_command_barrier_service import (
+    PublishRetryCommandBarrierService,
+)
 from app.services.publish_retry_command_claim_service import (
     PublishRetryCommandClaimService,
 )
@@ -466,6 +474,7 @@ def test_pre_barrier_sigterm_via_after_prepare_hook():
             assert execution.provider.invocation_count == 0
             assert (marker_dir / "after_prepare").is_file()
             assert worker.exit_code == EXIT_OK
+            assert worker.in_drain_territory is False
             async with factory() as db:
                 cmd = (
                     await db.execute(
@@ -536,6 +545,7 @@ def test_post_barrier_sigterm_drains_provider_and_finalizer():
             assert execution.sink is not None
             assert execution.sink.count_for_command(fx.command_id) == 1
             assert worker.exit_code == EXIT_OK
+            assert worker.in_drain_territory is True
             async with factory() as db:
                 cmd = (
                     await db.execute(
@@ -548,6 +558,7 @@ def test_post_barrier_sigterm_drains_provider_and_finalizer():
 
             with patch.object(worker_mod, "AsyncSessionLocal", factory):
                 assert await worker.run_once() == []
+            assert execution.provider.invocation_count == 1
 
     asyncio.run(_with_staging_pg(body))
 
@@ -670,6 +681,12 @@ def test_post_barrier_stop_with_provider_outcomes(mode, expected_status):
 
 
 def test_drain_timeout_no_replay_nonzero_exit():
+    """In-process soft path: exit code 3 + no replay (hard exit disabled).
+
+    Process-level proof that ``os._exit`` avoids ``CancelledError`` lives in
+    ``test_drain_timeout_process_hard_exit_no_cancellederror``.
+    """
+
     async def body(factory, engine):
         cmd_metrics.reset_for_tests()
         entered = asyncio.Event()
@@ -697,6 +714,7 @@ def test_drain_timeout_no_replay_nonzero_exit():
                 worker_id=WORKER_A,
                 execution=execution,
                 drain_seconds=0.3,
+                hard_exit_on_drain_timeout=False,
             )
 
             real_execute = PublishRetryCommandExecutor.execute
@@ -729,6 +747,7 @@ def test_drain_timeout_no_replay_nonzero_exit():
                 await asyncio.sleep(0.05)
 
             assert worker.exit_code == EXIT_DRAIN_TIMEOUT
+            assert worker.in_drain_territory is True
             assert blocker.invocation_count == 1
             snap = cmd_metrics.snapshot()
             assert snap["retry_command_worker_drain_timeout_total"] >= 1
@@ -749,14 +768,230 @@ def test_drain_timeout_no_replay_nonzero_exit():
             assert blocker.invocation_count == 1
 
             release.set()
-            active = worker._active_task
-            if active is not None and not active.done():
+            # Soft path left the executor task pending; do not cancel it here.
+            # Keep a reference via all_tasks and await completion after release.
+            pending = [
+                t
+                for t in asyncio.all_tasks()
+                if t.get_name().startswith("retry-command-executor:")
+            ]
+            for t in pending:
                 try:
-                    await asyncio.wait_for(asyncio.shield(active), timeout=2.0)
+                    await asyncio.wait_for(asyncio.shield(t), timeout=2.0)
                 except Exception:  # noqa: BLE001
                     pass
 
     asyncio.run(_with_staging_pg(body))
+
+
+def test_drain_timeout_process_hard_exit_no_cancellederror():
+    """Process-level: post-barrier drain timeout must not CancelledError provider.
+
+    Reproduces top-level ``asyncio.run`` semantics. Hard exit via ``os._exit(3)``
+    must happen before Runner.close cancels pending tasks.
+    """
+    marker_dir = Path(tempfile.mkdtemp(prefix="b2b1b-drain-proc-"))
+    cancelled_marker = marker_dir / "provider_cancelled"
+    started_marker = marker_dir / "provider_started"
+    script = marker_dir / "drain_timeout_child.py"
+    script.write_text(
+        textwrap.dedent(
+            f"""
+            import asyncio
+            import logging
+            import sys
+            from pathlib import Path
+            from types import SimpleNamespace
+
+            # Ensure backend package importable when run as script.
+            sys.path.insert(0, {str(REPO_ROOT / "backend")!r})
+
+            from app.workers.publish_retry_command_worker import (
+                EXIT_DRAIN_TIMEOUT,
+                PublishRetryCommandWorker,
+            )
+
+            CANCELLED = Path({str(cancelled_marker)!r})
+            STARTED = Path({str(started_marker)!r})
+
+            async def provider_block():
+                STARTED.write_text("1", encoding="utf-8")
+                try:
+                    await asyncio.Event().wait()
+                except asyncio.CancelledError:
+                    CANCELLED.write_text("cancelled", encoding="utf-8")
+                    raise
+
+            async def amain():
+                execution = SimpleNamespace(execution_backend="fake")
+                worker = PublishRetryCommandWorker(
+                    worker_id="proc-drain:1:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                    execution=execution,
+                    drain_seconds=0.25,
+                    hard_exit_on_drain_timeout=True,
+                )
+                worker._enter_drain_territory()
+                task = asyncio.create_task(
+                    provider_block(),
+                    name="retry-command-executor:proc-drain",
+                )
+                worker._active_task = task
+                worker.request_stop()
+                # Mirror post-barrier drain path used by run_forever/amain.
+                await worker._await_active_executor(task)
+                # Must not reach here under hard-exit path.
+                sys.exit(99)
+
+            def main():
+                logging.basicConfig(level=logging.INFO)
+                try:
+                    asyncio.run(amain())
+                except SystemExit as exc:
+                    code = exc.code if isinstance(exc.code, int) else 1
+                    raise SystemExit(code) from exc
+
+            if __name__ == "__main__":
+                main()
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    proc = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=str(REPO_ROOT / "backend"),
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert proc.returncode == EXIT_DRAIN_TIMEOUT, (
+        f"expected exit {EXIT_DRAIN_TIMEOUT}, got {proc.returncode}\n"
+        f"stdout={proc.stdout}\nstderr={proc.stderr}"
+    )
+    assert started_marker.is_file(), "provider never entered"
+    assert not cancelled_marker.is_file(), (
+        "provider received CancelledError before process exit — "
+        "asyncio.run cleanup still cancelled the post-barrier task"
+    )
+
+
+def test_signal_after_final_pre_barrier_check_no_cancellation():
+    """SIGTERM after final stop check must not cancel; drain territory applies."""
+
+    async def body(factory, engine):
+        with _flags():
+            async with engine.connect() as conn:
+                execution = await bootstrap_staging_fake_worker_execution(
+                    conn,
+                    sink_path=_tmp_sink_path(),
+                )
+            async with factory() as db:
+                fx = await PublishRetryCommandStagingFixtureBuilder(
+                    execution.staging_context,
+                ).create(
+                    db,
+                    command_status="pending",
+                    worker_id=WORKER_A,
+                    commit=True,
+                )
+
+            worker = PublishRetryCommandWorker(
+                worker_id=WORKER_A,
+                execution=execution,
+                drain_seconds=5.0,
+                hard_exit_on_drain_timeout=False,
+            )
+            cancelled = {"provider": False, "barrier": False}
+            real_execute = PublishRetryCommandExecutor.execute
+            real_cross = PublishRetryCommandBarrierService.cross_barrier
+            check_passed = asyncio.Event()
+
+            async def slow_cross(*args, **kwargs):
+                assert worker.in_drain_territory is True
+                # SIGTERM arrives after final check, while barrier TX in flight.
+                worker.request_stop()
+                try:
+                    return await real_cross(*args, **kwargs)
+                except asyncio.CancelledError:
+                    cancelled["barrier"] = True
+                    raise
+
+            async def execute_with_race(*args, **kwargs):
+                kwargs = dict(kwargs)
+                orig_stop = worker._should_stop_before_barrier
+
+                def stop_cb() -> bool:
+                    result = orig_stop()
+                    if not result:
+                        check_passed.set()
+                    return result
+
+                kwargs["should_stop_before_barrier"] = stop_cb
+                return await real_execute(*args, **kwargs)
+
+            with patch.object(worker_mod, "AsyncSessionLocal", factory):
+                with patch.object(
+                    PublishRetryCommandClaimService,
+                    "record_claim_audits",
+                    AsyncMock(return_value=None),
+                ):
+                    with patch.object(
+                        PublishRetryCommandBarrierService,
+                        "cross_barrier",
+                        side_effect=slow_cross,
+                    ):
+                        with patch.object(
+                            PublishRetryCommandExecutor,
+                            "execute",
+                            side_effect=execute_with_race,
+                        ):
+                            await worker.run_once()
+
+            assert check_passed.is_set()
+            assert worker.in_drain_territory is True
+            assert cancelled["barrier"] is False
+            assert execution.provider.invocation_count == 1
+            assert worker.exit_code == EXIT_OK
+            async with factory() as db:
+                cmd = (
+                    await db.execute(
+                        select(PublishRetryCommand).where(
+                            PublishRetryCommand.id == fx.command_id,
+                        ),
+                    )
+                ).scalar_one()
+                assert cmd.status == "succeeded"
+
+    asyncio.run(_with_staging_pg(body))
+
+
+def test_hard_exit_guard_requires_fake_execution_and_territory():
+    """os._exit path refuses backend=none / pre-barrier."""
+    worker = PublishRetryCommandWorker(
+        worker_id=WORKER_A,
+        execution=None,
+        hard_exit_on_drain_timeout=True,
+    )
+    worker._terminate_after_post_barrier_drain_timeout()
+    assert worker.exit_code == EXIT_DRAIN_TIMEOUT
+
+    fake = SimpleNamespace(execution_backend="fake")
+    worker2 = PublishRetryCommandWorker(
+        worker_id=WORKER_A,
+        execution=fake,  # type: ignore[arg-type]
+        hard_exit_on_drain_timeout=False,
+    )
+    # Outside territory — must not os._exit even with fake context.
+    worker2._terminate_after_post_barrier_drain_timeout()
+    assert worker2.exit_code == EXIT_DRAIN_TIMEOUT
+    assert worker2.in_drain_territory is False
+
+    src = inspect.getsource(
+        PublishRetryCommandWorker._terminate_after_post_barrier_drain_timeout,
+    )
+    assert "os._exit" in src
+    assert "execution_backend != \"fake\"" in src or "execution_backend != 'fake'" in src
 
 
 def test_run_forever_exits_on_idle_stop_without_claim():
@@ -880,6 +1115,11 @@ def test_compose_lifecycle_docs_and_drain_defaults():
     assert settings.PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH == ""
     assert settings.PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND == "none"
     assert settings.PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED is False
+    docs = (REPO_ROOT / "docs" / "STAGING_RETRY_COMMAND_WORKER.md").read_text(
+        encoding="utf-8",
+    )
+    assert "os._exit(3)" in docs
+    assert "asyncio.run" in docs
 
 
 def test_batch_sequential_no_gather_in_worker():

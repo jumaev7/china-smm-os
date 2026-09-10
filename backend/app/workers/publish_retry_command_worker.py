@@ -10,7 +10,9 @@ B2b1-B graceful shutdown:
 
 * SIGTERM/SIGINT → ``request_stop()`` (flag only; never cancels active executor)
 * pre-barrier: ``should_stop_before_barrier`` → ``stopped_before_barrier``
-* post-barrier: drain active executor (bounded); no cancel / no replay
+* post-barrier / drain territory: bounded drain; no cancel / no replay
+* post-barrier drain timeout: abrupt ``os._exit(3)`` (never return through
+  ``asyncio.run`` cleanup, which would cancel the pending executor)
 * no new claim after stop
 
 Does not know APP_ENV, current_database, staging DB names, provider-secret
@@ -78,6 +80,7 @@ class PublishRetryCommandWorker:
         *,
         execution: RetryCommandWorkerExecutionContext | None = None,
         drain_seconds: float | None = None,
+        hard_exit_on_drain_timeout: bool = True,
     ) -> None:
         self.worker_id = worker_id or build_worker_identity()
         self.worker_instance = scrubbed_worker_instance(self.worker_id)
@@ -94,13 +97,24 @@ class PublishRetryCommandWorker:
                 )
                 or DEFAULT_DRAIN_SECONDS
             )
+        # Production/staging worker default: True. In-process unit tests may
+        # set False so pytest is not killed; process-level tests keep True.
+        self._hard_exit_on_drain_timeout = bool(hard_exit_on_drain_timeout)
         self._exit_code = EXIT_OK
         self._active_task: asyncio.Task | None = None
         self._active_command_id: UUID | None = None
+        # Set when the final pre-barrier stop check returns False — the
+        # executor is committed to cross_barrier / post-barrier drain.
+        self._in_drain_territory = False
+        self._drain_territory = asyncio.Event()
 
     @property
     def exit_code(self) -> int:
         return self._exit_code
+
+    @property
+    def in_drain_territory(self) -> bool:
+        return self._in_drain_territory
 
     def request_stop(self) -> None:
         """Graceful shutdown: stop new claims / orchestration starts.
@@ -122,9 +136,76 @@ class PublishRetryCommandWorker:
             )
         self._stop.set()
 
+    def _enter_drain_territory(self) -> None:
+        """Mark barrier-commit / post-barrier drain territory (idempotent)."""
+        if not self._in_drain_territory:
+            self._in_drain_territory = True
+            self._drain_territory.set()
+
     def _should_stop_before_barrier(self) -> bool:
-        """Control-plane stop flag for executor pre-barrier check. No I/O."""
-        return self._stop.is_set()
+        """Control-plane stop flag for executor pre-barrier check. No I/O.
+
+        When this returns False, the executor enters ``cross_barrier`` —
+        treat that as drain territory: ordinary SIGTERM must not cancel.
+        """
+        if self._stop.is_set():
+            return True
+        self._enter_drain_territory()
+        return False
+
+    @staticmethod
+    def _flush_logs_best_effort() -> None:
+        """Flush non-authoritative log buffers before abrupt process exit."""
+        try:
+            for handler in logging.root.handlers:
+                try:
+                    handler.flush()
+                except Exception:  # noqa: BLE001
+                    pass
+            logging.shutdown()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _terminate_after_post_barrier_drain_timeout(self) -> None:
+        """Abrupt process death after post-barrier drain deadline.
+
+        ``asyncio.run`` / ``Runner.close`` cancel all pending tasks. Returning
+        ``SystemExit(3)`` after ``wait_for(shield(task))`` timeout would still
+        deliver ``CancelledError`` into the active provider/finalizer during
+        loop shutdown. ``os._exit`` skips that cleanup.
+
+        Allowed only with verified staging fake execution context. Correctness
+        relies on durable DB state (e.g. provider_write_started), not Python
+        finally / context-manager cleanup. No DB mutation here.
+        """
+        self._exit_code = EXIT_DRAIN_TIMEOUT
+        if self._execution is None or self._execution.execution_backend != "fake":
+            # Fail closed: never hard-exit generic backend=none / production path.
+            logger.error(
+                "[RetryCommandWorker] drain_timeout without verified fake "
+                "execution context; refusing os._exit instance=%s",
+                self.worker_instance,
+            )
+            return
+        if not self._in_drain_territory:
+            logger.error(
+                "[RetryCommandWorker] drain_timeout outside drain territory; "
+                "refusing os._exit instance=%s",
+                self.worker_instance,
+            )
+            return
+        logger.error(
+            "[RetryCommandWorker] worker_drain_timeout_hard_exit "
+            "command_id=%s drain_seconds=%s instance=%s exit_code=%s "
+            "(os._exit; no asyncio cancellation; DB left as-is)",
+            self._active_command_id,
+            self._drain_seconds,
+            self.worker_instance,
+            EXIT_DRAIN_TIMEOUT,
+        )
+        self._flush_logs_best_effort()
+        if self._hard_exit_on_drain_timeout:
+            os._exit(EXIT_DRAIN_TIMEOUT)
 
     async def run_once(self) -> list[ClaimResult]:
         """One claim/reclaim tick, then sequential post-claim orchestration.
@@ -279,6 +360,8 @@ class PublishRetryCommandWorker:
         )
         self._active_task = task
         self._active_command_id = command_id
+        self._in_drain_territory = False
+        self._drain_territory = asyncio.Event()
         try:
             result = await self._await_active_executor(task)
         finally:
@@ -286,7 +369,7 @@ class PublishRetryCommandWorker:
             self._active_command_id = None
 
         if result is None:
-            # Drain timed out — DB left as-is; no replay.
+            # Drain timed out (soft/test path only). Hard path never returns.
             return
 
         if result.outcome == "stopped_before_barrier":
@@ -309,12 +392,14 @@ class PublishRetryCommandWorker:
         self,
         task: asyncio.Task,
     ) -> Any | None:
-        """Await active executor; after stop, bound drain via shield (no cancel).
+        """Await active executor; after stop, drain without cancelling it.
 
-        Normal path: direct completion of the task.
-        After stop while in-flight: ``wait_for(shield(task), drain_seconds)``.
-        On drain timeout: set non-zero exit code; do NOT cancel the task;
-        do NOT mutate command / replay provider. Process should exit.
+        Pre-barrier (not yet drain territory): await until the executor hits
+        ``should_stop_before_barrier`` / completes — no hard exit, no cancel.
+
+        Drain territory (final pre-barrier check returned False, or later):
+        ``wait_for(shield(task), drain_seconds)``. On timeout: abrupt
+        ``os._exit(3)`` so ``asyncio.run`` cannot cancel the pending executor.
         """
         stop_waiter = asyncio.create_task(self._stop.wait())
         try:
@@ -325,20 +410,52 @@ class PublishRetryCommandWorker:
             if task in done:
                 return task.result()
 
-            # Stop requested while executor still running — drain with bound.
+            # Stop requested while executor still running.
             try:
                 cmd_metrics.inc("retry_command_worker_draining_total")
             except Exception:  # noqa: BLE001
                 pass
             logger.info(
                 "[RetryCommandWorker] worker_draining_active_command "
-                "command_id=%s drain_seconds=%s instance=%s",
+                "command_id=%s drain_seconds=%s drain_territory=%s instance=%s",
                 self._active_command_id,
                 self._drain_seconds,
+                self._in_drain_territory,
                 self.worker_instance,
             )
+
+            if not self._in_drain_territory:
+                # Pre-barrier: wait for stop check / completion OR territory.
+                territory_waiter = asyncio.create_task(self._drain_territory.wait())
+                try:
+                    done2, _ = await asyncio.wait(
+                        {task, territory_waiter},
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+                    if task in done2:
+                        try:
+                            cmd_metrics.inc(
+                                "retry_command_worker_drain_completed_total",
+                            )
+                        except Exception:  # noqa: BLE001
+                            pass
+                        logger.info(
+                            "[RetryCommandWorker] worker_drain_completed "
+                            "command_id=%s instance=%s (pre-barrier)",
+                            self._active_command_id,
+                            self.worker_instance,
+                        )
+                        return task.result()
+                finally:
+                    if not territory_waiter.done():
+                        territory_waiter.cancel()
+                        try:
+                            await territory_waiter
+                        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                            pass
+
+            # Drain territory: bounded wait; shield so wait_for cannot cancel.
             try:
-                # shield: wait_for must NOT cancel the post-barrier executor.
                 await asyncio.wait_for(
                     asyncio.shield(task),
                     timeout=float(self._drain_seconds),
@@ -356,9 +473,8 @@ class PublishRetryCommandWorker:
                     self._drain_seconds,
                     self.worker_instance,
                 )
-                self._exit_code = EXIT_DRAIN_TIMEOUT
-                # Do not cancel task. Process exit reaps; if process remains
-                # alive the shielded task may still run — no second call.
+                self._terminate_after_post_barrier_drain_timeout()
+                # Soft/test path only (hard_exit disabled or guard refused).
                 return None
 
             try:
