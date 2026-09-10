@@ -28,6 +28,11 @@ invoke the provider.
 
 Optional ``ExecutorHooks`` exist for staging/harness crash-boundary tests
 only — not production-reachable configuration.
+
+Optional ``should_stop_before_barrier`` is control-plane coordination only
+(B2b1-B). Checked after successful prepare / after_prepare, before barrier.
+Never passed into Preparation/Barrier/Finalization services. No check after
+successful ``barrier_crossed``.
 """
 from __future__ import annotations
 
@@ -75,9 +80,12 @@ ExecutorOutcome = Literal[
     "blocked_preparation",
     "blocked_barrier",
     "post_provider_finalize_failed",
+    "stopped_before_barrier",
     "disabled",
     "invariant_violation",
 ]
+
+StopBeforeBarrierFn = Callable[[], bool]
 
 _PREP_OK = frozenset({
     "prepared",
@@ -146,11 +154,14 @@ class PublishRetryCommandExecutor:
         correlation_id: str | None = None,
         eligibility_evaluator: RetryCommandEligibilityEvaluator | None = None,
         hooks: ExecutorHooks | None = None,
+        should_stop_before_barrier: StopBeforeBarrierFn | None = None,
     ) -> ExecutorResult:
         """Run the D2-A orchestration path once for a claimed command.
 
         ``provider`` must be injected explicitly (tests/harness: FakeProvider /
         staging fake). Optional ``eligibility_evaluator`` defaults to canonical.
+        ``should_stop_before_barrier`` is optional control-plane coordination
+        (worker graceful shutdown); never forwarded into prep/barrier/finalizer.
         """
         allowed, gate_reason = prepare_gates_open()
         if not allowed:
@@ -231,6 +242,43 @@ class PublishRetryCommandExecutor:
             )
 
         await _run_hook(hooks.after_prepare if hooks else None)
+
+        # B2b1-B: pre-barrier stop only. No check after barrier_crossed.
+        if should_stop_before_barrier is not None and should_stop_before_barrier():
+            try:
+                cmd_metrics.inc("retry_command_stopped_before_barrier_total")
+            except Exception:  # noqa: BLE001
+                logger.debug(
+                    "[RetryCommandExecutor] stopped_before_barrier metric failed",
+                    exc_info=True,
+                )
+            logger.info(
+                "[RetryCommandExecutor] worker_stopped_before_barrier "
+                "command_id=%s prep=%s",
+                command_id,
+                prep.outcome,
+            )
+            return ExecutorResult(
+                ok=True,
+                outcome="stopped_before_barrier",
+                command_id=prep.command_id or command_id,
+                resulting_attempt_id=prep.resulting_attempt_id,
+                original_attempt_id=prep.original_attempt_id,
+                reason_code="stopped_before_barrier",
+                message=(
+                    "Graceful stop requested after preparation; barrier not crossed; "
+                    "provider not invoked (lease may expire for later reclaim)"
+                ),
+                correlation_id=prep.correlation_id or correlation_id,
+                tenant_id=prep.tenant_id,
+                platform=prep.platform,
+                command_status=prep.command_status or "claimed",
+                attempt_status=None,
+                provider_invoked=False,
+                provider_invocation_count=0,
+                preparation_outcome=prep.outcome,
+                barrier_outcome=None,
+            )
 
         async with session_factory() as db:
             barrier = await PublishRetryCommandBarrierService.cross_barrier(

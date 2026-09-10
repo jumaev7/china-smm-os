@@ -689,16 +689,20 @@ def test_same_eligibility_object_identity_to_prep_and_barrier():
 
 
 def test_request_stop_does_not_cancel_running_executor():
-    """HARD GATE audit: request_stop only sets Event; no task.cancel."""
+    """HARD GATE audit: request_stop only sets Event; no task.cancel on executor."""
     src = inspect.getsource(PublishRetryCommandWorker.request_stop)
     assert "self._stop.set()" in src
     assert "task.cancel" not in src
     run_once = inspect.getsource(PublishRetryCommandWorker.run_once)
     assert "if self._stop.is_set()" in run_once
-    # No cancellation API on the Event-based stop path.
-    class_src = inspect.getsource(PublishRetryCommandWorker)
-    assert "task.cancel" not in class_src
-    assert "CancelledError" not in class_src
+    # Active executor must not be cancelled by stop / drain timeout.
+    await_src = inspect.getsource(PublishRetryCommandWorker._await_active_executor)
+    assert "asyncio.shield" in await_src
+    assert "task.cancel()" not in await_src
+    assert "active_task.cancel" not in await_src
+    handoff = inspect.getsource(PublishRetryCommandWorker._future_executor_handoff)
+    assert "task.cancel()" not in handoff
+    assert "_should_stop_before_barrier" in handoff
 
 
 def test_generic_worker_has_no_staging_identity_policy():

@@ -52,7 +52,9 @@ services:
       PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: "1"
       PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-5}
       PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-180}
+      PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS:-60}
       PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: /tmp/china-smm-os-staging-fake-sink/fake-invocations.jsonl
+      PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: /tmp/china-smm-os-staging-markers
       TELEGRAM_BOT_TOKEN: ""
       META_APP_SECRET: ""
       SCHEDULED_PUBLISH_ENABLED: "false"
@@ -66,6 +68,7 @@ services:
       TENANT_SECRET_KEY: staging-local-only-tenant-not-for-production
     volumes:
       - staging_fake_sink:/tmp/china-smm-os-staging-fake-sink
+      - staging_markers:/tmp/china-smm-os-staging-markers
     depends_on:
       postgres:
         condition: service_healthy
@@ -82,3 +85,5 @@ volumes:
     name: china-smm-os-staging-pgdata
   staging_fake_sink:
     name: china-smm-os-staging-fake-sink
+  staging_markers:
+    name: china-smm-os-staging-markers

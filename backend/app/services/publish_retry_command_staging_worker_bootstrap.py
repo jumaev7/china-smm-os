@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
@@ -37,6 +38,7 @@ from app.services.publish_retry_command_executor import (
     ExecutorHooks,
     ExecutorResult,
     PublishRetryCommandExecutor,
+    StopBeforeBarrierFn,
 )
 from app.services.publish_retry_command_fake_sink import DurableFakeInvocationSink
 from app.services.publish_retry_command_provider_port import RetryCommandProviderPort
@@ -107,6 +109,7 @@ class RetryCommandWorkerExecutionContext:
         command_id: UUID,
         worker_id: str,
         correlation_id: str | None = None,
+        should_stop_before_barrier: StopBeforeBarrierFn | None = None,
     ) -> ExecutorResult:
         """Worker→executor handoff. Reloads canonical state inside executor."""
         return await PublishRetryCommandExecutor.execute(
@@ -117,7 +120,33 @@ class RetryCommandWorkerExecutionContext:
             correlation_id=correlation_id,
             eligibility_evaluator=self.eligibility_evaluator,
             hooks=self.hooks,
+            should_stop_before_barrier=should_stop_before_barrier,
         )
+
+
+def build_staging_marker_hooks(marker_dir: str | Path) -> ExecutorHooks:
+    """DI-only file markers for external SIGTERM coordination (staging).
+
+    Written only when bootstrap injects these hooks after verified identity.
+    Not failpoints; not read by prep/barrier/finalizer/executor control flow.
+    """
+    root = Path(marker_dir)
+    root.mkdir(parents=True, exist_ok=True)
+
+    def _marker(name: str) -> Callable[[], None]:
+        def _write() -> None:
+            path = root / name
+            path.write_text("1\n", encoding="utf-8")
+
+        return _write
+
+    return ExecutorHooks(
+        after_prepare=_marker("after_prepare"),
+        after_barrier=_marker("after_barrier"),
+        before_provider=_marker("before_provider"),
+        after_provider=_marker("after_provider"),
+        before_finalize=_marker("before_finalize"),
+    )
 
 
 def _default_sink_path() -> Path:
@@ -187,6 +216,13 @@ async def bootstrap_staging_fake_worker_execution(
             detail=exc.detail,
         ) from exc
 
+    # Marker hooks only after verified identity (DI; not env failpoints).
+    resolved_hooks = hooks
+    if resolved_hooks is None:
+        marker_raw = getattr(cfg, "PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR", None)
+        if marker_raw is not None and str(marker_raw).strip():
+            resolved_hooks = build_staging_marker_hooks(str(marker_raw).strip())
+
     eligibility = StagingSyntheticRetryEligibility(staging_context)
     sink: DurableFakeInvocationSink | None = None
     if create_sink:
@@ -206,7 +242,7 @@ async def bootstrap_staging_fake_worker_execution(
         eligibility_evaluator=eligibility,
         provider=provider,
         sink=sink,
-        hooks=hooks,
+        hooks=resolved_hooks,
     )
     logger.info(
         "[RetryCommandStagingBootstrap] verified fake worker context "

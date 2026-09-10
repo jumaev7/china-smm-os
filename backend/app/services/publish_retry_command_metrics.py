@@ -35,6 +35,12 @@ _counters: Dict[str, int] = {
     "retry_command_worker_execution_disabled_total": 0,
     "retry_command_worker_backend_none_total": 0,
     "retry_command_worker_backend_invalid_total": 0,
+    # B2b1-B graceful shutdown (no tenant/account/command labels)
+    "retry_command_stopped_before_barrier_total": 0,
+    "retry_command_worker_stop_requested_total": 0,
+    "retry_command_worker_draining_total": 0,
+    "retry_command_worker_drain_completed_total": 0,
+    "retry_command_worker_drain_timeout_total": 0,
 }
 
 

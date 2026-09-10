@@ -127,9 +127,14 @@ class Settings(BaseSettings):
     PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: str = "success"
     # Optional durable fake-invocation sink path (staging observation only).
     PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: str = ""
+    # Optional staging marker directory for SIGTERM coordination hooks (bootstrap only).
+    PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: str = ""
     PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: float = 5.0
     PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: int = 1
     PUBLISH_RETRY_COMMAND_LEASE_SECONDS: int = 180
+    # Max seconds to await an in-flight executor after stop (B2b1-B drain).
+    # Timeout exits non-zero without cancelling/replaying the shielded task.
+    PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS: float = 60.0
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300
