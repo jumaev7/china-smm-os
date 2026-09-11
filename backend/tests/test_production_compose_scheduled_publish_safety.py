@@ -87,6 +87,10 @@ def test_deploy_script_requires_both_compose_files_and_hard_gates():
         script,
     )
     assert "abort" in script.lower() or "die " in script
+    # Readiness polling after single recreate (no second deploy attempt).
+    assert "wait_for_backend_readiness" in script
+    assert 'READINESS_TIMEOUT_SEC="${READINESS_TIMEOUT_SEC:-60}"' in script
+    assert script.count("force-recreate") == 1
 
 
 def test_env_production_example_defaults_scheduled_publish_false():
