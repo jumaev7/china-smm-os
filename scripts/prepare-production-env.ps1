@@ -71,7 +71,7 @@ $values = [ordered]@{
     TUNNEL_TOKEN = Require-Value $sourceValues "TUNNEL_TOKEN"
     ENABLE_FACEBOOK_LIVE_SMOKE = "false"
     ENABLE_INSTAGRAM_LIVE_SMOKE = "false"
-    SCHEDULED_PUBLISH_ENABLED = "true"
+    SCHEDULED_PUBLISH_ENABLED = "false"
 }
 
 $lines = foreach ($entry in $values.GetEnumerator()) {

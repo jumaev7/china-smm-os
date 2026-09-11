@@ -100,7 +100,10 @@ services:
       - "8000"
     environment:
       <<: *backend-environment
-      SCHEDULED_PUBLISH_ENABLED: "true"
+      # Fail-closed: scheduled publishing OFF in canonical production.
+      # Enabling requires an explicit deliberate override file (not shipped).
+      # Do not interpolate from .env.production — a true there must not win.
+      SCHEDULED_PUBLISH_ENABLED: "false"
       AUTOMATION_SCHEDULER_ENABLED: "false"
       # Integration Health scheduler (backend lifespan only). Defaults false;
       # local-only activation: CHECK=true, REMOTE=false until a separate rollout.

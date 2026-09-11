@@ -1,0 +1,20 @@
+# Defense-in-depth overlay for production backend recreate.
+#
+# Canonical docker-compose.production.yml already fail-closes
+# SCHEDULED_PUBLISH_ENABLED=false on backend. This file remains required by
+# ops/deploy-backend-production.sh so accidental single-file recreates are
+# harder, and so older operator habits keep the safe override.
+#
+# This is NOT the sole safety control. Do not remove these false pins
+# without an explicit enablement design.
+#
+# Future scheduled-publish enablement must use a separate deliberate
+# override (e.g. docker-compose.scheduled-publish-enabled.yml) — do not
+# flip these values casually.
+
+services:
+  backend:
+    environment:
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
+      HEALTH_SNAPSHOT_ENABLED: "false"

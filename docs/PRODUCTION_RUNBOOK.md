@@ -5,11 +5,33 @@ This runbook deploys the existing named Cloudflare Tunnel with production-built 
 ## Safety boundary
 
 - Development remains on `docker-compose.yml`.
-- Production uses `docker-compose.production.yml` only.
+- Production stack definition lives in `docker-compose.production.yml`.
+- **Backend recreate must use the canonical helper** (or both compose files below).
+- Canonical production compose **hard-pins** backend `SCHEDULED_PUBLISH_ENABLED=false`.
+  Turning scheduled publishing ON requires a separate deliberate override design
+  (not shipped). Do not enable it via `.env.production` alone.
+- `cutover-safe.yml` is **defense in depth** (also pins scheduled publish / automation /
+  health-snapshot false). It is not the sole safety control, but deploy tooling
+  still requires it so single-file recreates stay discouraged.
 - PostgreSQL, backend, and frontend do not publish host ports in production.
 - Cloudflare Tunnel is the only public ingress.
 - R2 is the only production media store.
 - Never commit `.env.production`.
+- Keep retry-command worker profile unselected and all retry-command flags false.
+
+### DO NOT recreate backend with production compose alone
+
+**Unsafe / forbidden for backend recreate:**
+
+```bash
+# FOOTGUN — do not use for backend recreate
+docker compose --env-file .env.production -f docker-compose.production.yml \
+  up -d --no-deps --force-recreate backend
+```
+
+Even though canonical production compose now fail-closes scheduled publishing,
+operators must still use the helper (or both files) so cutover-safe defense-in-depth
+and pre/post hard gates run.
 
 ## One-time preparation
 
@@ -17,15 +39,20 @@ This runbook deploys the existing named Cloudflare Tunnel with production-built 
    to copy the existing integration credentials and generate independent secrets.
 2. Alternatively copy `.env.production.example` to `.env.production` and replace every placeholder.
 3. URL-encode the PostgreSQL password inside `DATABASE_URL`.
-4. In the named Cloudflare Tunnel configure:
+4. Confirm `SCHEDULED_PUBLISH_ENABLED=false` in `.env.production` (defense in depth;
+   compose already hard-pins false for backend).
+5. In the named Cloudflare Tunnel configure:
    - `app.chinasmmos.com` -> `http://frontend:3000`
    - `api.chinasmmos.com` -> `http://backend:8000`
-5. Keep `media.chinasmmos.com` attached to the R2 bucket, not to the tunnel.
+6. Keep `media.chinasmmos.com` attached to the R2 bucket, not to the tunnel.
 
 ## Validate without starting anything
 
-```powershell
-docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+Prefer validating the same file pair the deploy helper uses:
+
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml -f cutover-safe.yml config --quiet
 ```
 
 The env file is used for Compose interpolation only. Secrets are explicitly
@@ -36,16 +63,52 @@ injected into application containers.
 
 Take a database backup before every migration. Then run:
 
-```powershell
-docker compose --env-file .env.production -f docker-compose.production.yml --profile tools run --rm migrate
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml -f cutover-safe.yml \
+  --profile tools run --rm migrate
 ```
 
-## Start production
+## Start production (full stack)
 
-```powershell
-docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
-docker compose --env-file .env.production -f docker-compose.production.yml ps
+Initial bring-up of the full stack (not a routine backend-only recreate):
+
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml -f cutover-safe.yml up -d --build
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml -f cutover-safe.yml ps
 ```
+
+## Backend-only recreate (canonical)
+
+Routine production backend recreates **must** use:
+
+```bash
+./ops/deploy-backend-production.sh
+```
+
+The helper:
+
+- uses `docker-compose.production.yml` **and** `cutover-safe.yml`
+- uses `.env.production`
+- recreates **backend only** (`--no-deps --force-recreate`)
+- does **not** select the `retry-command` profile
+- **hard-fails** unless resolved compose has:
+  - `SCHEDULED_PUBLISH_ENABLED=false`
+  - all `PUBLISH_RETRY_COMMAND_*` gates false / backend `none`
+- **hard-fails** after recreate unless runtime matches (container env, `/health=200`,
+  retry worker absent)
+
+If you cannot run the helper, the equivalent manual pair is:
+
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml -f cutover-safe.yml \
+  up -d --no-deps --force-recreate backend
+```
+
+…but you must still perform the same preflight/postflight gates the script enforces.
 
 ## Smoke checks
 
@@ -233,4 +296,9 @@ Never enable live Meta smoke flags unless intentionally publishing for real.
 
 ## Rollback
 
-Do not delete volumes. Redeploy the last known-good image/commit, then run `up -d` again. Restore PostgreSQL only if the migration itself changed data incompatibly.
+Do not delete volumes. Redeploy the last known-good image/commit, then recreate via
+`./ops/deploy-backend-production.sh` (backend-only) or the full-stack pair that
+includes both `docker-compose.production.yml` and `cutover-safe.yml`. Restore
+PostgreSQL only if the migration itself changed data incompatibly.
+
+Never roll back backend by recreating with `docker-compose.production.yml` alone.
