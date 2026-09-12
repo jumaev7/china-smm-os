@@ -57,8 +57,15 @@ Long-running worker fake path is **B2b1-A** (`docs/STAGING_RETRY_COMMAND_WORKER.
 
 - Tenant/client name prefix: `staging-retry-`
 - Correlation ID prefix: `staging-retry:`
+- Content `source`: `staging_synthetic` (fixture builder; full Alembic NOT NULL)
 
-Both required for staging eligibility. Canonical empty allowlist remains production default.
+Both tenant + correlation markers are required for staging eligibility.
+Canonical empty allowlist remains the production default.
+
+`PublishRetryCommandStagingFixtureBuilder` seeds against the **current full
+Alembic schema** (explicit `clients.source_language` / `business_category` /
+`content_style` / `status` and `content_items.source`). No raw SQL campaign
+workaround is required for B2b2 staging seeds.
 
 ## Crash fidelity notes
 

@@ -222,7 +222,11 @@ async def _setup_minimal_schema(engine) -> None:
                 CREATE TABLE clients (
                     id UUID PRIMARY KEY,
                     tenant_id UUID NOT NULL,
-                    company_name VARCHAR(255) NULL
+                    company_name VARCHAR(255) NULL,
+                    source_language VARCHAR(10) NOT NULL DEFAULT 'zh',
+                    business_category VARCHAR(100) NOT NULL DEFAULT 'general',
+                    content_style VARCHAR(100) NOT NULL DEFAULT 'professional',
+                    status VARCHAR(20) NOT NULL DEFAULT 'active'
                 )
                 """
             )
@@ -233,7 +237,8 @@ async def _setup_minimal_schema(engine) -> None:
                 CREATE TABLE content_items (
                     id UUID PRIMARY KEY,
                     client_id UUID NOT NULL,
-                    status VARCHAR(30) NOT NULL DEFAULT 'failed'
+                    status VARCHAR(30) NOT NULL DEFAULT 'failed',
+                    source VARCHAR(20) NOT NULL DEFAULT 'manual'
                 )
                 """
             )

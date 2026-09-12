@@ -1,10 +1,15 @@
-"""Staging-only synthetic fixture builder (Phase 3C.1C-D2-B2a).
+"""Staging-only synthetic fixture builder (Phase 3C.1C-D2-B2a / B2b2-0A).
 
 Requires VerifiedRetryCommandStagingContext. Cannot mutate production DB.
 Creates synthetic tenant / content / account / failed attempt / pending or
 claimed retry command with unmistakable staging markers.
 
+Inserts use current full Alembic NOT NULL columns (clients.source_language /
+business_category / content_style / status; content_items.source). ORM Python
+defaults are not relied upon for raw SQL.
+
 NO provider credentials. NO public API. NO production IDs copied.
+NO claim / prepare / barrier / provider / finalizer side effects.
 """
 from __future__ import annotations
 
@@ -105,145 +110,169 @@ class PublishRetryCommandStagingFixtureBuilder:
         has_company = await _tenants_has_column(db, "company_name")
         has_name = await _tenants_has_column(db, "name")
 
-        if has_company and has_name:
-            await db.execute(
-                text(
-                    "INSERT INTO tenants (id, company_name, name, status, plan) "
-                    "VALUES (:id, :cname, :name, 'active', 'starter')"
-                ),
-                {"id": tenant_id, "cname": tenant_name, "name": tenant_name},
-            )
-        elif has_company:
-            await db.execute(
-                text(
-                    "INSERT INTO tenants (id, company_name, status, plan) "
-                    "VALUES (:id, :name, 'active', 'starter')"
-                ),
-                {"id": tenant_id, "name": tenant_name},
-            )
-        elif has_name:
-            await db.execute(
-                text("INSERT INTO tenants (id, name) VALUES (:id, :name)"),
-                {"id": tenant_id, "name": tenant_name},
-            )
-        else:
-            raise StagingIdentityError(
-                "tenants_schema_unsupported",
-                detail="tenants table needs company_name or name",
-            )
-
-        await db.execute(
-            text(
-                "INSERT INTO clients (id, tenant_id, company_name) "
-                "VALUES (:id, :tenant_id, :name)"
-            ),
-            {"id": client_id, "tenant_id": tenant_id, "name": tenant_name},
-        )
-        await db.execute(
-            text(
-                """
-                INSERT INTO content_items
-                    (id, client_id, status, platforms, updated_at)
-                VALUES
-                    (:id, :client_id, 'failed', ARRAY[:platform]::varchar[], :now)
-                """
-            ),
-            {
-                "id": content_id,
-                "client_id": client_id,
-                "platform": platform,
-                "now": now,
-            },
-        )
-        # No Meta/Telegram tokens or OAuth credentials.
-        await db.execute(
-            text(
-                """
-                INSERT INTO publishing_accounts
-                    (id, tenant_id, platform, account_name, account_id, status)
-                VALUES
-                    (:id, :tenant_id, :platform, :account_name, :account_ext, 'mock')
-                """
-            ),
-            {
-                "id": account_id,
-                "tenant_id": tenant_id,
-                "platform": platform,
-                "account_name": f"{STAGING_TENANT_NAME_PREFIX}account-{suffix}",
-                "account_ext": f"staging-fake-account-{suffix}",
-            },
-        )
-        await db.execute(
-            text(
-                """
-                INSERT INTO publish_attempts (
-                    id, content_id, platform, account_id, status, failure_code,
-                    publish_version, attempt_number, idempotency_key, retryable,
-                    error
-                ) VALUES (
-                    :id, :content_id, :platform, :account_id, 'failed',
-                    'provider_unavailable', :pv, 1, :ikey, true,
-                    'staging synthetic original failure'
-                )
-                """
-            ),
-            {
-                "id": original_attempt_id,
-                "content_id": content_id,
-                "platform": platform,
-                "account_id": account_id,
-                "pv": publish_version,
-                "ikey": attempt_idem,
-            },
-        )
-
         lease_owner = worker if command_status == "claimed" else None
         lease_exp = lease_expires if command_status == "claimed" else None
         claimed_at = now if command_status == "claimed" else None
-        await db.execute(
-            text(
-                """
-                INSERT INTO publish_retry_commands (
-                    id, tenant_id, client_id, content_id, original_attempt_id,
-                    resulting_attempt_id, platform, publishing_account_id,
-                    publish_version, destination_key, requested_source,
-                    idempotency_key, status, provider_outcome, lease_owner,
-                    lease_expires_at, claimed_at, started_at,
-                    provider_write_started_at, finished_at, correlation_id
-                ) VALUES (
-                    :id, :tid, :cid, :content_id, :orig,
-                    NULL, :platform, :acct,
-                    :pv, :dest, 'admin',
-                    :ikey, :status, NULL, :owner,
-                    :lease_expires, :claimed_at, :started_at,
-                    NULL, NULL, :corr
-                )
-                """
-            ),
-            {
-                "id": command_id,
-                "tid": tenant_id,
-                "cid": client_id,
-                "content_id": content_id,
-                "orig": original_attempt_id,
-                "platform": platform,
-                "acct": account_id,
-                "pv": publish_version,
-                "dest": destination_key,
-                "ikey": cmd_idem,
-                "status": command_status,
-                "owner": lease_owner,
-                "lease_expires": lease_exp,
-                "claimed_at": claimed_at,
-                "started_at": claimed_at,
-                "corr": correlation_id,
-            },
-        )
 
-        if commit:
-            await db.commit()
-        else:
-            await db.flush()
+        try:
+            if has_company and has_name:
+                await db.execute(
+                    text(
+                        "INSERT INTO tenants (id, company_name, name, status, plan) "
+                        "VALUES (:id, :cname, :name, 'active', 'starter')"
+                    ),
+                    {"id": tenant_id, "cname": tenant_name, "name": tenant_name},
+                )
+            elif has_company:
+                await db.execute(
+                    text(
+                        "INSERT INTO tenants (id, company_name, status, plan) "
+                        "VALUES (:id, :name, 'active', 'starter')"
+                    ),
+                    {"id": tenant_id, "name": tenant_name},
+                )
+            elif has_name:
+                await db.execute(
+                    text("INSERT INTO tenants (id, name) VALUES (:id, :name)"),
+                    {"id": tenant_id, "name": tenant_name},
+                )
+            else:
+                raise StagingIdentityError(
+                    "tenants_schema_unsupported",
+                    detail="tenants table needs company_name or name",
+                )
+
+            # Full Alembic clients.* NOT NULL columns have no DB defaults; ORM
+            # Python defaults do not apply to raw INSERT. Populate explicitly.
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO clients (
+                        id, tenant_id, company_name,
+                        source_language, business_category, content_style, status
+                    ) VALUES (
+                        :id, :tenant_id, :name,
+                        :source_language, :business_category, :content_style, :status
+                    )
+                    """
+                ),
+                {
+                    "id": client_id,
+                    "tenant_id": tenant_id,
+                    "name": tenant_name,
+                    "source_language": "zh",
+                    "business_category": "general",
+                    "content_style": "professional",
+                    "status": "active",
+                },
+            )
+            # content_items.source is NOT NULL without a DB default on full schema.
+            # updated_at has a DB default (TIMESTAMP, often without tz); omit it.
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO content_items
+                        (id, client_id, status, platforms, source)
+                    VALUES
+                        (:id, :client_id, 'failed', ARRAY[:platform]::varchar[],
+                         :source)
+                    """
+                ),
+                {
+                    "id": content_id,
+                    "client_id": client_id,
+                    "platform": platform,
+                    "source": "staging_synthetic",
+                },
+            )
+            # No Meta/Telegram tokens or OAuth credentials.
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO publishing_accounts
+                        (id, tenant_id, platform, account_name, account_id, status)
+                    VALUES
+                        (:id, :tenant_id, :platform, :account_name, :account_ext, 'mock')
+                    """
+                ),
+                {
+                    "id": account_id,
+                    "tenant_id": tenant_id,
+                    "platform": platform,
+                    "account_name": f"{STAGING_TENANT_NAME_PREFIX}account-{suffix}",
+                    "account_ext": f"staging-fake-account-{suffix}",
+                },
+            )
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO publish_attempts (
+                        id, content_id, platform, account_id, status, failure_code,
+                        publish_version, attempt_number, idempotency_key, retryable,
+                        error
+                    ) VALUES (
+                        :id, :content_id, :platform, :account_id, 'failed',
+                        'provider_unavailable', :pv, 1, :ikey, true,
+                        'staging synthetic original failure'
+                    )
+                    """
+                ),
+                {
+                    "id": original_attempt_id,
+                    "content_id": content_id,
+                    "platform": platform,
+                    "account_id": account_id,
+                    "pv": publish_version,
+                    "ikey": attempt_idem,
+                },
+            )
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO publish_retry_commands (
+                        id, tenant_id, client_id, content_id, original_attempt_id,
+                        resulting_attempt_id, platform, publishing_account_id,
+                        publish_version, destination_key, requested_source,
+                        idempotency_key, status, provider_outcome, lease_owner,
+                        lease_expires_at, claimed_at, started_at,
+                        provider_write_started_at, finished_at, correlation_id
+                    ) VALUES (
+                        :id, :tid, :cid, :content_id, :orig,
+                        NULL, :platform, :acct,
+                        :pv, :dest, 'admin',
+                        :ikey, :status, NULL, :owner,
+                        :lease_expires, :claimed_at, :started_at,
+                        NULL, NULL, :corr
+                    )
+                    """
+                ),
+                {
+                    "id": command_id,
+                    "tid": tenant_id,
+                    "cid": client_id,
+                    "content_id": content_id,
+                    "orig": original_attempt_id,
+                    "platform": platform,
+                    "acct": account_id,
+                    "pv": publish_version,
+                    "dest": destination_key,
+                    "ikey": cmd_idem,
+                    "status": command_status,
+                    "owner": lease_owner,
+                    "lease_expires": lease_exp,
+                    "claimed_at": claimed_at,
+                    "started_at": claimed_at,
+                    "corr": correlation_id,
+                },
+            )
+
+            if commit:
+                await db.commit()
+            else:
+                await db.flush()
+        except Exception:
+            await db.rollback()
+            raise
 
         return StagingRetryFixture(
             tenant_id=tenant_id,
