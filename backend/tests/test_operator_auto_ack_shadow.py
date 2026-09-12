@@ -170,6 +170,21 @@ def test_operator_review_status_excluded():
     assert decision.reason_code == "operator_review_status"
 
 
+def test_phase_e_stranded_context_never_auto_ack():
+    """Phase E1: stranded post-barrier alerts are hard-excluded from Auto-Ack."""
+    from app.services.operator_auto_ack.constants import PHASE_E_STRANDED_CONTEXT_MARKER
+
+    alert = _alert(
+        alert_type="stale_in_progress",
+        severity="warning",
+        failure_code="stale_in_progress",
+        context={"phase_e": PHASE_E_STRANDED_CONTEXT_MARKER, "auto_ack_eligible": False},
+    )
+    decision = evaluate_auto_ack_candidate(alert, attempt=_attempt(id=alert.attempt_id))
+    assert decision.eligible is False
+    assert decision.reason_code == "phase_e_stranded_excluded"
+
+
 def test_auth_permission_excluded():
     alert = _alert(failure_code="auth_or_permission")
     attempt = _attempt(id=alert.attempt_id, failure_code="auth_or_permission")

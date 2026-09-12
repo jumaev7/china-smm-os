@@ -145,6 +145,78 @@ class PublishRetryCommandResponse(BaseModel):
     finished_at: Optional[datetime] = None
 
 
+class StrandedLeaseOwnerView(BaseModel):
+    """Historical lease owner only — not current liveness proof."""
+
+    value: Optional[str] = None
+    label: str = "historical_only"
+    not_current_liveness_proof: bool = True
+
+
+class StrandedProviderCallStartedAuditView(BaseModel):
+    presence: str
+    interpretation: str
+    meaning: str
+    not_proof_of: List[str] = Field(default_factory=list)
+    authorizes_replay: bool = False
+
+
+class StrandedRetryCommandItem(BaseModel):
+    """Phase E1 operator-safe stranded post-barrier observation."""
+
+    command_id: UUID
+    tenant_id: UUID
+    provider: str
+    platform: str
+    publishing_account_id: Optional[UUID] = None
+    content_id: UUID
+    client_id: Optional[UUID] = None
+    original_attempt_id: UUID
+    resulting_attempt_id: Optional[UUID] = None
+    status: str
+    provider_write_started_at: datetime
+    lease_owner: StrandedLeaseOwnerView
+    claimed_at: Optional[datetime] = None
+    age_seconds: int
+    quiet_period_seconds: int
+    quiet_period_elapsed: bool
+    last_known_local_step: str
+    provider_call_started_audit: StrandedProviderCallStartedAuditView
+    external_post_id: Optional[str] = None
+    correlation_id: str
+    classification: str
+    outcome_stance: Optional[str] = None
+    recommended_action: str
+    phase_e: str = "stranded_post_barrier"
+    does_not_prove: List[str] = Field(default_factory=list)
+    authorizes_provider_write: bool = False
+    authorizes_replay: bool = False
+
+
+class StrandedQuietPeriodView(BaseModel):
+    lease_seconds: int
+    drain_seconds: int
+    provider_slack_seconds: int
+    safety_buffer_seconds: int
+    quiet_period_seconds: int
+    formula: str
+    heuristic_only: bool = True
+    authorizes_provider_write: bool = False
+
+
+class StrandedRetryCommandListResponse(BaseModel):
+    items: List[StrandedRetryCommandItem]
+    total: int
+    page: int
+    page_size: int
+    quiet_period: StrandedQuietPeriodView
+    alert_surfacing_enabled: bool = False
+    alerts_created: int = 0
+    alerts_updated: int = 0
+    phase_e: str = "stranded_post_barrier"
+    read_only_commands: bool = True
+
+
 class ScheduledPublishDebugItem(BaseModel):
     id: UUID
     status: str

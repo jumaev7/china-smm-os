@@ -141,6 +141,16 @@ class Settings(BaseSettings):
     # Max seconds to await an in-flight executor after stop (B2b1-B drain).
     # Timeout exits non-zero without cancelling/replaying the shielded task.
     PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS: float = 60.0
+    # Phase E1 — stranded post-barrier observation (read-only). Defaults off.
+    # Quiet-period heuristic only; never authorizes provider write or terminalization.
+    # quiet_period = max(LEASE, DRAIN) + PROVIDER_SLACK + SAFETY_BUFFER
+    PUBLISH_RETRY_STRANDED_PROVIDER_SLACK_SECONDS: int = 300
+    PUBLISH_RETRY_STRANDED_SAFETY_BUFFER_SECONDS: int = 120
+    # Optional durable operator-alert surfacing for review candidates. Default off.
+    # Read API / detector remain available without this flag; no scheduler in E1.
+    PUBLISH_RETRY_STRANDED_ALERT_SURFACING_ENABLED: bool = False
+    # Periodic E1 scanner — intentionally absent/disabled in first implementation.
+    PUBLISH_RETRY_STRANDED_SCANNER_ENABLED: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

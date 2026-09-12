@@ -20,6 +20,7 @@ from app.schemas.publishing import (
     PublishAttemptResponse,
     PublishAttemptActionResponse,
     PublishRetryCommandResponse,
+    StrandedRetryCommandListResponse,
 )
 from app.schemas.publish_alerts import (
     PublishAlertAcknowledgeResponse,
@@ -45,6 +46,9 @@ from app.services.publish_attempt_ops_service import PublishAttemptOpsService
 from app.services.publish_retry_command_service import (
     PublishRetryCommandService,
     serialize_retry_command,
+)
+from app.services.publish_retry_command_stranded_detector import (
+    PublishRetryCommandStrandedDetector,
 )
 from app.services.publish_operator_alert_service import PublishOperatorAlertService
 from app.services.publish_alert_telegram_enrollment_service import (
@@ -284,6 +288,58 @@ async def retry_publish_attempt(
     return await PublishAttemptOpsService.manual_retry(
         db, attempt_id, tenant_id=scope_tenant_id,
     )
+
+
+@router.get(
+    "/retry-commands/stranded",
+    response_model=StrandedRetryCommandListResponse,
+)
+async def list_stranded_retry_commands(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+):
+    """Phase E1 stranded post-barrier observation (tenant-scoped).
+
+    Detects provider_write_started commands for operator review. Does not
+    claim, execute, finalize, call providers, or terminalize commands.
+    Durable alert writes follow PUBLISH_RETRY_STRANDED_ALERT_SURFACING_ENABLED
+    only (default false) — no request-time override.
+
+    When alert surfacing is disabled (default), this path performs SELECTs only
+    and never commits. When enabled, alert upserts are flushed by the service
+    and committed here so durable operator alerts persist; command/attempt/
+    content/publication rows remain untouched.
+
+    Commit-scope safety: get_db does not auto-commit. Optional auth resolve on
+    this route is SELECT-only (no pending auth mutations). The detector never
+    assigns PublishRetryCommand / PublishAttempt / ContentItem fields; the only
+    E1-attributable durable writes are PublishOperatorAlert upserts (plus
+    existing alert-create side effects: PlatformEvent emit with commit=False,
+    and delivery outbox only if delivery flags are enabled). Commit is gated on
+    alerts_created/alerts_updated counters — not on detector execution alone —
+    so a no-op alert scan does not commit. Runtime session.new/dirty introspection
+    is intentionally omitted as brittle; counters + zero-mutation detector are
+    the contract.
+    """
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    result = await PublishRetryCommandStrandedDetector.list_stranded(
+        db,
+        tenant_id=scope_tenant_id,
+        page=page,
+        page_size=page_size,
+    )
+    # Alert upserts use flush() only; get_db does not auto-commit. Commit solely
+    # when the optional alert path wrote so default-off GET stays zero-write.
+    if result.get("alert_surfacing_enabled") and (
+        int(result.get("alerts_created") or 0) > 0
+        or int(result.get("alerts_updated") or 0) > 0
+    ):
+        await db.commit()
+    return StrandedRetryCommandListResponse(**result)
 
 
 @router.get(

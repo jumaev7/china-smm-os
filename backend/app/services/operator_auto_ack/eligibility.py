@@ -12,7 +12,10 @@ from app.services.operator_auto_ack.constants import (
     ALLOWLIST_ALERT_TYPES,
     AMBIGUOUS_FAILURE_CODES,
     EXCLUDED_ALERT_TYPES,
+    EXCLUDED_CONTEXT_MARKERS,
     EXCLUDED_FAILURE_CODES,
+    PHASE_E_STRANDED_CONTEXT_MARKER,
+    PHASE_E_STRANDED_FAILURE_CODES,
     SAFETY_LEVEL_ALLOWLIST,
     SAFETY_LEVEL_INELIGIBLE,
     SHADOW_ACTION_SKIP,
@@ -123,6 +126,22 @@ def evaluate_auto_ack_candidate(
     if alert.state != "open":
         return ineligible("not_open")
 
+    # Phase E1 hard exclusion — before allowlist. Stranded post-barrier alerts
+    # are never Auto-Ack candidates even if alert_type/severity change later.
+    ctx = getattr(alert, "context", None) or {}
+    if isinstance(ctx, dict):
+        phase_e = str(ctx.get("phase_e") or "").strip().lower()
+        if phase_e in EXCLUDED_CONTEXT_MARKERS or phase_e == PHASE_E_STRANDED_CONTEXT_MARKER:
+            return ineligible(
+                "phase_e_stranded_excluded",
+                blocking=f"phase_e:{phase_e}",
+            )
+        if ctx.get("auto_ack_eligible") is False and phase_e:
+            return ineligible(
+                "phase_e_stranded_excluded",
+                blocking="auto_ack_eligible:false",
+            )
+
     if (alert.severity or "").lower() == "critical":
         return ineligible("critical_severity")
 
@@ -131,6 +150,13 @@ def evaluate_auto_ack_candidate(
         return ineligible("alert_type_excluded", blocking=f"excluded_type:{alert_type}")
     if alert_type not in ALLOWLIST_ALERT_TYPES:
         return ineligible("allowlist_miss", blocking=f"not_allowlisted:{alert_type}")
+
+    failure_code_early = (alert.failure_code or "").lower()
+    if failure_code_early in PHASE_E_STRANDED_FAILURE_CODES:
+        return ineligible(
+            "phase_e_stranded_excluded",
+            blocking=f"failure_code:{failure_code_early}",
+        )
 
     platform = (alert.platform or (attempt.platform if attempt else "") or "").lower()
     if platform in META_PUBLISH_PLATFORMS:

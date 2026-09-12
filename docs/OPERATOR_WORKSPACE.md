@@ -189,6 +189,9 @@ Infrastructure foundation (`publish_retry_commands` + create/get + claim worker 
 - Listening/Advertising intelligence feeds (unless operational failure)
 - **D2-B2b:** multi-worker / process-crash staging observation
 - **Phase E:** post-barrier ambiguity/reconciliation; no replay
+  - **E1 (local/dormant):** read-only stranded detection + operator surfacing —
+    see `docs/PHASE_E1_STRANDED_POST_BARRIER.md`. No terminalization.
+  - **E2+:** operator-confirmed terminalization / reconciliation (not implemented)
 - **F0:** selector hardening (`retry_command_id IS NOT NULL` hard exclusion) before any real I/O
 - **F1:** Telegram real provider adapter
 - **F2:** Facebook/Meta real provider adapter

@@ -19,11 +19,22 @@ EXCLUDED_ALERT_TYPES = frozenset({
     "recovery",
 })
 
+# Phase E1 stranded post-barrier alerts — NEVER Auto-Ack candidates.
+# Future-proof: exclude by context marker even if alert_type is reused/changed.
+PHASE_E_STRANDED_CONTEXT_MARKER = "stranded_post_barrier"
+PHASE_E_STRANDED_FAILURE_CODES = frozenset({
+    "stranded_post_barrier",
+})
+EXCLUDED_CONTEXT_MARKERS = frozenset({
+    PHASE_E_STRANDED_CONTEXT_MARKER,
+})
+
 EXCLUDED_FAILURE_CODES = frozenset({
     "auth_or_permission",
     "credential_decryption_failed",
     "account_unavailable",
     "publish_blocked",
+    "stranded_post_barrier",
 })
 
 # Meta ambiguous / operator-review paths — never auto-ack candidates.

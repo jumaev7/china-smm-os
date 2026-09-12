@@ -152,6 +152,142 @@ class PublishOperatorAlertService:
             return None
 
     @classmethod
+    async def upsert_stranded_post_barrier_alert(
+        cls,
+        db: AsyncSession,
+        *,
+        observation: dict[str, Any],
+    ) -> bool | None:
+        """Phase E1: durable operator_review alert for a stranded retry command.
+
+        Reuses alert_type=operator_review (no migration). Context carries
+        phase_e=stranded_post_barrier for Auto-Ack exclusion and operators.
+
+        Returns True if created, False if deduped/updated, None if skipped.
+        Does not mutate PublishRetryCommand / PublishAttempt / content rows.
+        Does not touch Integration Health counters.
+        """
+        from app.services.publish_retry_command_stranded_detector import (
+            PHASE_E_CONTEXT_MARKER,
+            stranded_dedupe_key,
+        )
+
+        command_id_raw = observation.get("command_id")
+        tenant_id_raw = observation.get("tenant_id")
+        if command_id_raw is None or tenant_id_raw is None:
+            return None
+        command_id = (
+            command_id_raw if isinstance(command_id_raw, UUID) else UUID(str(command_id_raw))
+        )
+        tenant_id = (
+            tenant_id_raw if isinstance(tenant_id_raw, UUID) else UUID(str(tenant_id_raw))
+        )
+        content_id_raw = observation.get("content_id")
+        content_id = (
+            content_id_raw
+            if isinstance(content_id_raw, UUID) or content_id_raw is None
+            else UUID(str(content_id_raw))
+        )
+        account_id_raw = observation.get("publishing_account_id")
+        account_id = (
+            account_id_raw
+            if isinstance(account_id_raw, UUID) or account_id_raw is None
+            else UUID(str(account_id_raw))
+        )
+        client_id_raw = observation.get("client_id")
+        client_id = (
+            client_id_raw
+            if isinstance(client_id_raw, UUID) or client_id_raw is None
+            else UUID(str(client_id_raw))
+        )
+        attempt_id_raw = observation.get("resulting_attempt_id") or observation.get(
+            "original_attempt_id",
+        )
+        attempt_id = (
+            attempt_id_raw
+            if isinstance(attempt_id_raw, UUID) or attempt_id_raw is None
+            else UUID(str(attempt_id_raw))
+        )
+        platform = observation.get("platform") or observation.get("provider")
+        classification = observation.get("classification") or "stranded_review_candidate"
+        age_seconds = observation.get("age_seconds")
+        quiet_period_seconds = observation.get("quiet_period_seconds")
+
+        alert_type = "operator_review"
+        severity = "critical"
+        dedupe_key = stranded_dedupe_key(command_id)
+        title = "Stranded post-barrier retry command needs review"
+        if platform:
+            title = f"{title}: {platform}"
+        body = (
+            "Retry command remains provider_write_started past the quiet-period "
+            "heuristic. Outcome is observationally ambiguous — do not auto-replay. "
+            f"command_id={command_id} age_seconds={age_seconds} "
+            f"quiet_period_seconds={quiet_period_seconds}"
+        )
+        safe_context = scrub_payload({
+            "phase_e": PHASE_E_CONTEXT_MARKER,
+            "requires_operator_action": True,
+            "safe_auto_recheck": False,
+            "auto_ack_eligible": False,
+            "alert_type": alert_type,
+            "command_id": str(command_id),
+            "classification": classification,
+            "outcome_stance": observation.get("outcome_stance"),
+            "recommended_action": observation.get("recommended_action"),
+            "age_seconds": age_seconds,
+            "quiet_period_seconds": quiet_period_seconds,
+            "correlation_id": observation.get("correlation_id"),
+            "provider_call_started_audit": observation.get("provider_call_started_audit"),
+            "authorizes_provider_write": False,
+            "authorizes_replay": False,
+        })
+        urls = _action_urls(content_id, attempt_id)
+        action_url = urls.get("action_url")
+        if content_id:
+            action_url = f"/publishing/retry-commands/stranded?content_id={content_id}"
+
+        alert, created = await cls._upsert(
+            db,
+            tenant_id=tenant_id,
+            dedupe_key=dedupe_key,
+            alert_type=alert_type,
+            severity=severity,
+            title=title[:255],
+            body=body,
+            client_id=client_id,
+            content_id=content_id,
+            account_id=account_id,
+            attempt_id=attempt_id,
+            platform=platform,
+            account_name=None,
+            company_name=None,
+            attempt_status="provider_write_started",
+            attempt_number=None,
+            failure_code="stranded_post_barrier",
+            failure_message=body,
+            next_retry_at=None,
+            action_url=action_url,
+            context=safe_context,
+        )
+        if created:
+            logger.info(
+                "[PublishAlert] stranded phase_e alert created tenant=%s command=%s dedupe=%s",
+                tenant_id,
+                command_id,
+                dedupe_key,
+            )
+            await cls._emit_and_deliver(db, alert, created=True)
+        else:
+            logger.info(
+                "[PublishAlert] stranded phase_e alert deduped tenant=%s command=%s occurrences=%s",
+                tenant_id,
+                command_id,
+                alert.occurrence_count,
+            )
+        return created
+
+    @classmethod
     async def upsert_failure_alert(
         cls,
         db: AsyncSession,
