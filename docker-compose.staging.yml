@@ -1,4 +1,4 @@
-# Isolated staging Compose skeleton (Phase 3C.1C-D2-B2b1-A)
+# Isolated staging Compose skeleton (Phase 3C.1C-D2-B2b1-A + B2b2-0B+0C)
 #
 # Topology: dedicated staging Postgres + retry-command worker only.
 # Does NOT include production DB/volume, Cloudflare, public API, frontend,
@@ -53,8 +53,13 @@ services:
       PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-5}
       PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-180}
       PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS:-60}
-      PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: /tmp/china-smm-os-staging-fake-sink/fake-invocations.jsonl
-      PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: /tmp/china-smm-os-staging-markers
+      PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: /var/lib/retry-command-staging/sink/fake-invocations.jsonl
+      PUBLISH_RETRY_COMMAND_STAGING_EVIDENCE_ROOT: /var/lib/retry-command-staging
+      PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: /var/lib/retry-command-staging/markers
+      PUBLISH_RETRY_COMMAND_STAGING_CONTROL_DIR: /var/lib/retry-command-staging/control
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT: ${PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT:-}
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS: ${PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS:-0}
+      PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID: ${PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID:-default}
       TELEGRAM_BOT_TOKEN: ""
       META_APP_SECRET: ""
       SCHEDULED_PUBLISH_ENABLED: "false"
@@ -67,8 +72,7 @@ services:
       ADMIN_SECRET_KEY: staging-local-only-admin-not-for-production
       TENANT_SECRET_KEY: staging-local-only-tenant-not-for-production
     volumes:
-      - staging_fake_sink:/tmp/china-smm-os-staging-fake-sink
-      - staging_markers:/tmp/china-smm-os-staging-markers
+      - staging_evidence:/var/lib/retry-command-staging
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,7 +87,5 @@ networks:
 volumes:
   staging_pgdata:
     name: china-smm-os-staging-pgdata
-  staging_fake_sink:
-    name: china-smm-os-staging-fake-sink
-  staging_markers:
-    name: china-smm-os-staging-markers
+  staging_evidence:
+    name: china-smm-os-staging-evidence

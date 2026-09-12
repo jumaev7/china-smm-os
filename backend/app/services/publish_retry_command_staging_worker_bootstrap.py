@@ -1,4 +1,4 @@
-"""Staging fake worker bootstrap (Phase 3C.1C-D2-B2b1-A).
+"""Staging fake worker bootstrap (Phase 3C.1C-D2-B2b1-A + B2b2-0B+0C).
 
 Owns the ONLY path that may approve ``backend=fake`` for the long-running
 PublishRetryCommandWorker:
@@ -8,6 +8,7 @@ PublishRetryCommandWorker:
   → VerifiedRetryCommandStagingContext
   → StagingSyntheticRetryEligibility
   → DurableFakeInvocationSink
+  → optional StagingLifecycleCoordinator (markers + hold/release)
   → process-global fake RetryCommandProviderPort
   → immutable RetryCommandWorkerExecutionContext
 
@@ -52,6 +53,10 @@ from app.services.publish_retry_command_staging_identity import (
     assert_verified_staging_context,
     RetryCommandStagingIdentityGuard,
 )
+from app.services.publish_retry_command_staging_lifecycle_coordinator import (
+    StagingLifecycleCoordinationError,
+    StagingLifecycleCoordinator,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +87,7 @@ class RetryCommandWorkerExecutionContext:
     provider: RetryCommandProviderPort
     sink: DurableFakeInvocationSink | None
     hooks: ExecutorHooks | None
+    lifecycle_coordinator: StagingLifecycleCoordinator | None = None
 
     def __post_init__(self) -> None:
         if self.execution_backend != "fake":
@@ -112,6 +118,11 @@ class RetryCommandWorkerExecutionContext:
         should_stop_before_barrier: StopBeforeBarrierFn | None = None,
     ) -> ExecutorResult:
         """Worker→executor handoff. Reloads canonical state inside executor."""
+        if self.lifecycle_coordinator is not None:
+            self.lifecycle_coordinator.bind(
+                command_id=command_id,
+                worker_id=worker_id,
+            )
         return await PublishRetryCommandExecutor.execute(
             session_factory,
             command_id=command_id,
@@ -125,18 +136,21 @@ class RetryCommandWorkerExecutionContext:
 
 
 def build_staging_marker_hooks(marker_dir: str | Path) -> ExecutorHooks:
-    """DI-only file markers for external SIGTERM coordination (staging).
+    """Backward-compatible durable markers without hold (tests / legacy).
 
-    Written only when bootstrap injects these hooks after verified identity.
-    Not failpoints; not read by prep/barrier/finalizer/executor control flow.
+    Prefer ``StagingLifecycleCoordinator.build_executor_hooks`` via bootstrap.
+    Still uses flush+fsync (not Path.write_text).
     """
+    from app.services.publish_retry_command_staging_lifecycle_coordinator import (
+        durable_write_marker,
+    )
+
     root = Path(marker_dir)
     root.mkdir(parents=True, exist_ok=True)
 
     def _marker(name: str) -> Callable[[], None]:
         def _write() -> None:
-            path = root / name
-            path.write_text("1\n", encoding="utf-8")
+            durable_write_marker(root / name, f"point={name}\n")
 
         return _write
 
@@ -173,6 +187,7 @@ async def bootstrap_staging_fake_worker_execution(
     settings_obj: Any | None = None,
     environ: dict[str, str] | None = None,
     create_sink: bool = True,
+    lifecycle_coordinator: StagingLifecycleCoordinator | None = None,
 ) -> RetryCommandWorkerExecutionContext:
     """Build immutable fake execution context or fail before claim.
 
@@ -216,12 +231,23 @@ async def bootstrap_staging_fake_worker_execution(
             detail=exc.detail,
         ) from exc
 
-    # Marker hooks only after verified identity (DI; not env failpoints).
+    # Coordination only after verified identity (DI; not env failpoints).
+    resolved_coordinator = lifecycle_coordinator
+    if resolved_coordinator is None:
+        try:
+            resolved_coordinator = StagingLifecycleCoordinator.from_verified_settings(
+                staging_context,
+                cfg,
+            )
+        except StagingLifecycleCoordinationError as exc:
+            raise StagingWorkerBootstrapError(
+                exc.reason,
+                detail=exc.detail,
+            ) from exc
+
     resolved_hooks = hooks
-    if resolved_hooks is None:
-        marker_raw = getattr(cfg, "PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR", None)
-        if marker_raw is not None and str(marker_raw).strip():
-            resolved_hooks = build_staging_marker_hooks(str(marker_raw).strip())
+    if resolved_hooks is None and resolved_coordinator is not None:
+        resolved_hooks = resolved_coordinator.build_executor_hooks()
 
     eligibility = StagingSyntheticRetryEligibility(staging_context)
     sink: DurableFakeInvocationSink | None = None
@@ -234,6 +260,7 @@ async def bootstrap_staging_fake_worker_execution(
     provider = PublishRetryCommandStagingFakeFactory(staging_context).create(
         mode=mode,
         sink=sink,
+        lifecycle_coordinator=resolved_coordinator,
     )
 
     context = RetryCommandWorkerExecutionContext(
@@ -243,12 +270,15 @@ async def bootstrap_staging_fake_worker_execution(
         provider=provider,
         sink=sink,
         hooks=resolved_hooks,
+        lifecycle_coordinator=resolved_coordinator,
     )
     logger.info(
         "[RetryCommandStagingBootstrap] verified fake worker context "
-        "db=%s mode=%s batch=%s",
+        "db=%s mode=%s batch=%s hold_point=%s campaign=%s",
         staging_context.current_database,
         mode.value,
         batch,
+        None if resolved_coordinator is None else resolved_coordinator.hold_point,
+        None if resolved_coordinator is None else resolved_coordinator.campaign_id,
     )
     return context

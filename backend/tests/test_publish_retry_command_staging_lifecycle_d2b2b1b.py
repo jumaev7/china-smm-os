@@ -1022,14 +1022,24 @@ def test_run_forever_exits_on_idle_stop_without_claim():
 
 def test_marker_hooks_write_files_after_identity():
     async def body(factory, engine):
-        marker_dir = _tmp_marker_dir()
-        with _flags(PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR=str(marker_dir)):
+        evidence = Path(tempfile.mkdtemp(prefix="b2b1b-ev-"))
+        marker_dir = evidence / "markers"
+        control_dir = evidence / "control"
+        marker_dir.mkdir()
+        control_dir.mkdir()
+        with _flags(
+            PUBLISH_RETRY_COMMAND_STAGING_EVIDENCE_ROOT=str(evidence),
+            PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR=str(marker_dir),
+            PUBLISH_RETRY_COMMAND_STAGING_CONTROL_DIR=str(control_dir),
+            PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID="b2b1b-markers",
+        ):
             async with engine.connect() as conn:
                 execution = await bootstrap_staging_fake_worker_execution(
                     conn,
                     sink_path=_tmp_sink_path(),
                 )
             assert execution.hooks is not None
+            assert execution.lifecycle_coordinator is not None
             async with factory() as db:
                 fx = await PublishRetryCommandStagingFixtureBuilder(
                     execution.staging_context,
@@ -1046,14 +1056,20 @@ def test_marker_hooks_write_files_after_identity():
                 correlation_id=fx.correlation_id,
             )
         assert result.outcome == "succeeded"
+        camp = marker_dir / "b2b1b-markers"
         for name in (
             "after_prepare",
             "after_barrier",
             "before_provider",
+            "provider_entered",
             "after_provider",
             "before_finalize",
         ):
-            assert (marker_dir / name).is_file()
+            path = camp / name
+            assert path.is_file(), name
+            body_text = path.read_text(encoding="utf-8")
+            assert f"point={name}" in body_text
+            assert f"command_id={fx.command_id}" in body_text
 
     asyncio.run(_with_staging_pg(body))
 

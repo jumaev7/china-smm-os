@@ -1,22 +1,9 @@
-"""Staging lifecycle campaign helper (B2b1-B) — LOCAL ONLY.
+"""Update B2b1-B lifecycle campaign helper for campaign-scoped durable markers.
 
-Coordinates marker wait → SIGTERM against a running staging worker process/container.
+Still supports SIGTERM coordination for B2b1. B2b2-A SIGKILL is out of scope.
+Prefer hold/release runner for 0B+0C proofs:
 
-Does NOT deploy. Does NOT touch production. Does NOT implement B2b2 restart proof.
-
-Examples (Linux/compose):
-
-  # Wait for after_prepare marker then SIGTERM (pre-barrier campaign)
-  python scripts/run_staging_retry_command_lifecycle_campaign.py \\
-    --marker-dir /tmp/china-smm-os-staging-markers \\
-    --wait after_prepare \\
-    --pid 12345
-
-  # Wait for after_barrier then SIGTERM (post-barrier drain campaign)
-  python scripts/run_staging_retry_command_lifecycle_campaign.py \\
-    --marker-dir /tmp/china-smm-os-staging-markers \\
-    --wait after_barrier \\
-    --compose-service publish-retry-command-worker
+  python scripts/run_staging_retry_command_hold_release_campaign.py --help
 """
 from __future__ import annotations
 
@@ -29,8 +16,18 @@ import time
 from pathlib import Path
 
 
-def _wait_marker(marker_dir: Path, name: str, timeout: float) -> Path:
-    path = marker_dir / name
+ALLOWED_WAIT = (
+    "after_prepare",
+    "after_barrier",
+    "before_provider",
+    "provider_entered",
+    "after_provider",
+    "before_finalize",
+    "idle",
+)
+
+
+def _wait_marker(path: Path, timeout: float) -> Path:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if path.is_file():
@@ -66,12 +63,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--marker-dir",
         required=True,
-        help="Directory with DI marker files (after_prepare / after_barrier / ...)",
+        help="Markers root (…/markers). Campaign id nests underneath.",
+    )
+    parser.add_argument(
+        "--campaign-id",
+        default="default",
+        help="Staging campaign id (observability/coordination only)",
     )
     parser.add_argument(
         "--wait",
         required=True,
-        choices=("after_prepare", "after_barrier", "before_provider", "idle"),
+        choices=ALLOWED_WAIT,
         help="Marker to wait for before signaling (idle = signal immediately)",
     )
     parser.add_argument("--timeout", type=float, default=60.0)
@@ -92,8 +94,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.wait != "idle":
-        path = _wait_marker(Path(args.marker_dir), args.wait, args.timeout)
-        print(f"marker ready: {path}", flush=True)
+        path = Path(args.marker_dir) / args.campaign_id / args.wait
+        ready = _wait_marker(path, args.timeout)
+        print(f"marker ready: {ready}", flush=True)
 
     if args.pid is not None:
         _send_sigterm_pid(args.pid)

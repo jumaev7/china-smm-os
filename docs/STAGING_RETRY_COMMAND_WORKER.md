@@ -1,4 +1,4 @@
-# Staging retry-command fake worker (D2-B2b1-A + B2b1-B)
+# Staging retry-command fake worker (D2-B2b1-A + B2b1-B + B2b2-0B+0C)
 
 Long-running worker path for:
 
@@ -57,9 +57,45 @@ Implementation notes:
 | 3 | post-barrier drain timeout (`os._exit`; staging fake worker only) |
 | 4 | unexpected worker invariant failure |
 
+## Staging lifecycle coordination (B2b2-0B+0C)
+
+`StagingLifecycleCoordinator` is constructed **only** after verified staging bootstrap.
+
+| Setting | Role |
+|---------|------|
+| `PUBLISH_RETRY_COMMAND_STAGING_EVIDENCE_ROOT` | Mounted root (default compose: `/var/lib/retry-command-staging`) |
+| `PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR` | Durable markers (`…/markers/<campaign_id>/<point>`) |
+| `PUBLISH_RETRY_COMMAND_STAGING_CONTROL_DIR` | Release files (`…/control/<campaign_id>/release_<point>`) |
+| `PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT` | Optional single hold point (independent of fake outcome mode) |
+| `PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS` | Optional hold timeout (≤0 = wait until release / external kill) |
+| `PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID` | Observability / stale-release isolation (not a security authority) |
+
+Allowed points: `after_prepare`, `after_barrier`, `before_provider`, `provider_entered`, `after_provider`, `before_finalize`.
+
+Marker durability: write temp → flush → `os.fsync` → close → `os.replace` → fsync parent directory.
+
+Hold semantics: emit durable marker → async poll for campaign-scoped release file → consume once → continue. Hold itself mutates no DB rows and does not authorize provider replay.
+
+`provider_entered` ordering inside fake `execute`:
+
+1. sink `fake_invoke` durable append (invocation started)
+2. `provider_entered` marker (+ optional hold)
+3. modeled fake effect/result
+
+Fake outcome mode (`success` / `ambiguous` / …) stays separate from hold point.
+
+`backend=none` and production defaults ignore all coordination settings. Claim / Preparation / Barrier / Finalization services do not import the coordinator.
+
+Hold/release campaign (no SIGKILL):
+
+```bash
+python backend/scripts/run_staging_retry_command_hold_release_campaign.py \
+  --hold-point after_barrier --campaign-id demo
+```
+
 ## Marker hooks (SIGTERM campaigns)
 
-Optional `PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR` — bootstrap injects DI `ExecutorHooks` **after** verified identity. External runner: wait for `after_prepare` / `after_barrier` file → `docker kill -s SIGTERM`.
+Bootstrap injects DI `ExecutorHooks` from the coordinator **after** verified identity. External runner: wait for campaign-scoped marker → `docker kill -s SIGTERM` (B2b1) or write `release_<point>` (0B+0C).
 
 No `os.getenv("FAILPOINT")` inside prep/barrier/finalizer/executor.
 
@@ -70,9 +106,9 @@ docker compose -f docker-compose.staging.yml --env-file .env.staging.example \
   --profile retry-command up --build
 ```
 
-Project: `china-smm-os-staging`. Services: staging Postgres + profile-gated retry-command worker (`restart: "no"`). No production volume, Cloudflare, API, frontend, or webhook worker.
+Project: `china-smm-os-staging`. Services: staging Postgres + profile-gated retry-command worker (`restart: "no"`). Evidence volume: `china-smm-os-staging-evidence` → `/var/lib/retry-command-staging`. No production volume, Cloudflare, API, frontend, or webhook worker.
 
-Lifecycle campaign helper (local):
+Lifecycle campaign helper (local SIGTERM):
 
 ```bash
 python backend/scripts/run_staging_retry_command_lifecycle_campaign.py --help

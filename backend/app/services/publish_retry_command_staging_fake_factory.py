@@ -1,4 +1,4 @@
-"""Staging-only fake provider factory (Phase 3C.1C-D2-B2a).
+"""Staging-only fake provider factory (Phase 3C.1C-D2-B2a + B2b2-0B+0C).
 
 Requires VerifiedRetryCommandStagingContext. Returns RetryCommandProviderPort.
 No factory resolution without verified capability. No ADAPTERS. No real
@@ -8,7 +8,7 @@ Worker must NOT use this factory in D2-B2a (harness only).
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -29,6 +29,11 @@ from app.services.publish_retry_command_staging_identity import (
     VerifiedRetryCommandStagingContext,
     assert_verified_staging_context,
 )
+
+if TYPE_CHECKING:
+    from app.services.publish_retry_command_staging_lifecycle_coordinator import (
+        StagingLifecycleCoordinator,
+    )
 
 FAKE_EXTERNAL_ID_PREFIX = "fake:retry-command:"
 
@@ -52,9 +57,15 @@ def parse_fake_outcome_mode(raw: str | None) -> FakeProviderMode:
 class StagingFakeProviderExecutor:
     """Staging fake provider with namespaced IDs + optional durable sink.
 
-    Sink write happens BEFORE the modeled fake effect. If sink write fails,
-    execution fails closed (ambiguous/exception) — no automatic retry.
-    Sink is never consulted to authorize replay.
+    Ordering inside ``execute`` (when coordinator present):
+
+      enter execute
+      → sink fake_invoke durable append  (proves intentional invocation started)
+      → provider_entered marker durable write (+ optional hold)
+      → modeled effect/result
+
+    Sink is never consulted to authorize replay. At-most-one intentional
+    provider invocation remains based on sink ``fake_invoke`` count.
     """
 
     def __init__(
@@ -64,6 +75,7 @@ class StagingFakeProviderExecutor:
         mode: FakeProviderMode = FakeProviderMode.SUCCESS,
         sink: DurableFakeInvocationSink | None = None,
         fail_sink_before_effect: bool = False,
+        lifecycle_coordinator: StagingLifecycleCoordinator | None = None,
     ) -> None:
         self._staging = assert_verified_staging_context(
             staging_context,
@@ -72,6 +84,7 @@ class StagingFakeProviderExecutor:
         self.mode = mode
         self.sink = sink
         self.fail_sink_before_effect = fail_sink_before_effect
+        self.lifecycle_coordinator = lifecycle_coordinator
         self.invocation_count = 0
         self.requests: list[ProviderExecutionRequest] = []
         # Inner fake for non-success ID modes; success IDs are overridden.
@@ -100,6 +113,13 @@ class StagingFakeProviderExecutor:
             except FakeInvocationSinkError:
                 # Cannot determine durable observation — fail closed, no retry.
                 raise
+
+        if self.lifecycle_coordinator is not None:
+            await self.lifecycle_coordinator.mark_and_maybe_hold(
+                "provider_entered",
+                command_id=request.command_id,
+                attempt_id=request.resulting_attempt_id,
+            )
 
         if self.mode is FakeProviderMode.TIMEOUT:
             raise FakeProviderTimeoutError("Fake provider timeout")
@@ -161,6 +181,7 @@ class PublishRetryCommandStagingFakeFactory:
         mode: FakeProviderMode | str | None = None,
         sink: DurableFakeInvocationSink | None = None,
         fail_sink_before_effect: bool = False,
+        lifecycle_coordinator: StagingLifecycleCoordinator | None = None,
     ) -> RetryCommandProviderPort:
         if isinstance(mode, FakeProviderMode):
             resolved = mode
@@ -177,6 +198,7 @@ class PublishRetryCommandStagingFakeFactory:
             mode=resolved,
             sink=sink,
             fail_sink_before_effect=fail_sink_before_effect,
+            lifecycle_coordinator=lifecycle_coordinator,
         )
 
 

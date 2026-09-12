@@ -127,8 +127,14 @@ class Settings(BaseSettings):
     PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: str = "success"
     # Optional durable fake-invocation sink path (staging observation only).
     PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: str = ""
-    # Optional staging marker directory for SIGTERM coordination hooks (bootstrap only).
+    # Staging-only lifecycle coordination (B2b2-0B+0C). Defaults empty/disabled.
+    # Consumed only after verified staging bootstrap; ignored by backend=none.
+    PUBLISH_RETRY_COMMAND_STAGING_EVIDENCE_ROOT: str = ""
     PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: str = ""
+    PUBLISH_RETRY_COMMAND_STAGING_CONTROL_DIR: str = ""
+    PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT: str = ""
+    PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS: float = 0.0
+    PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID: str = ""
     PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: float = 5.0
     PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: int = 1
     PUBLISH_RETRY_COMMAND_LEASE_SECONDS: int = 180
