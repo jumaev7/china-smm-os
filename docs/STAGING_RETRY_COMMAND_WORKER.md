@@ -1,4 +1,4 @@
-# Staging retry-command fake worker (D2-B2b1-A + B2b1-B + B2b2-0B+0C)
+# Staging retry-command fake worker (D2-B2b1-A + B2b1-B + B2b2-0B+0C + B2b2-A)
 
 Long-running worker path for:
 
@@ -93,9 +93,29 @@ python backend/scripts/run_staging_retry_command_hold_release_campaign.py \
   --hold-point after_barrier --campaign-id demo
 ```
 
-## Marker hooks (SIGTERM campaigns)
+## SIGKILL + restart / no-replay (B2b2-A)
 
-Bootstrap injects DI `ExecutorHooks` from the coordinator **after** verified identity. External runner: wait for campaign-scoped marker → `docker kill -s SIGTERM` (B2b1) or write `release_<point>` (0B+0C).
+Process-level campaigns under project `china-smm-os-staging` with
+`docker-compose.staging.b2b2a-campaign.yml` (evidence bind-mount, `restart: "no"`):
+
+```bash
+python backend/scripts/run_staging_retry_command_sigkill_restart_campaign.py \
+  --scenario all-required
+```
+
+Required matrix: pre-barrier kill+reclaim (A1/A2), post-barrier no-replay (A3/A4),
+post-provider no-replay (A5/A6). Core invariant: `fake_invoke_count <= 1` per command.
+
+Finalizer-in-flight (A7/A8) is **deferred** — no clean mid-finalizer-TX DI hook
+without weakening production `FinalizationService`. `before_finalize` covers
+post-provider / pre-finalizer.
+
+Between worker A SIGKILL and worker B start: do **not** `down -v` (sink/markers
+must survive). Between distinct scenarios: project-scoped `down -v` is required.
+
+## Marker hooks (SIGTERM / SIGKILL campaigns)
+
+Bootstrap injects DI `ExecutorHooks` from the coordinator **after** verified identity. External runner: wait for campaign-scoped marker → `docker kill -s SIGTERM` (B2b1), write `release_<point>` (0B+0C), or `docker kill -s SIGKILL` (B2b2-A).
 
 No `os.getenv("FAILPOINT")` inside prep/barrier/finalizer/executor.
 

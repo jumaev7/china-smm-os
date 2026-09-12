@@ -1,6 +1,10 @@
 """Update B2b1-B lifecycle campaign helper for campaign-scoped durable markers.
 
-Still supports SIGTERM coordination for B2b1. B2b2-A SIGKILL is out of scope.
+Still supports SIGTERM coordination for B2b1. For B2b2-A SIGKILL + restart
+no-replay proofs use:
+
+  python scripts/run_staging_retry_command_sigkill_restart_campaign.py --help
+
 Prefer hold/release runner for 0B+0C proofs:
 
   python scripts/run_staging_retry_command_hold_release_campaign.py --help

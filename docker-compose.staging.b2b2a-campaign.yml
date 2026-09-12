@@ -1,0 +1,24 @@
+# Staging-only override for B2b2-A SIGKILL + restart / no-replay campaigns.
+# LOCAL ONLY. Does not touch production. Used with docker-compose.staging.yml:
+#
+#   docker compose -f docker-compose.staging.yml \
+#     -f docker-compose.staging.b2b2a-campaign.yml \
+#     --env-file .env.staging.example \
+#     -p china-smm-os-staging \
+#     --profile retry-command up --build
+#
+# Evidence is bind-mounted so the host campaign runner can wait on markers,
+# inspect the sink across worker recreate, and assert stale-release isolation.
+# Do NOT use down -v between worker A and worker B inside one restart proof.
+
+services:
+  publish-retry-command-worker:
+    environment:
+      PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-1}
+      PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-30}
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT: ${PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT:-}
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS: ${PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS:-0}
+      PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID: ${PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID:-default}
+      PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: ${PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE:-success}
+    volumes:
+      - ${STAGING_EVIDENCE_HOST_PATH:-./.staging-b2b2a-evidence}:/var/lib/retry-command-staging
