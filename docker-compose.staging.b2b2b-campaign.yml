@@ -1,0 +1,101 @@
+# Staging-only override for B2b2-B multi-worker + stale-owner concurrency campaigns.
+# LOCAL ONLY. Does not touch production. Used with docker-compose.staging.yml:
+#
+#   docker compose -f docker-compose.staging.yml \
+#     -f docker-compose.staging.b2b2b-campaign.yml \
+#     --env-file .env.staging.example \
+#     -p china-smm-os-staging \
+#     --profile retry-command up --build \
+#     publish-retry-command-worker-a publish-retry-command-worker-b
+#
+# Two separate services ⇒ two Python PID1 processes with distinct hostnames /
+# worker_id / worker_instance. Shared evidence bind-mount for markers + sink.
+# Do NOT start the single-worker service from the base file for these campaigns.
+
+x-retry-worker-common: &retry-worker-common
+  build:
+    context: ./backend
+  profiles:
+    - retry-command
+  restart: "no"
+  env_file:
+    - ${STAGING_ENV_FILE:-.env.staging.example}
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - staging-internal
+  command: python scripts/run_publish_retry_command_worker.py
+  volumes:
+    - ${STAGING_EVIDENCE_HOST_PATH:-./.staging-b2b2b-evidence}:/var/lib/retry-command-staging
+
+services:
+  publish-retry-command-worker-a:
+    <<: *retry-worker-common
+    hostname: worker-a
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-china_smm_os_staging}
+      PUBLISH_RETRY_COMMANDS_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_WORKER_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: fake
+      PUBLISH_RETRY_COMMAND_FAKE_EXECUTION_ALLOWED: "true"
+      PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: ${PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE:-success}
+      PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: "1"
+      PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-1}
+      PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-30}
+      PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS:-60}
+      PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: /var/lib/retry-command-staging/sink/fake-invocations.jsonl
+      PUBLISH_RETRY_COMMAND_STAGING_EVIDENCE_ROOT: /var/lib/retry-command-staging
+      PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: /var/lib/retry-command-staging/markers
+      PUBLISH_RETRY_COMMAND_STAGING_CONTROL_DIR: /var/lib/retry-command-staging/control
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT: ${WORKER_A_HOLD_POINT:-}
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS: ${PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS:-0}
+      PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID: ${WORKER_A_CAMPAIGN_ID:-worker-a}
+      TELEGRAM_BOT_TOKEN: ""
+      META_APP_SECRET: ""
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      DB_POOL_SIZE: "3"
+      DB_MAX_OVERFLOW: "2"
+      SECRET_KEY: staging-local-only-not-for-production
+      ADMIN_SECRET_KEY: staging-local-only-admin-not-for-production
+      TENANT_SECRET_KEY: staging-local-only-tenant-not-for-production
+
+  publish-retry-command-worker-b:
+    <<: *retry-worker-common
+    hostname: worker-b
+    environment:
+      APP_ENV: staging
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-china_smm_os_staging}
+      PUBLISH_RETRY_COMMANDS_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_WORKER_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_CLAIM_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_EXECUTION_ENABLED: "true"
+      PUBLISH_RETRY_COMMAND_EXECUTION_BACKEND: fake
+      PUBLISH_RETRY_COMMAND_FAKE_EXECUTION_ALLOWED: "true"
+      PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE: ${PUBLISH_RETRY_COMMAND_FAKE_OUTCOME_MODE:-success}
+      PUBLISH_RETRY_COMMAND_WORKER_BATCH_SIZE: "1"
+      PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_POLL_SECONDS:-1}
+      PUBLISH_RETRY_COMMAND_LEASE_SECONDS: ${PUBLISH_RETRY_COMMAND_LEASE_SECONDS:-30}
+      PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS: ${PUBLISH_RETRY_COMMAND_WORKER_DRAIN_SECONDS:-60}
+      PUBLISH_RETRY_COMMAND_FAKE_SINK_PATH: /var/lib/retry-command-staging/sink/fake-invocations.jsonl
+      PUBLISH_RETRY_COMMAND_STAGING_EVIDENCE_ROOT: /var/lib/retry-command-staging
+      PUBLISH_RETRY_COMMAND_STAGING_MARKER_DIR: /var/lib/retry-command-staging/markers
+      PUBLISH_RETRY_COMMAND_STAGING_CONTROL_DIR: /var/lib/retry-command-staging/control
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_POINT: ${WORKER_B_HOLD_POINT:-}
+      PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS: ${PUBLISH_RETRY_COMMAND_STAGING_HOLD_TIMEOUT_SECONDS:-0}
+      PUBLISH_RETRY_COMMAND_STAGING_CAMPAIGN_ID: ${WORKER_B_CAMPAIGN_ID:-worker-b}
+      TELEGRAM_BOT_TOKEN: ""
+      META_APP_SECRET: ""
+      SCHEDULED_PUBLISH_ENABLED: "false"
+      AUTOMATION_SCHEDULER_ENABLED: "false"
+      HEALTH_SNAPSHOT_ENABLED: "false"
+      DB_POOL_SIZE: "3"
+      DB_MAX_OVERFLOW: "2"
+      SECRET_KEY: staging-local-only-not-for-production
+      ADMIN_SECRET_KEY: staging-local-only-admin-not-for-production
+      TENANT_SECRET_KEY: staging-local-only-tenant-not-for-production

@@ -1,4 +1,4 @@
-# Staging retry-command fake worker (D2-B2b1-A + B2b1-B + B2b2-0B+0C + B2b2-A)
+# Staging retry-command fake worker (D2-B2b1-A + B2b1-B + B2b2-0B+0C + B2b2-A + B2b2-B)
 
 Long-running worker path for:
 
@@ -112,6 +112,31 @@ post-provider / pre-finalizer.
 
 Between worker A SIGKILL and worker B start: do **not** `down -v` (sink/markers
 must survive). Between distinct scenarios: project-scoped `down -v` is required.
+
+## Multi-worker + stale-owner concurrency (B2b2-B)
+
+Two simultaneously live worker containers under
+`docker-compose.staging.b2b2b-campaign.yml` (`publish-retry-command-worker-a` /
+`publish-retry-command-worker-b`, distinct hostnames, shared evidence bind-mount):
+
+```bash
+python backend/scripts/run_staging_retry_command_multiworker_campaign.py \
+  --scenario all-required --include-optional
+```
+
+Required matrix:
+
+| ID | Proof |
+|----|--------|
+| B1 | one command / two workers claim race (repeatable iterations) |
+| B2/B3 | pre-barrier stale owner after lease expiry + reclaim; release A fail-closed |
+| B4/B5 | two commands; B progresses while A held (no global serialization) |
+| B6 | reclaim vs barrier boundary race; `fake_invoke <= 1` |
+| B7 | optional: A `after_barrier` hold while B completes another command |
+
+Correctness derives from durable DB primitives only (`FOR UPDATE SKIP LOCKED`,
+`lease_owner` / `lease_expires_at`, `status`, `provider_write_started_at`,
+barrier ownership validation) — not process-local locks.
 
 ## Marker hooks (SIGTERM / SIGKILL campaigns)
 

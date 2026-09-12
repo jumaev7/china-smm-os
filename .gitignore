@@ -54,8 +54,9 @@ backups/
 # Local/runtime test artifacts (logs, tunnels, binaries, screenshots)
 test-artifacts/
 
-# Staging B2b2-A campaign evidence bind-mount (local only)
+# Staging B2b2-A / B2b2-B campaign evidence bind-mount (local only)
 .staging-b2b2a-evidence/
+.staging-b2b2b-evidence/
 
 # Local private keys / certs (never commit)
 *.pem
