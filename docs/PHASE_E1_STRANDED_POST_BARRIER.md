@@ -125,7 +125,10 @@ No scheduler is wired in E1. Prefer on-demand read path.
 
 ## Non-goals (E2+)
 
-- Command status transitions out of `provider_write_started`
+- Command status transitions out of `provider_write_started` **except** the
+  separate E2-1 `MARK_AMBIGUOUS` path (see `docs/PHASE_E2_MANUAL_RESOLUTION.md`)
 - Provider reconciliation reads/writes
-- ACKNOWLEDGE_EXTERNAL_SUCCESS / MARK_* / CANCEL / SUPERSEDE
+- ACKNOWLEDGE_EXTERNAL_SUCCESS / MARK_FAILED / MARK_NO_EFFECT / CANCEL / SUPERSEDE
 - Replacement `PublishRetryCommand` creation
+
+E1 itself never terminalizes.

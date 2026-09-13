@@ -217,6 +217,36 @@ class StrandedRetryCommandListResponse(BaseModel):
     read_only_commands: bool = True
 
 
+class PublishRetryCommandResolveRequest(BaseModel):
+    """E2-1: MARK_AMBIGUOUS only. Other actions are rejected."""
+
+    action: Literal["MARK_AMBIGUOUS"]
+    confirm_permanent_resolution: bool
+    operator_reason: str = Field(..., min_length=1, max_length=1000)
+    evidence_source: Optional[str] = Field(
+        None,
+        max_length=80,
+        description="Optional non-authoritative evidence label (not success/failure proof)",
+    )
+
+
+class PublishRetryCommandResolveResponse(BaseModel):
+    """Safe resolution response — no secrets / content body."""
+
+    command_id: UUID
+    resulting_attempt_id: UUID
+    status: str
+    provider_outcome: str
+    attempt_status: str
+    resolution: Literal["applied", "already_resolved"]
+    finished_at: Optional[datetime] = None
+    action: str = "MARK_AMBIGUOUS"
+    audit_event_type: Optional[str] = None
+    audit_id: Optional[UUID] = None
+    correlation_id: Optional[str] = None
+    alert_resolved: bool = False
+
+
 class ScheduledPublishDebugItem(BaseModel):
     id: UUID
     status: str

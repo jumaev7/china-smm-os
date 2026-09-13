@@ -20,6 +20,8 @@ from app.schemas.publishing import (
     PublishAttemptResponse,
     PublishAttemptActionResponse,
     PublishRetryCommandResponse,
+    PublishRetryCommandResolveRequest,
+    PublishRetryCommandResolveResponse,
     StrandedRetryCommandListResponse,
 )
 from app.schemas.publish_alerts import (
@@ -49,6 +51,9 @@ from app.services.publish_retry_command_service import (
 )
 from app.services.publish_retry_command_stranded_detector import (
     PublishRetryCommandStrandedDetector,
+)
+from app.services.publish_retry_command_manual_resolution_service import (
+    PublishRetryCommandManualResolutionService,
 )
 from app.services.publish_operator_alert_service import PublishOperatorAlertService
 from app.services.publish_alert_telegram_enrollment_service import (
@@ -108,6 +113,41 @@ def _require_tenant_admin_for_settings(
             status_code=403,
             detail="Tenant owner or manager role required to change Telegram alert settings",
         )
+
+
+# E2-1 manual resolution — stronger than E1 read; matches Operator Workspace roles.
+_MANUAL_RESOLUTION_ROLES = ("owner", "manager", "operator")
+
+
+def _require_manual_resolution_actor(
+    user: CurrentTenantUser | None,
+    admin: CurrentAdminUser | None,
+) -> None:
+    """Allow platform admin (with tenant scope) or owner/manager/operator.
+
+    Reject viewer, sales, and unauthenticated callers.
+    """
+    if admin is not None:
+        return
+    if user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    role = getattr(user, "role", None)
+    if role not in _MANUAL_RESOLUTION_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Role '{role}' is not allowed for manual retry-command resolution"
+            ),
+        )
+
+
+def _actor_type(
+    user: CurrentTenantUser | None,
+    admin: CurrentAdminUser | None,
+) -> str:
+    if admin is not None:
+        return "platform_admin"
+    return "tenant_user"
 
 @router.get("/accounts", response_model=PublishingAccountListResponse)
 async def list_publishing_accounts(
@@ -359,6 +399,54 @@ async def get_publish_retry_command(
         db, command_id, tenant_id=scope_tenant_id,
     )
     return serialize_retry_command(command)
+
+
+@router.post(
+    "/retry-commands/{command_id}/resolve",
+    response_model=PublishRetryCommandResolveResponse,
+)
+async def resolve_publish_retry_command(
+    command_id: UUID,
+    body: PublishRetryCommandResolveRequest,
+    tenant_id: UUID | None = Query(None, description="Tenant scope (required for admin)"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+):
+    """Phase E2-1: MARK_AMBIGUOUS manual resolution for stranded commands.
+
+    Terminalizes bookkeeping only (command → ambiguous, resulting attempt →
+    operator_review). No provider I/O, no replacement command, no ContentItem
+    mutation. Fail-closed unless PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED.
+    """
+    _require_manual_resolution_actor(user, admin)
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    result = await PublishRetryCommandManualResolutionService.resolve(
+        db,
+        command_id=command_id,
+        tenant_id=scope_tenant_id,
+        action=body.action,
+        confirm_permanent_resolution=body.confirm_permanent_resolution,
+        operator_reason=body.operator_reason,
+        actor_id=_actor_id(user, admin),
+        actor_type=_actor_type(user, admin),
+        evidence_source=body.evidence_source,
+        commit=True,
+    )
+    return PublishRetryCommandResolveResponse(
+        command_id=result.command_id,
+        resulting_attempt_id=result.resulting_attempt_id,
+        status=result.status,
+        provider_outcome=result.provider_outcome,
+        attempt_status=result.attempt_status,
+        resolution=result.resolution,
+        finished_at=result.finished_at,
+        action=result.action,
+        audit_event_type=result.audit_event_type,
+        audit_id=result.audit_id,
+        correlation_id=result.correlation_id,
+        alert_resolved=result.alert_resolved,
+    )
 
 
 @router.get("/alerts/counts", response_model=PublishAlertCountsResponse)

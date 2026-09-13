@@ -191,7 +191,9 @@ Infrastructure foundation (`publish_retry_commands` + create/get + claim worker 
 - **Phase E:** post-barrier ambiguity/reconciliation; no replay
   - **E1 (local/dormant):** read-only stranded detection + operator surfacing —
     see `docs/PHASE_E1_STRANDED_POST_BARRIER.md`. No terminalization.
-  - **E2+:** operator-confirmed terminalization / reconciliation (not implemented)
+  - **E2-1 (local/dormant):** `MARK_AMBIGUOUS` manual resolution only —
+    see `docs/PHASE_E2_MANUAL_RESOLUTION.md`. Default flag false.
+  - **E2-2+:** other confirmed terminalizations / reconciliation (not implemented)
 - **F0:** selector hardening (`retry_command_id IS NOT NULL` hard exclusion) before any real I/O
 - **F1:** Telegram real provider adapter
 - **F2:** Facebook/Meta real provider adapter

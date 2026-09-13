@@ -151,6 +151,9 @@ class Settings(BaseSettings):
     PUBLISH_RETRY_STRANDED_ALERT_SURFACING_ENABLED: bool = False
     # Periodic E1 scanner — intentionally absent/disabled in first implementation.
     PUBLISH_RETRY_STRANDED_SCANNER_ENABLED: bool = False
+    # Phase E2-1 — manual stranded command resolution (MARK_AMBIGUOUS bookkeeping).
+    # Independent of claim/execution flags. Default off; production must stay false.
+    PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300
