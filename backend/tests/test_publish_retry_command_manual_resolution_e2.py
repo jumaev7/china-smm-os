@@ -125,7 +125,17 @@ def test_e2_service_source_forbids_execution_and_provider_calls():
 
 
 def test_feature_flag_defaults_false():
-    assert settings.PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED is False
+    # Assert declared defaults (not process env / leaked monkeypatches).
+    assert (
+        type(settings).model_fields["PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED"].default
+        is False
+    )
+    assert (
+        type(settings).model_fields[
+            "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED"
+        ].default
+        is False
+    )
 
 
 def test_production_compose_keeps_manual_resolution_false():
@@ -136,7 +146,9 @@ def test_production_compose_keeps_manual_resolution_false():
     assert "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED" in text_src
     assert "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED:-false" in text_src
     assert "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED:-true" not in text_src
-
+    assert "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED" in text_src
+    assert "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED:-false" in text_src
+    assert "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED:-true" not in text_src
 
 # ── Auth helpers ─────────────────────────────────────────────────────────────
 
@@ -215,6 +227,9 @@ def test_unsupported_action_rejected(monkeypatch):
     monkeypatch.setattr(
         settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED", True,
     )
+    monkeypatch.setattr(
+        settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True,
+    )
 
     async def _run():
         db = AsyncMock()
@@ -223,7 +238,7 @@ def test_unsupported_action_rejected(monkeypatch):
                 db,
                 command_id=uuid.uuid4(),
                 tenant_id=uuid.uuid4(),
-                action="ACKNOWLEDGE_EXTERNAL_SUCCESS",
+                action="MARK_FAILED_CONFIRMED",
                 confirm_permanent_resolution=True,
                 operator_reason="nope",
                 actor_id=uuid.uuid4(),
@@ -234,7 +249,7 @@ def test_unsupported_action_rejected(monkeypatch):
     asyncio.run(_run())
 
 
-def test_request_schema_only_allows_mark_ambiguous():
+def test_request_schema_allows_e2_actions_rejects_deferred():
     from pydantic import ValidationError
 
     from app.schemas.publishing import PublishRetryCommandResolveRequest
@@ -246,9 +261,25 @@ def test_request_schema_only_allows_mark_ambiguous():
     )
     assert ok.action == "MARK_AMBIGUOUS"
 
+    ok_success = PublishRetryCommandResolveRequest(
+        action="ACKNOWLEDGE_EXTERNAL_SUCCESS",
+        confirm_permanent_resolution=True,
+        operator_reason="seen live",
+        evidence_source="operator_provider_ui",
+        external_post_id="12345",
+    )
+    assert ok_success.action == "ACKNOWLEDGE_EXTERNAL_SUCCESS"
+
     with pytest.raises(ValidationError):
         PublishRetryCommandResolveRequest(
             action="CANCEL",
+            confirm_permanent_resolution=True,
+            operator_reason="nope",
+        )
+
+    with pytest.raises(ValidationError):
+        PublishRetryCommandResolveRequest(
+            action="MARK_FAILED_CONFIRMED",
             confirm_permanent_resolution=True,
             operator_reason="nope",
         )

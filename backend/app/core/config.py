@@ -154,6 +154,9 @@ class Settings(BaseSettings):
     # Phase E2-1 — manual stranded command resolution (MARK_AMBIGUOUS bookkeeping).
     # Independent of claim/execution flags. Default off; production must stay false.
     PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED: bool = False
+    # Phase E2-2 — ACKNOWLEDGE_EXTERNAL_SUCCESS only. Independent of E2-1 flag.
+    # Default off; production must stay false until a separate enablement gate.
+    PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

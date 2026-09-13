@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 PublishMode = Literal["test_publish", "manual_publish", "scheduled_publish"]
 
@@ -218,16 +218,67 @@ class StrandedRetryCommandListResponse(BaseModel):
 
 
 class PublishRetryCommandResolveRequest(BaseModel):
-    """E2-1: MARK_AMBIGUOUS only. Other actions are rejected."""
+    """E2-1 MARK_AMBIGUOUS + E2-2 ACKNOWLEDGE_EXTERNAL_SUCCESS.
 
-    action: Literal["MARK_AMBIGUOUS"]
+    Failed-confirm / cancel / no-effect / supersede remain rejected.
+    Success evidence fields are required only for ACKNOWLEDGE_EXTERNAL_SUCCESS
+    (validated in the service; schema bounds lengths only).
+
+    Confirmation semantics (Pydantic v2 / FastAPI):
+    - ACKNOWLEDGE_EXTERNAL_SUCCESS: raw JSON value must be boolean ``true``
+      (reject ``"true"``, ``1``, ``false``, ``null``, missing) → API **422**.
+    - MARK_AMBIGUOUS: preserves prior coercible-bool behavior; service still
+      rejects non-True with **400** if reached with Python ``False``.
+    """
+
+    action: Literal["MARK_AMBIGUOUS", "ACKNOWLEDGE_EXTERNAL_SUCCESS"]
     confirm_permanent_resolution: bool
     operator_reason: str = Field(..., min_length=1, max_length=1000)
     evidence_source: Optional[str] = Field(
         None,
         max_length=80,
-        description="Optional non-authoritative evidence label (not success/failure proof)",
+        description=(
+            "Evidence label. Optional for MARK_AMBIGUOUS; required for "
+            "ACKNOWLEDGE_EXTERNAL_SUCCESS (operator attestation, not proof)."
+        ),
     )
+    external_post_id: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Required for ACKNOWLEDGE_EXTERNAL_SUCCESS (opaque provider id)",
+    )
+    external_post_url: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="Optional permalink reference; never fetched server-side",
+    )
+    observed_at: Optional[datetime] = Field(
+        None,
+        description="Optional operator-observed timestamp (timestamptz)",
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _e2_2_require_explicit_json_true_confirmation(cls, data: Any) -> Any:
+        """Action-specific: E2-2 rejects coercible truthy values before bool parse."""
+        if not isinstance(data, dict):
+            return data
+        action = data.get("action")
+        if action != "ACKNOWLEDGE_EXTERNAL_SUCCESS":
+            return data
+        if "confirm_permanent_resolution" not in data:
+            raise ValueError(
+                "confirm_permanent_resolution is required and must be "
+                "JSON boolean true for ACKNOWLEDGE_EXTERNAL_SUCCESS"
+            )
+        confirm = data.get("confirm_permanent_resolution")
+        if confirm is not True:
+            raise ValueError(
+                "confirm_permanent_resolution must be JSON boolean true "
+                "for ACKNOWLEDGE_EXTERNAL_SUCCESS "
+                '(rejected non-boolean true such as "true", 1, false, null)'
+            )
+        return data
 
 
 class PublishRetryCommandResolveResponse(BaseModel):
@@ -245,6 +296,7 @@ class PublishRetryCommandResolveResponse(BaseModel):
     audit_id: Optional[UUID] = None
     correlation_id: Optional[str] = None
     alert_resolved: bool = False
+    external_post_id: Optional[str] = None
 
 
 class ScheduledPublishDebugItem(BaseModel):

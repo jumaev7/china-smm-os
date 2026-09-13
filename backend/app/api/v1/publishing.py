@@ -413,11 +413,12 @@ async def resolve_publish_retry_command(
     user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
     admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
 ):
-    """Phase E2-1: MARK_AMBIGUOUS manual resolution for stranded commands.
+    """Phase E2: manual resolution for stranded post-barrier retry commands.
 
-    Terminalizes bookkeeping only (command → ambiguous, resulting attempt →
-    operator_review). No provider I/O, no replacement command, no ContentItem
-    mutation. Fail-closed unless PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED.
+    E2-1 MARK_AMBIGUOUS and E2-2 ACKNOWLEDGE_EXTERNAL_SUCCESS are gated by
+    independent feature flags (both default false). Bookkeeping only: no
+    provider I/O, no evidence URL fetch, no replacement command, no ContentItem
+    / publication-registry mutation.
     """
     _require_manual_resolution_actor(user, admin)
     scope_tenant_id = _resolve_scope(user, admin, tenant_id)
@@ -431,6 +432,9 @@ async def resolve_publish_retry_command(
         actor_id=_actor_id(user, admin),
         actor_type=_actor_type(user, admin),
         evidence_source=body.evidence_source,
+        external_post_id=body.external_post_id,
+        external_post_url=body.external_post_url,
+        observed_at=body.observed_at,
         commit=True,
     )
     return PublishRetryCommandResolveResponse(
@@ -446,6 +450,7 @@ async def resolve_publish_retry_command(
         audit_id=result.audit_id,
         correlation_id=result.correlation_id,
         alert_resolved=result.alert_resolved,
+        external_post_id=result.external_post_id,
     )
 
 
