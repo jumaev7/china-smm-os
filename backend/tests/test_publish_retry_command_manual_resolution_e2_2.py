@@ -111,12 +111,20 @@ def test_e2_2_feature_flag_defaults_false_and_compose_pin():
         ].default
         is False
     )
+    assert (
+        type(settings).model_fields[
+            "PUBLISH_WRITE_COORDINATION_ENABLED"
+        ].default
+        is False
+    )
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[2]
     text_src = (root / "docker-compose.production.yml").read_text(encoding="utf-8")
     assert "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED:-false" in text_src
     assert "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED:-true" not in text_src
+    assert "PUBLISH_WRITE_COORDINATION_ENABLED:-false" in text_src
+    assert "PUBLISH_WRITE_COORDINATION_ENABLED:-true" not in text_src
 
 
 def test_e2_2_flag_off_rejects_success_even_when_e2_1_on(monkeypatch):
@@ -144,9 +152,36 @@ def test_e2_2_flag_off_rejects_success_even_when_e2_1_on(monkeypatch):
     asyncio.run(_run())
 
 
+def test_e2_2_on_but_coordination_off_rejects_success(monkeypatch):
+    """E2-2 acknowledgment intentionally requires write coordination."""
+    monkeypatch.setattr(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True)
+    monkeypatch.setattr(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", False)
+
+    async def _run():
+        db = AsyncMock()
+        with pytest.raises(HTTPException) as exc:
+            await PublishRetryCommandManualResolutionService.resolve(
+                db,
+                command_id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                action=ACTION_ACKNOWLEDGE_EXTERNAL_SUCCESS,
+                confirm_permanent_resolution=True,
+                operator_reason="seen",
+                evidence_source="ui",
+                external_post_id="1",
+                actor_id=uuid.uuid4(),
+            )
+        assert exc.value.status_code == 403
+        assert "PUBLISH_WRITE_COORDINATION_ENABLED=false" in str(exc.value.detail)
+        db.execute.assert_not_called()
+
+    asyncio.run(_run())
+
+
 def test_e2_1_flag_off_rejects_ambiguous_even_when_e2_2_on(monkeypatch):
     monkeypatch.setattr(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED", False)
     monkeypatch.setattr(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True)
+    monkeypatch.setattr(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", True)
 
     async def _run():
         db = AsyncMock()
@@ -203,6 +238,7 @@ def test_both_flags_off_reject_both_actions(monkeypatch):
 
 def test_success_evidence_validation_matrix(monkeypatch):
     monkeypatch.setattr(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True)
+    monkeypatch.setattr(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", True)
 
     async def _expect_400(**kwargs):
         db = AsyncMock()
@@ -502,14 +538,20 @@ def _run(coro_factory):
 
 @contextmanager
 def _e2_2_on():
-    with patch.object(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True):
+    """E2-2 apply requires E2_2 + write-coordination flags."""
+    with (
+        patch.object(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True),
+        patch.object(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", True),
+    ):
         yield
 
 
 @contextmanager
 def _both_on():
-    with patch.object(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED", True), patch.object(
-        settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True,
+    with (
+        patch.object(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_ENABLED", True),
+        patch.object(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", True),
+        patch.object(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", True),
     ):
         yield
 

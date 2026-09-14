@@ -334,10 +334,27 @@ class PublishResilienceService:
         publish_version: str,
         lease_owner: str | None = None,
         test_mode: bool = False,
+        tenant_id: UUID | None = None,
     ) -> ClaimResult:
-        """Claim a destination for publishing or return a skip reason."""
+        """Claim a destination for publishing or return a skip reason.
+
+        When ``PUBLISH_WRITE_COORDINATION_ENABLED``, acquires a destination
+        advisory xact lock, evaluates unresolved prior writes, then claims.
+        Caller must commit before provider I/O so the lock is released and the
+        ``in_progress`` row is durably visible to peers.
+        """
         if test_mode:
             return ClaimResult(attempt=None, skip=False, reason=None)
+
+        from app.services.publish_write_coordination import (
+            UNRESOLVED_PRIOR_WRITE_REASON,
+            acquire_destination_xact_lock,
+            assert_content_tenant_owns,
+            find_unresolved_destination_write,
+            normalize_destination,
+            unresolved_prior_write_claim_result,
+            write_coordination_enabled,
+        )
 
         account_id = account.id if account else None
         key = build_idempotency_key(
@@ -347,6 +364,39 @@ class PublishResilienceService:
             publish_version=publish_version,
         )
         now = utc_now()
+        coord_on = write_coordination_enabled()
+
+        if coord_on:
+            if tenant_id is None:
+                raise ValueError(
+                    "tenant_id is required when PUBLISH_WRITE_COORDINATION_ENABLED"
+                )
+            await assert_content_tenant_owns(
+                db, content_id=content_id, tenant_id=tenant_id
+            )
+            identity = normalize_destination(
+                tenant_id=tenant_id,
+                content_id=content_id,
+                platform=platform,
+                account_id=account_id,
+            )
+            # Lock first — serializes with E2-2 ack and peer begin_attempt.
+            await acquire_destination_xact_lock(db, identity)
+
+            unresolved = await find_unresolved_destination_write(db, identity)
+            if unresolved is not None:
+                return ClaimResult(
+                    attempt=None,
+                    skip=True,
+                    reason=UNRESOLVED_PRIOR_WRITE_REASON,
+                    result=unresolved_prior_write_claim_result(
+                        platform=platform,
+                        account_id=account_id,
+                        account_name=account.account_name if account else None,
+                        command=unresolved,
+                        mock=account.status == "mock" if account else True,
+                    ),
+                )
 
         prior = await cls.find_live_success(db, idempotency_key=key)
         if prior is None:
@@ -407,6 +457,38 @@ class PublishResilienceService:
                     "attempt_id": str(active.id),
                 },
             )
+
+        # Cross-version destination in_progress (coordination): same identity,
+        # different publish_version — fail closed consistently with live-key
+        # uncertainty (does not create a new claim).
+        if coord_on:
+            from app.services.publish_write_coordination import (
+                find_destination_in_progress_attempt,
+            )
+
+            peer_inflight = await find_destination_in_progress_attempt(db, identity)
+            if peer_inflight is not None:
+                return ClaimResult(
+                    attempt=peer_inflight,
+                    skip=True,
+                    reason="in_progress",
+                    result={
+                        "platform": platform,
+                        "success": False,
+                        "error": (
+                            "Publish already in progress for this destination "
+                            "(cross-version)"
+                        ),
+                        "platform_post_id": None,
+                        "mock": account.status == "mock" if account else True,
+                        "account_id": str(account_id) if account_id else None,
+                        "account_name": account.account_name if account else None,
+                        "failure_code": "concurrent_claim",
+                        "failure_category": "concurrency",
+                        "retryable": True,
+                        "attempt_id": str(peer_inflight.id),
+                    },
+                )
 
         attempt_number = await cls.next_attempt_number(db, key)
         if attempt_number > cls.max_attempts():

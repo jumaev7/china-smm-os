@@ -124,8 +124,11 @@ class PublishRetryCommandManualResolutionService:
 
     @classmethod
     def gates_open_e2_2(cls) -> bool:
+        """E2-2 acknowledgment requires BOTH feature flags (intentional)."""
         return bool(
             getattr(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", False)
+        ) and bool(
+            getattr(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", False)
         )
 
     @classmethod
@@ -141,12 +144,26 @@ class PublishRetryCommandManualResolutionService:
                 )
             return
         if normalized_action == ACTION_ACKNOWLEDGE_EXTERNAL_SUCCESS:
-            if not cls.gates_open_e2_2():
+            e2_2 = bool(
+                getattr(settings, "PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED", False)
+            )
+            coord = bool(
+                getattr(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", False)
+            )
+            if not e2_2:
                 raise HTTPException(
                     status_code=403,
                     detail=(
                         "E2-2 manual success acknowledgment is disabled "
                         "(PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED=false)"
+                    ),
+                )
+            if not coord:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "E2-2 success acknowledgment requires write coordination "
+                        "(PUBLISH_WRITE_COORDINATION_ENABLED=false)"
                     ),
                 )
             return
@@ -402,11 +419,60 @@ class PublishRetryCommandManualResolutionService:
         actor_type: str,
         commit: bool,
     ) -> ManualResolutionResult:
+        from app.services.publish_write_coordination import (
+            PUBLICATION_IN_PROGRESS_ERROR,
+            acquire_destination_xact_lock,
+            find_destination_in_progress_attempt,
+            normalize_destination,
+        )
+
+        # Destination lock first (same order as publish claim critical section), then
+        # command / resulting-attempt FOR UPDATE.
+        # We need destination fields before locking: load without FOR UPDATE,
+        # acquire destination lock, then re-lock and re-validate.
+        preview = (
+            await db.execute(
+                select(PublishRetryCommand).where(
+                    PublishRetryCommand.id == command_id,
+                    PublishRetryCommand.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if preview is None:
+            raise HTTPException(status_code=404, detail="Retry command not found")
+
+        identity = normalize_destination(
+            tenant_id=tenant_id,
+            content_id=preview.content_id,
+            platform=preview.platform,
+            account_id=preview.publishing_account_id,
+        )
+        await acquire_destination_xact_lock(db, identity)
+
         command = await cls._lock_command(db, command_id, tenant_id)
+
+        # Re-validate destination identity after locks (fail closed on drift).
+        if (
+            command.content_id != identity.content_id
+            or (command.platform or "").strip().lower() != identity.platform_normalized
+            or command.publishing_account_id != identity.account_id
+            or command.tenant_id != identity.tenant_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "lineage_conflict",
+                    "message": (
+                        "Command destination identity changed under lock; "
+                        "failing closed"
+                    ),
+                },
+            )
 
         if command.status == SUCCESS_STATUS and (
             command.provider_outcome or ""
         ) == SUCCESS_PROVIDER_OUTCOME:
+            # Compatible replay: do not apply first-application conflict checks.
             return await cls._replay_ack_external_success(
                 db,
                 command=command,
@@ -421,6 +487,22 @@ class PublishRetryCommandManualResolutionService:
                 detail={
                     "error": "lineage_conflict",
                     "message": "resulting_attempt_id is required for resolution",
+                },
+            )
+
+        # Competing same-destination in_progress (any version) → 409, no mutation.
+        competing = await find_destination_in_progress_attempt(db, identity)
+        if competing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": PUBLICATION_IN_PROGRESS_ERROR,
+                    "message": (
+                        "Same-destination publish claim is in progress; "
+                        "acknowledge after it finishes or is reconciled"
+                    ),
+                    "status": command.status,
+                    "attempt_id": str(competing.id),
                 },
             )
 

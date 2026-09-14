@@ -157,6 +157,10 @@ class Settings(BaseSettings):
     # Phase E2-2 — ACKNOWLEDGE_EXTERNAL_SUCCESS only. Independent of E2-1 flag.
     # Default off; production must stay false until a separate enablement gate.
     PUBLISH_RETRY_MANUAL_RESOLUTION_E2_2_ENABLED: bool = False
+    # E2-2 Follow-up B — destination write coordination (begin_attempt + E2-2 ack).
+    # Default off. E2-2 acknowledgment requires this flag AND E2_2_ENABLED.
+    # Independent of E2-1 MARK_AMBIGUOUS. Do not enable in production here.
+    PUBLISH_WRITE_COORDINATION_ENABLED: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

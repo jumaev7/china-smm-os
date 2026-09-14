@@ -175,11 +175,17 @@ class _Db:
 
 
 def _attempt(platform: str, payload: dict, **extra):
+    # Match production: mock/test successes do not persist external_post_id.
+    is_non_live = payload.get("mock") is True or payload.get("test") is True
     return SimpleNamespace(
         platform=platform,
         response=json.dumps(payload),
         status="success",
-        external_post_id=payload.get("platform_post_id"),
+        external_post_id=(
+            None if is_non_live else payload.get("platform_post_id")
+        ),
+        external_post_url=None,
+        id=uuid4(),
         **extra,
     )
 
@@ -213,9 +219,32 @@ async def _prior_live_run() -> None:
     assert found["facebook"]["deduplicated"] is True
 
 
+async def _prior_live_column_only_run() -> None:
+    rows = [
+        SimpleNamespace(
+            id=uuid4(),
+            platform="telegram",
+            response=None,
+            external_post_id="ack-ext-1",
+            external_post_url=None,
+        ),
+    ]
+    found = await PublishService._prior_live_successes(
+        _Db(rows),
+        uuid4(),
+        ["telegram"],
+    )
+    assert list(found) == ["telegram"]
+    assert found["telegram"]["platform_post_id"] == "ack-ext-1"
+    assert found["telegram"]["deduplicated"] is True
+
+
 def test_prior_live_successes_ignore_mock_and_test_attempts() -> None:
     asyncio.run(_prior_live_run())
 
+
+def test_prior_live_successes_recognize_column_without_response() -> None:
+    asyncio.run(_prior_live_column_only_run())
 
 # ── Finalize attempt state machine ────────────────────────────────────────────
 
@@ -469,6 +498,7 @@ if __name__ == "__main__":
     test_backoff_respects_retry_after_and_bounds()
     test_idempotency_key_is_stable_per_destination_version()
     test_prior_live_successes_ignore_mock_and_test_attempts()
+    test_prior_live_successes_recognize_column_without_response()
     test_transient_failure_schedules_retry_then_success()
     test_meta_timeout_routes_to_operator_review_not_auto_retry()
     test_meta_connection_error_routes_to_operator_review()

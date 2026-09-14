@@ -709,6 +709,12 @@ class PublishService:
         A retry after a partial failure must not create a second provider post on
         a platform that already succeeded. Mock and explicit test results are not
         live publications and therefore never suppress a later real publish.
+
+        Identity precedence mirrors ``PublishResilienceService.find_live_success``:
+        durable ``external_post_id`` wins; response ``platform_post_id`` is the
+        legacy fallback when the column is absent. When both are present and
+        disagree, the durable column still suppresses another write (conflict is
+        logged; the caller is not authorized to publish again).
         """
         if not platforms:
             return {}
@@ -723,22 +729,61 @@ class PublishService:
         )
         successes: dict[str, dict] = {}
         for attempt in result.scalars().all():
-            if attempt.platform in successes or not attempt.response:
+            if attempt.platform in successes:
                 continue
-            try:
-                payload = json.loads(attempt.response)
-            except (json.JSONDecodeError, TypeError):
+
+            column_post_id = (attempt.external_post_id or "").strip() or None
+            response_payload: dict = {}
+            response_post_id: str | None = None
+            response_mock_or_test = False
+            if attempt.response:
+                try:
+                    parsed = json.loads(attempt.response)
+                except (json.JSONDecodeError, TypeError):
+                    parsed = None
+                if isinstance(parsed, dict):
+                    response_payload = parsed
+                    if (
+                        response_payload.get("mock") is True
+                        or response_payload.get("test") is True
+                    ):
+                        response_mock_or_test = True
+                    raw_response_id = response_payload.get("platform_post_id")
+                    if raw_response_id is not None and str(raw_response_id).strip():
+                        response_post_id = str(raw_response_id).strip()
+
+            # Prefer durable column (incl. E2-2 ack with response IS NULL).
+            if column_post_id:
+                post_id = column_post_id
+                if response_post_id and response_post_id != column_post_id:
+                    logger.warning(
+                        "[Publish] prior live success identity conflict: "
+                        "content=%s platform=%s attempt=%s "
+                        "external_post_id=%s response.platform_post_id=%s "
+                        "— suppressing publish using durable column",
+                        content_id,
+                        attempt.platform,
+                        attempt.id,
+                        column_post_id,
+                        response_post_id,
+                    )
+            elif response_mock_or_test or not response_post_id:
+                # Legacy path: response-only live id, excluding mock/test.
                 continue
-            if not isinstance(payload, dict):
-                continue
-            if payload.get("mock") is True or payload.get("test") is True:
-                continue
-            if not payload.get("platform_post_id"):
-                continue
+            else:
+                post_id = response_post_id
+
+            payload = dict(response_payload) if response_payload else {}
             payload["success"] = True
             payload["platform"] = attempt.platform
+            payload["platform_post_id"] = post_id
+            if attempt.external_post_url and not payload.get("post_url"):
+                payload["post_url"] = attempt.external_post_url
+            payload["mock"] = False
             payload["deduplicated"] = True
-            payload["message"] = payload.get("message") or "Already published; duplicate suppressed"
+            payload["message"] = (
+                payload.get("message") or "Already published; duplicate suppressed"
+            )
             successes[attempt.platform] = payload
         return successes
 
@@ -883,6 +928,10 @@ class PublishService:
                     continue
 
                 if not test_mode:
+                    from app.services.publish_write_coordination import (
+                        write_coordination_enabled,
+                    )
+
                     claim = await PublishResilienceService.begin_attempt(
                         db,
                         content_id=content_id,
@@ -891,6 +940,7 @@ class PublishService:
                         publish_version=publish_version,
                         lease_owner=f"publish:{content_id}",
                         test_mode=False,
+                        tenant_id=content_tenant_id,
                     )
                     if claim.skip and claim.result is not None:
                         results.append(claim.result)
@@ -904,9 +954,16 @@ class PublishService:
                         )
                         continue
                     claimed_attempt = claim.attempt
-                    # Durable claim before Meta provider I/O so crash/timeout
-                    # recovery can observe in_progress and fail closed.
-                    if claimed_attempt is not None and is_meta_publish_platform(platform):
+                    # Durable claim before provider I/O so crash/timeout recovery
+                    # can observe in_progress and fail closed.
+                    # Meta always commits early. With write coordination enabled,
+                    # commit for all platforms so the destination xact lock is
+                    # released before adapter I/O and peers see the claim.
+                    must_commit_claim = claimed_attempt is not None and (
+                        is_meta_publish_platform(platform)
+                        or write_coordination_enabled()
+                    )
+                    if must_commit_claim:
                         await db.commit()
                         claimed_attempt = await db.get(PublishAttempt, claimed_attempt.id)
                         item = await PublishService._get_content(db, content_id)
