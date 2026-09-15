@@ -161,6 +161,10 @@ class Settings(BaseSettings):
     # Default off. E2-2 acknowledgment requires this flag AND E2_2_ENABLED.
     # Independent of E2-1 MARK_AMBIGUOUS. Do not enable in production here.
     PUBLISH_WRITE_COORDINATION_ENABLED: bool = False
+    # R3 — registry shadow observation only (read + compare + metrics/audit).
+    # Default off. Never enables authority acquisition, registry mutation, or
+    # live publish/retry enforcement. Shadow alone must never permit provider I/O.
+    PUBLISH_WRITE_COORDINATION_SHADOW: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

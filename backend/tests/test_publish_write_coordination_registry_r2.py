@@ -1153,6 +1153,7 @@ def test_service_public_api_surface():
         "supersede_intent",
         "destination_has_unresolved_write",
         "same_intent_has_durable_success",
+        "get_destination_intent_row",
     }
     members = {
         name

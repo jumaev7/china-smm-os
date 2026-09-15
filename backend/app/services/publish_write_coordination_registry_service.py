@@ -200,6 +200,27 @@ class PublishWriteCoordinationRegistryService:
             logical_write_key=logical_write_key,
         )
 
+    @classmethod
+    async def get_destination_intent_row(
+        cls,
+        db: AsyncSession,
+        destination: DestinationIdentity,
+        publication_intent_id: UUID,
+    ) -> PublishWriteCoordinationRegistry | None:
+        """Read-only fetch of a destination+intent registry row (no FOR UPDATE)."""
+        dest = normalize_destination(
+            tenant_id=destination.tenant_id,
+            content_id=destination.content_id,
+            platform=destination.platform,
+            account_id=destination.account_id,
+        )
+        return await cls.repo.get_by_destination_intent(
+            db,
+            dest,
+            publication_intent_id,
+            for_update=False,
+        )
+
     # ------------------------------------------------------------------
     # Acquire
     # ------------------------------------------------------------------

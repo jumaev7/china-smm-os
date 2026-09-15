@@ -77,6 +77,11 @@ def write_coordination_enabled() -> bool:
     return bool(getattr(settings, "PUBLISH_WRITE_COORDINATION_ENABLED", False))
 
 
+def write_coordination_shadow_enabled() -> bool:
+    """R3 observational shadow only — never enables enforcement or mutation."""
+    return bool(getattr(settings, "PUBLISH_WRITE_COORDINATION_SHADOW", False))
+
+
 def normalize_destination(
     *,
     tenant_id: UUID,

@@ -788,6 +788,44 @@ class PublishService:
         return successes
 
     @staticmethod
+    async def _observe_write_coordination_shadow(
+        db: AsyncSession,
+        *,
+        tenant_id: UUID,
+        content_id: UUID,
+        platform: str,
+        account_id: UUID | None,
+        publication_intent_id: UUID | None,
+        live_decision: str,
+        live_reason: str | None = None,
+        live_prior_success: bool = False,
+    ) -> None:
+        """R3 fail-open shadow hook — never alters live publish behavior."""
+        try:
+            from app.services.publish_write_coordination_shadow import (
+                observe_publish_pre_provider,
+            )
+
+            await observe_publish_pre_provider(
+                db,
+                tenant_id=tenant_id,
+                content_id=content_id,
+                platform=platform,
+                account_id=account_id,
+                publication_intent_id=publication_intent_id,
+                live_decision=live_decision,  # type: ignore[arg-type]
+                live_reason=live_reason,
+                live_prior_success=live_prior_success,
+            )
+        except Exception:  # noqa: BLE001 — absolute fail-open belt+suspenders
+            logger.debug(
+                "[Publish] write-coord shadow hook failed content=%s platform=%s",
+                content_id,
+                platform,
+                exc_info=True,
+            )
+
+    @staticmethod
     async def publish_content(
         db: AsyncSession,
         content_id: UUID,
@@ -895,6 +933,18 @@ class PublishService:
                         platform,
                         prior_success.get("platform_post_id"),
                     )
+                    if not test_mode:
+                        await PublishService._observe_write_coordination_shadow(
+                            db,
+                            tenant_id=content_tenant_id,
+                            content_id=content_id,
+                            platform=platform,
+                            account_id=explicit_account,
+                            publication_intent_id=None,
+                            live_decision="block",
+                            live_reason="prior_live_success",
+                            live_prior_success=True,
+                        )
                     continue
 
                 try:
@@ -952,6 +1002,22 @@ class PublishService:
                             platform,
                             claim.reason,
                         )
+                        await PublishService._observe_write_coordination_shadow(
+                            db,
+                            tenant_id=content_tenant_id,
+                            content_id=content_id,
+                            platform=platform,
+                            account_id=account.id if account else None,
+                            publication_intent_id=getattr(
+                                claim.attempt, "publication_intent_id", None
+                            )
+                            if claim.attempt is not None
+                            else None,
+                            live_decision="block",
+                            live_reason=claim.reason,
+                            live_prior_success=claim.reason
+                            == "already_published",
+                        )
                         continue
                     claimed_attempt = claim.attempt
                     # Durable claim before provider I/O so crash/timeout recovery
@@ -969,6 +1035,24 @@ class PublishService:
                         item = await PublishService._get_content(db, content_id)
                         if account is not None:
                             account = await db.get(PublishingAccount, account.id)
+
+                    # Shadow observation immediately before provider I/O.
+                    # Live decision remains authoritative regardless of shadow.
+                    await PublishService._observe_write_coordination_shadow(
+                        db,
+                        tenant_id=content_tenant_id,
+                        content_id=content_id,
+                        platform=platform,
+                        account_id=account.id if account else None,
+                        publication_intent_id=getattr(
+                            claimed_attempt, "publication_intent_id", None
+                        )
+                        if claimed_attempt is not None
+                        else None,
+                        live_decision="allow",
+                        live_reason="proceed_to_provider",
+                        live_prior_success=False,
+                    )
 
                 adapter = ADAPTERS.get(platform)
                 if not adapter:
