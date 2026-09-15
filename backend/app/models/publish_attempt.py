@@ -71,5 +71,10 @@ class PublishAttempt(Base):
         ForeignKey("publish_retry_commands.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # R1 storage only — durable publication intent; nullable for historical rows.
+    # Runtime minting / population is deferred (R2+).
+    publication_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True,
+    )
 
     account: Mapped["PublishingAccount | None"] = relationship()  # noqa: F821

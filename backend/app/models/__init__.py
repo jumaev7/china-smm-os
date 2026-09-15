@@ -40,6 +40,9 @@ from app.models.publishing_account import PublishingAccount
 from app.models.publish_attempt import PublishAttempt
 from app.models.publish_operator_alert import PublishOperatorAlert
 from app.models.publish_retry_command import PublishRetryCommand
+from app.models.publish_write_coordination_registry import (
+    PublishWriteCoordinationRegistry,
+)
 from app.models.publish_alert_telegram import (
     PublishAlertTelegramDelivery,
     PublishAlertTelegramEnrollment,
@@ -209,6 +212,7 @@ __all__ = [
     "TelegramIngestionSettings", "TelegramAlbumPending", "TelegramWebhookEvent",
     "PublishingAccount", "PublishAttempt", "PublishOperatorAlert",
     "PublishRetryCommand",
+    "PublishWriteCoordinationRegistry",
     "PublishAlertTelegramDelivery", "PublishAlertTelegramEnrollment",
     "TenantPublishAlertTelegramSettings",
     "ContentPlan", "ContentPlanItem",

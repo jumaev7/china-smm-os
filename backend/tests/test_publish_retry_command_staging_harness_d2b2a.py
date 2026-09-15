@@ -243,7 +243,8 @@ async def _setup_schema(engine) -> None:
                     lease_owner VARCHAR(120) NULL,
                     lease_expires_at TIMESTAMPTZ NULL,
                     retry_after_seconds INTEGER NULL,
-                    retry_command_id UUID NULL
+                    retry_command_id UUID NULL,
+                    publication_intent_id UUID NULL
                 )
                 """
             )
@@ -293,6 +294,7 @@ async def _setup_schema(engine) -> None:
                     provider_write_started_at TIMESTAMPTZ NULL,
                     finished_at TIMESTAMPTZ NULL,
                     correlation_id VARCHAR(64) NOT NULL,
+                    publication_intent_id UUID NULL,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     CONSTRAINT ck_publish_retry_commands_provider_write_ts CHECK (

@@ -167,6 +167,11 @@ class PublishRetryCommand(Base):
         DateTime(timezone=True), nullable=True,
     )
     correlation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    # R1 storage only — same publication intent as related attempts; nullable
+    # for historical rows. Runtime population deferred (R2+).
+    publication_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False,
