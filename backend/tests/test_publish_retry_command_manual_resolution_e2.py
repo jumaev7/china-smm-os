@@ -393,7 +393,16 @@ async def _setup_schema(engine) -> None:
                     platform VARCHAR(20) NOT NULL,
                     account_name VARCHAR(255) NOT NULL DEFAULT 'Bot',
                     account_id VARCHAR(255) NOT NULL DEFAULT 'acct',
-                    status VARCHAR(30) NOT NULL DEFAULT 'connected'
+                    status VARCHAR(30) NOT NULL DEFAULT 'connected',
+                    access_token_encrypted TEXT NULL,
+                    refresh_token_encrypted TEXT NULL,
+                    facebook_page_id VARCHAR(64) NULL,
+                    instagram_business_account_id VARCHAR(64) NULL,
+                    permissions_json TEXT NULL,
+                    account_metadata_json TEXT NULL,
+                    expires_at TIMESTAMPTZ NULL,
+                    created_at TIMESTAMPTZ NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NULL DEFAULT NOW()
                 )
                 """
             )

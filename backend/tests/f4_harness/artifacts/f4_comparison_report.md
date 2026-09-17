@@ -1,6 +1,6 @@
 # F4 — Old vs New Backend Regression Report
 
-Generated: `2026-09-17T10:34:18.051575+00:00`
+Generated: `2026-09-17T13:22:32.959586+00:00`
 
 ## Identities
 
@@ -78,7 +78,7 @@ Generated: `2026-09-17T10:34:18.051575+00:00`
 | `pub_conflict` | INTENDED | PASS | suppression_decision: old='suppress' new='conflict'; identity_conflict: old=False new=True |
 | `pub_mock_with_durable` | INTENDED | PASS | provider_calls: old=0 new=1; suppression_decision: old='suppress' new='allow' |
 | `dest_same_content_platform_account` | EQUIVALENT | PASS | none |
-| `dest_cross_account_platform_keyed` | COMMON_MODE_SAFETY | PASS | none |
+| `dest_cross_account_platform_keyed` | INTENDED | PASS | provider_calls: old=0 new=1; suppression_decision: old='suppress' new='allow' |
 | `dest_different_platform` | EQUIVALENT | PASS | none |
 | `dest_publish_version_change_platform_keyed` | COMMON_MODE_SAFETY | PASS | none |
 | `registry_shadow_neutrality` | EQUIVALENT | PASS | none |
@@ -118,6 +118,6 @@ Generated: `2026-09-17T10:34:18.051575+00:00`
 
 ## Known common-mode safety concerns
 
-- Platform-keyed _prior_live_successes suppresses cross-account republish on the same platform even when begin_attempt/find_live_success would allow a different account — present in both old and new.
+- I1 fixed: platform-keyed _prior_live_successes no longer suppresses proven-distinct cross-account publishes; alias/NULL remain fail-closed.
 - Old find_live_success treats durable external_post_id as live even when response is mock/test — pre-F1 hazard; new F1 refuses suppression.
-- Platform-keyed prior reader ignores publish_version changes — both versions suppress republish after a prior live success on that platform.
+- Platform-keyed prior reader ignores publish_version changes — both versions suppress republish after a prior live success on that platform (intentional until I2 mint_new).

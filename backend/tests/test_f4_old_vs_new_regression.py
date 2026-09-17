@@ -83,9 +83,8 @@ REGISTRY_NEUTRALITY: dict = {
 }
 KNOWN_SAFETY: list[str] = [
     (
-        "Platform-keyed _prior_live_successes suppresses cross-account republish "
-        "on the same platform even when begin_attempt/find_live_success would "
-        "allow a different account — present in both old and new."
+        "I1 fixed: platform-keyed _prior_live_successes no longer suppresses "
+        "proven-distinct cross-account publishes; alias/NULL remain fail-closed."
     ),
     (
         "Old find_live_success treats durable external_post_id as live even when "
@@ -93,7 +92,8 @@ KNOWN_SAFETY: list[str] = [
     ),
     (
         "Platform-keyed prior reader ignores publish_version changes — both "
-        "versions suppress republish after a prior live success on that platform."
+        "versions suppress republish after a prior live success on that platform "
+        "(intentional until I2 mint_new)."
     ),
 ]
 
@@ -168,11 +168,34 @@ def _old_reader_stack():
     async def _old_find(cls, db, **kwargs):
         return await old_find_live_success(db, **kwargs)
 
+    async def _old_prior_for_destination(db, *, content_id, platform, account):
+        # Pre-I1: platform-keyed — account argument ignored.
+        found = await old_prior_live_successes(db, content_id, [platform])
+        return found.get(platform)
+
+    async def _old_find_destination(
+        cls, db, *, content_id, platform, account_id, account=None
+    ):
+        prior = await old_find_live_success(
+            db,
+            content_id=content_id,
+            platform=platform,
+            account_id=account_id,
+        )
+        if prior is None:
+            return None, None
+        return prior, "SAME_DESTINATION"
+
     with (
         patch.object(
             PublishService,
             "_prior_live_successes",
             staticmethod(old_prior_live_successes),
+        ),
+        patch.object(
+            PublishService,
+            "_prior_live_success_for_destination",
+            staticmethod(_old_prior_for_destination),
         ),
         patch.object(
             PublishResilienceService,
@@ -181,9 +204,15 @@ def _old_reader_stack():
         ),
         patch.object(
             PublishResilienceService,
+            "find_destination_live_success",
+            classmethod(_old_find_destination),
+        ),
+        patch.object(
+            PublishResilienceService,
             "_already_published_claim",
             classmethod(
-                lambda cls, prior, *, platform, account_id, account_name: (
+                lambda cls, prior, *, platform, account_id, account_name,
+                destination_comparison=None: (
                     _old_already_published_claim(
                         prior,
                         platform=platform,
@@ -565,7 +594,7 @@ def test_10_success_identity_prior_matrix(case):
                         db, fx.content_id, [fx.platform]
                     )
                     new_prior = await PublishService._prior_live_successes(
-                        db, fx.content_id, [fx.platform]
+                        db, fx.content_id, [fx.platform], account_id=fx.account_id
                     )
                 reg = await registry_count(db)
 
@@ -606,6 +635,7 @@ def test_10_success_identity_prior_matrix(case):
             "mock",
             "identity_conflict",
             "deduplicated",
+            "destination_identity",
         }
         if expected == Classification.INTENDED:
             allow |= {"platform_post_id"}
@@ -911,6 +941,7 @@ def test_20_publish_provider_calls_matrix():
                 "conflict_response_platform_post_id",
                 "deduplicated",
                 "identity_conflict",
+                "destination_identity",
                 "mock",
                 "platform",
             }
@@ -996,7 +1027,7 @@ def test_21_destination_identity_and_cross_account():
                 )
             )
 
-        # cross-account same platform — common-mode unsafe suppression
+        # cross-account same platform — I1 allows proven-distinct B (old still 0)
         async with session_factory("C_new_on_r1") as factory:
             fx = new_fixture_ids()
             async with factory() as db:
@@ -1033,7 +1064,7 @@ def test_21_destination_identity_and_cross_account():
                         ),
                     )
             assert old_a.invocation_count == 0
-            assert new_a.invocation_count == 0
+            assert new_a.invocation_count == 1
             _record(
                 classify_scenario(
                     scenario_id="dest_cross_account_platform_keyed",
@@ -1049,15 +1080,14 @@ def test_21_destination_identity_and_cross_account():
                         scenario_id="dest_cross_account_platform_keyed",
                         side="new",
                         schema_mode="C_new_on_r1",
-                        provider_calls=0,
-                        suppression_decision="suppress",
+                        provider_calls=1,
+                        suppression_decision="allow",
                     ),
-                    expected_classification=Classification.COMMON_MODE_SAFETY,
+                    expected_classification=Classification.INTENDED,
                     acceptance_criterion=(
-                        "Measure platform-keyed cross-account suppression; "
-                        "do not treat as acceptable merely because equivalent."
+                        "I1: proven-distinct account B is allowed after success "
+                        "on account A (old platform-keyed reader still suppresses)."
                     ),
-                    safety_concern=KNOWN_SAFETY[0],
                 )
             )
 

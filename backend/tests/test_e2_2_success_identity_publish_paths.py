@@ -683,7 +683,7 @@ def test_prior_live_successes_sees_ack_column_without_response():
                 assert attempt.response is None
 
                 found = await PublishService._prior_live_successes(
-                    db, fx.content_id, ["telegram"]
+                    db, fx.content_id, ["telegram"], account_id=fx.account_id
                 )
                 assert found["telegram"]["platform_post_id"] == ACK_EXT
                 assert found["telegram"]["deduplicated"] is True
@@ -736,7 +736,7 @@ def test_prior_live_successes_legacy_response_only_still_works():
                 await db.commit()
             async with factory() as db:
                 found = await PublishService._prior_live_successes(
-                    db, fx.content_id, ["telegram"]
+                    db, fx.content_id, ["telegram"], account_id=fx.account_id
                 )
                 assert found["telegram"]["platform_post_id"] == "legacy-resp-1"
 
@@ -780,7 +780,7 @@ def test_conflicting_column_and_response_suppresses_without_authoritative_id():
                 await db.commit()
             async with factory() as db:
                 found = await PublishService._prior_live_successes(
-                    db, fx.content_id, ["telegram"]
+                    db, fx.content_id, ["telegram"], account_id=fx.account_id
                 )
                 # F1: conflict suppresses without authoritative platform_post_id.
                 assert found["telegram"]["identity_conflict"] is True
@@ -979,11 +979,7 @@ def test_multi_destination_acked_skipped_other_may_write():
 
 
 def test_different_account_is_legitimate_new_intent():
-    """begin_attempt allows a different account; platform-keyed prior reader may still skip.
-
-    Documented pre-existing limitation of ``_prior_live_successes`` (platform-only).
-    Account-aware safety is enforced by ``begin_attempt`` / ``find_live_success``.
-    """
+    """I1: proven-distinct account B is allowed after success on account A."""
     fx = _Fixture()
     tg = CountingAdapter("telegram", post_id="tg-account-b")
 
@@ -1011,7 +1007,13 @@ def test_different_account_is_legitimate_new_intent():
                     content_id=fx.content_id,
                     platform="telegram",
                     account=SimpleNamespace(
-                        id=fx.account_b_id, account_name="TG B"
+                        id=fx.account_b_id,
+                        account_name="TG B",
+                        platform="telegram",
+                        account_id="tg-b",
+                        facebook_page_id=None,
+                        instagram_business_account_id=None,
+                        status="mock",
                     ),
                     publish_version=fx.publish_version,
                     lease_owner="test",
@@ -1020,7 +1022,7 @@ def test_different_account_is_legitimate_new_intent():
                 assert claim.skip is False
                 await db.rollback()
 
-            # publish_content still hits platform-keyed _prior_live_successes first.
+            # I1: destination-aware prior reader allows proven-distinct B.
             with _publish_harness(fx, {"telegram": tg}):
                 async with factory() as db:
                     result = await PublishService.publish_content(
@@ -1034,10 +1036,10 @@ def test_different_account_is_legitimate_new_intent():
                     )
             row = _result_for("telegram", result["results"])
             assert row is not None
-            # Observed: platform-keyed prior reader suppresses account-B write.
-            assert tg.invocation_count == 0
-            assert row.get("deduplicated") is True
-            assert row.get("platform_post_id") == ACK_EXT
+            assert tg.invocation_count == 1
+            assert row.get("success") is True
+            assert row.get("platform_post_id") == "tg-account-b"
+            assert row.get("deduplicated") is not True
 
     _run(body)
 
@@ -1076,7 +1078,13 @@ def test_different_account_begin_attempt_allows_while_documenting_platform_reade
                     content_id=fx.content_id,
                     platform="telegram",
                     account=SimpleNamespace(
-                        id=fx.account_b_id, account_name="TG B"
+                        id=fx.account_b_id,
+                        account_name="TG B",
+                        platform="telegram",
+                        account_id="tg-b",
+                        facebook_page_id=None,
+                        instagram_business_account_id=None,
+                        status="mock",
                     ),
                     publish_version=fx.publish_version,
                     lease_owner="test",

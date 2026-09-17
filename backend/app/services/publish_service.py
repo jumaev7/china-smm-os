@@ -707,81 +707,139 @@ class PublishService:
         }
 
     @staticmethod
+    async def _prior_live_success_for_destination(
+        db: AsyncSession,
+        *,
+        content_id: UUID,
+        platform: str,
+        account: PublishingAccount | None,
+    ) -> dict | None:
+        """Return a skip payload when a prior live success covers this destination.
+
+        Destination is resolved first (caller supplies the PublishingAccount).
+        Comparison uses external provider identity — UUID inequality alone never
+        proves a distinct destination. Unresolved identity fail-closes.
+        """
+        from app.services.publish_destination_identity import (
+            SAME_DESTINATION,
+            UNRESOLVED_DESTINATION,
+            shape_unresolved_destination_result,
+        )
+
+        account_id = account.id if account is not None else None
+        prior, comparison = await PublishResilienceService.find_destination_live_success(
+            db,
+            content_id=content_id,
+            platform=platform,
+            account_id=account_id,
+            account=account,
+        )
+        if prior is None:
+            return None
+
+        if comparison == UNRESOLVED_DESTINATION:
+            logger.warning(
+                "[Publish] destination identity unresolved: content=%s platform=%s "
+                "intended_account=%s prior_attempt=%s prior_account=%s — blocking write",
+                content_id,
+                platform,
+                account_id,
+                prior.id,
+                getattr(prior, "account_id", None),
+            )
+            return shape_unresolved_destination_result(
+                platform=platform,
+                account_id=account_id,
+                account_name=account.account_name if account else None,
+            )
+
+        identity = evaluate_live_success_identity(prior)
+        if not identity.suppresses:
+            return None
+
+        payload = shape_live_success_skip_result(
+            prior,
+            identity,
+            platform=platform,
+            account_id=account_id,
+            account_name=account.account_name if account else None,
+        )
+        if comparison == SAME_DESTINATION:
+            payload["destination_identity"] = SAME_DESTINATION
+        if prior.response and not identity.identity_conflict:
+            try:
+                parsed = json.loads(prior.response)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                merged = dict(parsed)
+                merged.update(payload)
+                merged["platform_post_id"] = identity.platform_post_id
+                merged["success"] = True
+                merged["mock"] = False
+                merged["deduplicated"] = True
+                if prior.external_post_url and not merged.get("post_url"):
+                    merged["post_url"] = prior.external_post_url
+                payload = merged
+
+        if identity.identity_conflict:
+            logger.warning(
+                "[Publish] prior live success identity conflict: "
+                "content=%s platform=%s attempt=%s — suppressing publish "
+                "without selecting an authoritative provider identity",
+                content_id,
+                platform,
+                prior.id,
+            )
+            await notify_provider_identity_conflict(db, prior)
+
+        return payload
+
+    @staticmethod
     async def _prior_live_successes(
         db: AsyncSession,
         content_id: UUID,
         platforms: list[str],
+        *,
+        account_by_platform: dict[str, PublishingAccount | None] | None = None,
+        account_id: UUID | None = None,
+        account: PublishingAccount | None = None,
     ) -> dict[str, dict]:
-        """Return the newest confirmed live success for each requested platform.
+        """Return suppressing prior live successes keyed by platform.
 
-        A retry after a partial failure must not create a second provider post on
-        a platform that already succeeded. Mock and explicit test results are not
-        live publications and therefore never suppress a later real publish.
+        I1: when destination account(s) are supplied, matching is
+        destination-aware (external identity + NULL fail-closed).
 
-        Identity eligibility matches ``PublishResilienceService.find_live_success``
-        via ``evaluate_live_success_identity``: durable-only success suppresses;
-        response-only live id suppresses; matching IDs suppress; mock/test never
-        suppresses (even with a durable column); conflicting durable/response IDs
-        suppress another write but fail closed on exact identity (no authoritative
-        ``platform_post_id``) and raise a bounded operator integrity alert.
+        When no destination account is supplied (legacy unit callers), only
+        historical NULL-account successes are considered for exact-NULL
+        matching — never platform-only suppression of concrete accounts.
         """
         if not platforms:
             return {}
-        result = await db.execute(
-            select(PublishAttempt)
-            .where(
-                PublishAttempt.content_id == content_id,
-                PublishAttempt.platform.in_(platforms),
-                PublishAttempt.status == "success",
-            )
-            .order_by(PublishAttempt.created_at.desc())
-        )
+
         successes: dict[str, dict] = {}
-        for attempt in result.scalars().all():
-            if attempt.platform in successes:
-                continue
+        for platform in platforms:
+            resolved: PublishingAccount | None
+            if account_by_platform is not None and platform in account_by_platform:
+                resolved = account_by_platform[platform]
+            elif account is not None and (
+                account_id is None or len(platforms) == 1
+            ):
+                resolved = account
+            elif account_id is not None and len(platforms) == 1:
+                resolved = await db.get(PublishingAccount, account_id)
+            else:
+                # Legacy / unspecified destination → exact NULL token only.
+                resolved = None
 
-            identity = evaluate_live_success_identity(attempt)
-            if not identity.suppresses:
-                continue
-
-            payload = shape_live_success_skip_result(
-                attempt,
-                identity,
-                platform=attempt.platform,
-                account_id=getattr(attempt, "account_id", None),
-                account_name=None,
+            payload = await PublishService._prior_live_success_for_destination(
+                db,
+                content_id=content_id,
+                platform=platform,
+                account=resolved,
             )
-            # Preserve non-conflicting response fields (message, etc.) when present.
-            if attempt.response and not identity.identity_conflict:
-                try:
-                    parsed = json.loads(attempt.response)
-                except (json.JSONDecodeError, TypeError):
-                    parsed = None
-                if isinstance(parsed, dict):
-                    merged = dict(parsed)
-                    merged.update(payload)
-                    # Authoritative identity from shared evaluator, not response.
-                    merged["platform_post_id"] = identity.platform_post_id
-                    merged["success"] = True
-                    merged["mock"] = False
-                    merged["deduplicated"] = True
-                    if attempt.external_post_url and not merged.get("post_url"):
-                        merged["post_url"] = attempt.external_post_url
-                    payload = merged
-
-            if identity.identity_conflict:
-                logger.warning(
-                    "[Publish] prior live success identity conflict: "
-                    "content=%s platform=%s attempt=%s — suppressing publish "
-                    "without selecting an authoritative provider identity",
-                    content_id,
-                    attempt.platform,
-                    attempt.id,
-                )
-                await notify_provider_identity_conflict(db, attempt)
-
-            successes[attempt.platform] = payload
+            if payload is not None:
+                successes[platform] = payload
         return successes
 
     @staticmethod
@@ -898,15 +956,6 @@ class PublishService:
             client_ctx = await PublishService._client_publish_context(db, item)
             client_tg_dest = None if explicit_account else client_ctx["chat_id"]
             content_tenant_id = await tenant_id_for_content(db, item)
-            prior_live_successes = (
-                {}
-                if test_mode
-                else await PublishService._prior_live_successes(
-                    db,
-                    content_id,
-                    target_platforms,
-                )
-            )
             publish_version = compute_publish_version(item, payload)
             if client_tg_dest and "telegram" in target_platforms:
                 logger.info(
@@ -920,36 +969,6 @@ class PublishService:
                 account: PublishingAccount | None = None
                 result: dict
                 claimed_attempt: PublishAttempt | None = None
-
-                prior_success = prior_live_successes.get(platform)
-                if prior_success:
-                    results.append(prior_success)
-                    if not prior_success.get("success"):
-                        all_ok = False
-                    logger.info(
-                        "[Publish] adapter skipped: content=%s platform=%s reason=prior_live_success post_id=%s identity_conflict=%s",
-                        content_id,
-                        platform,
-                        prior_success.get("platform_post_id"),
-                        bool(prior_success.get("identity_conflict")),
-                    )
-                    if not test_mode:
-                        await PublishService._observe_write_coordination_shadow(
-                            db,
-                            tenant_id=content_tenant_id,
-                            content_id=content_id,
-                            platform=platform,
-                            account_id=explicit_account,
-                            publication_intent_id=None,
-                            live_decision="block",
-                            live_reason=(
-                                "provider_identity_conflict"
-                                if prior_success.get("identity_conflict")
-                                else "prior_live_success"
-                            ),
-                            live_prior_success=True,
-                        )
-                    continue
 
                 try:
                     account = await PublishingAccountService.resolve_for_platform(
@@ -980,6 +999,57 @@ class PublishService:
                         sanitize_error_message(str(exc.detail)),
                     )
                     continue
+
+                # I1: destination resolved before prior-success check.
+                if not test_mode:
+                    prior_success = await PublishService._prior_live_success_for_destination(
+                        db,
+                        content_id=content_id,
+                        platform=platform,
+                        account=account,
+                    )
+                    if prior_success is not None:
+                        results.append(prior_success)
+                        if not prior_success.get("success"):
+                            all_ok = False
+                        unresolved = (
+                            prior_success.get("failure_code")
+                            == "destination_identity_unresolved"
+                        )
+                        logger.info(
+                            "[Publish] adapter skipped: content=%s platform=%s "
+                            "reason=%s post_id=%s identity_conflict=%s account=%s",
+                            content_id,
+                            platform,
+                            (
+                                "destination_identity_unresolved"
+                                if unresolved
+                                else "prior_live_success"
+                            ),
+                            prior_success.get("platform_post_id"),
+                            bool(prior_success.get("identity_conflict")),
+                            account.id if account else None,
+                        )
+                        await PublishService._observe_write_coordination_shadow(
+                            db,
+                            tenant_id=content_tenant_id,
+                            content_id=content_id,
+                            platform=platform,
+                            account_id=account.id if account else None,
+                            publication_intent_id=None,
+                            live_decision="block",
+                            live_reason=(
+                                "destination_identity_unresolved"
+                                if unresolved
+                                else (
+                                    "provider_identity_conflict"
+                                    if prior_success.get("identity_conflict")
+                                    else "prior_live_success"
+                                )
+                            ),
+                            live_prior_success=not unresolved,
+                        )
+                        continue
 
                 if not test_mode:
                     from app.services.publish_write_coordination import (

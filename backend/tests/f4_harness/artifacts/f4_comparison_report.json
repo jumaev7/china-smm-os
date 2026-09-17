@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-17T10:34:18.051575+00:00",
+  "generated_at": "2026-09-17T13:22:32.959586+00:00",
   "pre_sha": "d1ccee82e3106ea469ac086ed99bd5f840b75fe0",
   "old_image_id": "sha256:34d2977e2d1de13fa8bf0ad2e79692e0f18c537609c6e66796dadbefafd8bff4",
   "old_source_sha": "338d3f966fa7c5fd2795201e555512f1eebcadc9",
@@ -145,9 +145,10 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "0dcbed54-a2ef-4e6c-a748-13c30a32c23f",
-          "account_name": null,
-          "attempt_id": "60f0b179-6ff2-4723-b579-d10138f7a728"
+          "account_id": "858dab33-a1e6-4670-9e60-dd7f493666f7",
+          "account_name": "TG A",
+          "attempt_id": "ea28039e-73c6-40f0-a793-56f42a63dbfc",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -221,9 +222,10 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "9b10e52e-f4f4-40ed-bc23-6f4ddfab9987",
-          "account_name": null,
-          "attempt_id": "3af303e4-934c-41ac-9e9d-c71460c58b04"
+          "account_id": "ef4cb0e1-39ed-4f3b-9cdc-88663e12b2c7",
+          "account_name": "TG A",
+          "attempt_id": "4626bbe1-0f21-4485-8823-77f954b0cf61",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -303,9 +305,10 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "47cf7abd-787e-470f-a31f-cbaf95a8558d",
-          "account_name": null,
-          "attempt_id": "37282414-112f-4f4e-af08-b760dfd31f30"
+          "account_id": "3d3715c2-e0b3-4df8-a06d-b999d751b72d",
+          "account_name": "TG A",
+          "attempt_id": "a90cb478-5ec9-4a33-ae45-689783392e8f",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -392,9 +395,10 @@
           "retryable": false,
           "operator_review": true,
           "message": "Provider identity conflict \u2014 duplicate suppressed; reconciliation required",
-          "account_id": "ba027af9-124a-4860-951e-f4b94848daee",
-          "account_name": null,
-          "attempt_id": "74b1bfa3-29fd-45e6-88cb-78298095662b"
+          "account_id": "9d328274-0fd3-42e7-bb03-5590d0126071",
+          "account_name": "TG A",
+          "attempt_id": "886e0c23-9eb0-4132-9169-b932bb80fe8c",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -821,7 +825,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 1,
         "provider_platform": "telegram",
-        "provider_account_id": "41e89fb6-18b7-45a6-9c42-b1743a16f256",
+        "provider_account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
         "suppression_decision": "allow",
         "api_result": {
           "platform": "telegram",
@@ -829,7 +833,7 @@
           "platform_post_id": "old-out",
           "post_url": null,
           "mock": false,
-          "account_id": "41e89fb6-18b7-45a6-9c42-b1743a16f256",
+          "account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -854,7 +858,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 1,
         "provider_platform": "telegram",
-        "provider_account_id": "41e89fb6-18b7-45a6-9c42-b1743a16f256",
+        "provider_account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
         "suppression_decision": "allow",
         "api_result": {
           "platform": "telegram",
@@ -862,7 +866,7 @@
           "platform_post_id": "new-out",
           "post_url": null,
           "mock": false,
-          "account_id": "41e89fb6-18b7-45a6-9c42-b1743a16f256",
+          "account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -901,7 +905,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "70fe3054-4678-4d9b-8b17-239e352e4c70",
+        "provider_account_id": "a3025175-9e8d-4f21-8628-df12150ece48",
         "suppression_decision": "suppress",
         "api_result": {
           "success": true,
@@ -932,7 +936,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "70fe3054-4678-4d9b-8b17-239e352e4c70",
+        "provider_account_id": "a3025175-9e8d-4f21-8628-df12150ece48",
         "suppression_decision": "suppress",
         "api_result": {
           "success": true,
@@ -943,9 +947,10 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "70fe3054-4678-4d9b-8b17-239e352e4c70",
-          "account_name": null,
-          "attempt_id": "93e707b8-7005-4d7d-8807-dae25a782394"
+          "account_id": "a3025175-9e8d-4f21-8628-df12150ece48",
+          "account_name": "TG A",
+          "attempt_id": "3f56a3df-2105-4469-b1bb-1c604dc63fe2",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -983,7 +988,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "6ce24f2d-e187-4c56-87a6-4492ef40c27a",
+        "provider_account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
         "suppression_decision": "suppress",
         "api_result": {
           "platform": "telegram",
@@ -993,7 +998,7 @@
           "mock": false,
           "deduplicated": true,
           "message": "Already published; duplicate suppressed",
-          "account_id": "6ce24f2d-e187-4c56-87a6-4492ef40c27a",
+          "account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -1018,7 +1023,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "6ce24f2d-e187-4c56-87a6-4492ef40c27a",
+        "provider_account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
         "suppression_decision": "suppress",
         "api_result": {
           "platform": "telegram",
@@ -1029,9 +1034,10 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "6ce24f2d-e187-4c56-87a6-4492ef40c27a",
-          "account_name": null,
-          "attempt_id": "dd07e391-c3aa-4f51-abd5-55d908ec3728"
+          "account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
+          "account_name": "TG A",
+          "attempt_id": "ea9b660c-9ea9-4feb-9a59-7b7a3dd2777b",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -1069,7 +1075,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "1cb25b33-2c82-4379-b555-51452b732783",
+        "provider_account_id": "77a39b63-38dd-4d9e-be75-abe870f76f33",
         "suppression_decision": "suppress",
         "api_result": {
           "success": true,
@@ -1100,7 +1106,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "1cb25b33-2c82-4379-b555-51452b732783",
+        "provider_account_id": "77a39b63-38dd-4d9e-be75-abe870f76f33",
         "suppression_decision": "conflict",
         "api_result": {
           "platform": "telegram",
@@ -1118,9 +1124,10 @@
           "retryable": false,
           "operator_review": true,
           "message": "Provider identity conflict \u2014 duplicate suppressed; reconciliation required",
-          "account_id": "1cb25b33-2c82-4379-b555-51452b732783",
-          "account_name": null,
-          "attempt_id": "cf00ed81-b9f4-470a-9957-8c4f69dd555f"
+          "account_id": "77a39b63-38dd-4d9e-be75-abe870f76f33",
+          "account_name": "TG A",
+          "attempt_id": "8686aac4-33e1-478e-b3a3-1a94a7216a95",
+          "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -1160,7 +1167,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "994c7eed-544f-4600-a843-b6667b1d1e86",
+        "provider_account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
         "suppression_decision": "suppress",
         "api_result": {
           "platform": "telegram",
@@ -1170,7 +1177,7 @@
           "mock": false,
           "deduplicated": true,
           "message": "Already published; duplicate suppressed",
-          "account_id": "994c7eed-544f-4600-a843-b6667b1d1e86",
+          "account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -1195,7 +1202,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 1,
         "provider_platform": "telegram",
-        "provider_account_id": "994c7eed-544f-4600-a843-b6667b1d1e86",
+        "provider_account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
         "suppression_decision": "allow",
         "api_result": {
           "platform": "telegram",
@@ -1203,7 +1210,7 @@
           "platform_post_id": "new-out",
           "post_url": null,
           "mock": false,
-          "account_id": "994c7eed-544f-4600-a843-b6667b1d1e86",
+          "account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -1327,10 +1334,10 @@
       "new": {
         "scenario_id": "dest_cross_account_platform_keyed",
         "schema_mode": "C_new_on_r1",
-        "provider_calls": 0,
+        "provider_calls": 1,
         "provider_platform": null,
         "provider_account_id": null,
-        "suppression_decision": "suppress",
+        "suppression_decision": "allow",
         "api_result": null,
         "publish_attempt_status": null,
         "retry_command_status": null,
@@ -1349,14 +1356,14 @@
         "flags": {},
         "extras": {}
       },
-      "difference": "none",
-      "classification": "COMMON_MODE_SAFETY",
-      "acceptance_criterion": "Measure platform-keyed cross-account suppression; do not treat as acceptable merely because equivalent.",
+      "difference": "provider_calls: old=0 new=1; suppression_decision: old='suppress' new='allow'",
+      "classification": "INTENDED",
+      "acceptance_criterion": "I1: proven-distinct account B is allowed after success on account A (old platform-keyed reader still suppresses).",
       "evidence": [
-        "provider_calls=0 (same)"
+        "provider_calls old=0 new=1"
       ],
       "verdict": "PASS",
-      "safety_concern": "Platform-keyed _prior_live_successes suppresses cross-account republish on the same platform even when begin_attempt/find_live_success would allow a different account \u2014 present in both old and new."
+      "safety_concern": null
     },
     {
       "scenario_id": "dest_different_platform",
@@ -1745,6 +1752,7 @@
       "pub_durable_only",
       "pub_conflict",
       "pub_mock_with_durable",
+      "dest_cross_account_platform_keyed",
       "api_stranded_default_off"
     ],
     "UNINTENDED": [],
@@ -1766,7 +1774,6 @@
       "tenant_content_scope"
     ],
     "COMMON_MODE_SAFETY": [
-      "dest_cross_account_platform_keyed",
       "dest_publish_version_change_platform_keyed"
     ]
   },
@@ -1777,6 +1784,7 @@
     "pub_durable_only",
     "pub_conflict",
     "pub_mock_with_durable",
+    "dest_cross_account_platform_keyed",
     "api_stranded_default_off"
   ],
   "unintended": [],
@@ -1798,7 +1806,6 @@
     "tenant_content_scope"
   ],
   "common_mode_safety": [
-    "dest_cross_account_platform_keyed",
     "dest_publish_version_change_platform_keyed"
   ],
   "provider_call_comparison": {
@@ -1918,8 +1925,8 @@
       {
         "id": "dest_cross_account_platform_keyed",
         "old_calls": 0,
-        "new_calls": 0,
-        "classification": "COMMON_MODE_SAFETY",
+        "new_calls": 1,
+        "classification": "INTENDED",
         "verdict": "PASS"
       },
       {
@@ -2067,9 +2074,9 @@
     "external_note": "Skipped/unexecuted scenarios are not counted as passing"
   },
   "known_common_mode_safety_concerns": [
-    "Platform-keyed _prior_live_successes suppresses cross-account republish on the same platform even when begin_attempt/find_live_success would allow a different account \u2014 present in both old and new.",
+    "I1 fixed: platform-keyed _prior_live_successes no longer suppresses proven-distinct cross-account publishes; alias/NULL remain fail-closed.",
     "Old find_live_success treats durable external_post_id as live even when response is mock/test \u2014 pre-F1 hazard; new F1 refuses suppression.",
-    "Platform-keyed prior reader ignores publish_version changes \u2014 both versions suppress republish after a prior live success on that platform."
+    "Platform-keyed prior reader ignores publish_version changes \u2014 both versions suppress republish after a prior live success on that platform (intentional until I2 mint_new)."
   ],
   "diff_scope_audit": [
     "backend/tests/f4_harness/**",

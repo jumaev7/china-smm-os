@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, bindparam, func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -452,6 +452,126 @@ class PublishResilienceService:
         return int(result.scalar_one() or 0) + 1
 
     @classmethod
+    async def _load_publishing_accounts(
+        cls,
+        db: AsyncSession,
+        account_ids: set[UUID],
+    ) -> dict[UUID, PublishingAccount]:
+        """Load destination-identity fields for the given account PKs.
+
+        Uses a narrow column projection so incomplete isolated test schemas
+        (and production rows) only need the established identity fields.
+        """
+        if not account_ids:
+            return {}
+        from types import SimpleNamespace
+
+        ids = list(account_ids)
+        stmt = text(
+            """
+            SELECT id, platform, account_id, account_name,
+                   facebook_page_id, instagram_business_account_id, status
+            FROM publishing_accounts
+            WHERE id IN :ids
+            """
+        ).bindparams(bindparam("ids", expanding=True))
+        rows = (await db.execute(stmt, {"ids": ids})).all()
+        out: dict[UUID, PublishingAccount] = {}
+        for row in rows:
+            out[row.id] = SimpleNamespace(  # type: ignore[assignment]
+                id=row.id,
+                platform=row.platform,
+                account_id=row.account_id,
+                account_name=row.account_name,
+                facebook_page_id=row.facebook_page_id,
+                instagram_business_account_id=row.instagram_business_account_id,
+                status=row.status,
+            )
+        return out
+
+    @classmethod
+    async def find_destination_live_success(
+        cls,
+        db: AsyncSession,
+        *,
+        content_id: UUID,
+        platform: str,
+        account_id: UUID | None,
+        account: PublishingAccount | None = None,
+    ) -> tuple[PublishAttempt | None, str | None]:
+        """Find a suppressing live success for the *intended* destination.
+
+        Returns ``(attempt, comparison)`` where comparison is one of
+        ``SAME_DESTINATION`` / ``UNRESOLVED_DESTINATION``, or ``(None, None)``
+        when every prior success is ``PROVEN_DISTINCT_DESTINATION`` (or none
+        are eligible).
+
+        ``account_id=None`` means the historical NULL destination token
+        (``account_id IS NULL`` semantics) — not “skip account filtering”.
+        A concrete prior vs NULL intended (or the reverse) is unresolved and
+        fail-closed.
+        """
+        from app.services.publish_destination_identity import (
+            PROVEN_DISTINCT_DESTINATION,
+            SAME_DESTINATION,
+            UNRESOLVED_DESTINATION,
+            compare_publication_destinations,
+        )
+
+        query = (
+            select(PublishAttempt)
+            .where(
+                PublishAttempt.status == STATUS_SUCCESS,
+                PublishAttempt.content_id == content_id,
+                PublishAttempt.platform == platform,
+                or_(
+                    PublishAttempt.external_post_id.isnot(None),
+                    PublishAttempt.response.isnot(None),
+                ),
+            )
+            .order_by(PublishAttempt.created_at.desc())
+        )
+        attempts = list((await db.execute(query)).scalars().all())
+        # Defensive platform filter (fake/unit DBs may ignore SQL WHERE).
+        plat_norm = (platform or "").strip().lower()
+        attempts = [
+            a
+            for a in attempts
+            if (getattr(a, "platform", None) or "").strip().lower() == plat_norm
+        ]
+        if not attempts:
+            return None, None
+
+        intended = account
+        if intended is None and account_id is not None:
+            loaded = await cls._load_publishing_accounts(db, {account_id})
+            intended = loaded.get(account_id)
+
+        prior_ids = {
+            aid for aid in (getattr(a, "account_id", None) for a in attempts) if aid is not None
+        }
+        accounts_by_id = await cls._load_publishing_accounts(db, prior_ids)
+
+        for attempt in attempts:
+            identity = evaluate_live_success_identity(attempt)
+            if not identity.suppresses:
+                continue
+            prior_aid = getattr(attempt, "account_id", None)
+            prior_acct = accounts_by_id.get(prior_aid) if prior_aid is not None else None
+            comparison = compare_publication_destinations(
+                platform=platform,
+                intended_account_id=account_id,
+                intended_account=intended,
+                prior_account_id=prior_aid,
+                prior_account=prior_acct,
+            )
+            if comparison == PROVEN_DISTINCT_DESTINATION:
+                continue
+            # SAME or UNRESOLVED — both fail closed for a new provider write.
+            return attempt, comparison
+        return None, None
+
+    @classmethod
     async def find_live_success(
         cls,
         db: AsyncSession,
@@ -460,31 +580,48 @@ class PublishResilienceService:
         content_id: UUID | None = None,
         platform: str | None = None,
         account_id: UUID | None = None,
+        account: PublishingAccount | None = None,
     ) -> PublishAttempt | None:
-        query = select(PublishAttempt).where(
-            PublishAttempt.status == STATUS_SUCCESS,
-            or_(
-                PublishAttempt.external_post_id.isnot(None),
-                PublishAttempt.response.isnot(None),
-            ),
-        ).order_by(PublishAttempt.created_at.desc())
+        """Return an eligible live success that suppresses a new provider write.
+
+        Idempotency-key lookups remain exact-key.
+
+        Content/platform lookups are destination-aware (I1):
+          - ``account_id=None`` matches the NULL destination token and also
+            fail-closes when a concrete-account prior cannot be proven distinct.
+          - Distinct PublishingAccount UUIDs alone never suppress or allow;
+            external identity comparison decides SAME / DISTINCT / UNRESOLVED.
+        """
         if idempotency_key:
-            query = query.where(PublishAttempt.idempotency_key == idempotency_key)
-        else:
-            if content_id is None or platform is None:
-                return None
-            query = query.where(
-                PublishAttempt.content_id == content_id,
-                PublishAttempt.platform == platform,
+            query = (
+                select(PublishAttempt)
+                .where(
+                    PublishAttempt.status == STATUS_SUCCESS,
+                    PublishAttempt.idempotency_key == idempotency_key,
+                    or_(
+                        PublishAttempt.external_post_id.isnot(None),
+                        PublishAttempt.response.isnot(None),
+                    ),
+                )
+                .order_by(PublishAttempt.created_at.desc())
             )
-            if account_id is not None:
-                query = query.where(PublishAttempt.account_id == account_id)
-        result = await db.execute(query)
-        for attempt in result.scalars().all():
-            identity = evaluate_live_success_identity(attempt)
-            if identity.suppresses:
-                return attempt
-        return None
+            result = await db.execute(query)
+            for attempt in result.scalars().all():
+                identity = evaluate_live_success_identity(attempt)
+                if identity.suppresses:
+                    return attempt
+            return None
+
+        if content_id is None or platform is None:
+            return None
+        prior, _comparison = await cls.find_destination_live_success(
+            db,
+            content_id=content_id,
+            platform=platform,
+            account_id=account_id,
+            account=account,
+        )
+        return prior
 
     @classmethod
     def _already_published_claim(
@@ -494,7 +631,25 @@ class PublishResilienceService:
         platform: str,
         account_id: UUID | None,
         account_name: str | None,
+        destination_comparison: str | None = None,
     ) -> ClaimResult:
+        from app.services.publish_destination_identity import (
+            UNRESOLVED_DESTINATION,
+            DESTINATION_IDENTITY_UNRESOLVED_REASON,
+            shape_unresolved_destination_result,
+        )
+
+        if destination_comparison == UNRESOLVED_DESTINATION:
+            return ClaimResult(
+                attempt=prior,
+                skip=True,
+                reason=DESTINATION_IDENTITY_UNRESOLVED_REASON,
+                result=shape_unresolved_destination_result(
+                    platform=platform,
+                    account_id=account_id,
+                    account_name=account_name,
+                ),
+            )
         identity = evaluate_live_success_identity(prior)
         reason = (
             PROVIDER_IDENTITY_CONFLICT_REASON
@@ -612,14 +767,15 @@ class PublishResilienceService:
                 )
 
         prior = await cls.find_live_success(db, idempotency_key=key)
+        destination_comparison: str | None = None
         if prior is None:
-            # Also suppress duplicates across older versions when a live post exists
-            # for the same content+platform+account.
-            prior = await cls.find_live_success(
+            # Cross-version destination success (account-aware + alias-safe).
+            prior, destination_comparison = await cls.find_destination_live_success(
                 db,
                 content_id=content_id,
                 platform=platform,
                 account_id=account_id,
+                account=account,
             )
         if prior is not None:
             claim = cls._already_published_claim(
@@ -627,6 +783,7 @@ class PublishResilienceService:
                 platform=platform,
                 account_id=account_id,
                 account_name=account.account_name if account else None,
+                destination_comparison=destination_comparison,
             )
             if claim.reason == PROVIDER_IDENTITY_CONFLICT_REASON:
                 await notify_provider_identity_conflict(db, prior)
