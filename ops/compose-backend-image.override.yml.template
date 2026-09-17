@@ -1,0 +1,11 @@
+# F3 — backend-only immutable image override template.
+#
+# The deploy helper substitutes __BACKEND_IMAGE_REF__ and passes the result as
+# an additional `docker compose -f` file. This must alter ONLY services.backend.image.
+#
+# Do NOT use this to retag `latest`, start workers, run migrations, or change
+# other services, networks, volumes, or environment semantics.
+
+services:
+  backend:
+    image: __BACKEND_IMAGE_REF__

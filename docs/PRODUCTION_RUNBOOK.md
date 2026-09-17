@@ -80,35 +80,56 @@ docker compose --env-file .env.production \
   -f docker-compose.production.yml -f cutover-safe.yml ps
 ```
 
-## Backend-only recreate (canonical)
+## Backend-only recreate (canonical, F3 immutable)
 
-Routine production backend recreates **must** use:
+Routine production backend recreates **must** use the immutable helper.
+Do **not** retag `latest`, pull/build inside the helper, or run migrations as part
+of a routine recreate.
+
+Required inputs (full values — no shortcuts):
+
+```bash
+export BACKEND_IMAGE_REF='china-smm-os-production-backend@sha256:<digest-or-use-sha-tag>'
+export EXPECTED_BACKEND_IMAGE_ID='sha256:<64-hex-image-id>'
+export EXPECTED_SOURCE_SHA='<40-hex-git-sha>'
+```
+
+Dry-run (zero mutations — validates image identity, compose merge, and flags):
+
+```bash
+./ops/deploy-backend-production.sh --dry-run
+```
+
+Authorized deploy / recreate (backend only, once):
 
 ```bash
 ./ops/deploy-backend-production.sh
 ```
 
-The helper:
-
-- uses `docker-compose.production.yml` **and** `cutover-safe.yml`
-- uses `.env.production`
-- recreates **backend only** (`--no-deps --force-recreate`)
-- does **not** select the `retry-command` profile
-- **hard-fails** unless resolved compose has:
-  - `SCHEDULED_PUBLISH_ENABLED=false`
-  - all `PUBLISH_RETRY_COMMAND_*` gates false / backend `none`
-- **hard-fails** after recreate unless runtime matches (container env, `/health=200`,
-  retry worker absent)
-
-If you cannot run the helper, the equivalent manual pair is:
+Rollback to a previously verified immutable image (no Alembic downgrade):
 
 ```bash
-docker compose --env-file .env.production \
-  -f docker-compose.production.yml -f cutover-safe.yml \
-  up -d --no-deps --force-recreate backend
+export BACKEND_IMAGE_REF='…old immutable ref…'
+export EXPECTED_BACKEND_IMAGE_ID='sha256:…old image id…'
+export EXPECTED_SOURCE_SHA='…old source sha…'
+./ops/deploy-backend-production.sh --rollback
 ```
 
-…but you must still perform the same preflight/postflight gates the script enforces.
+The helper:
+
+- uses `docker-compose.production.yml` + `cutover-safe.yml` + an ephemeral
+  backend-only image override (`ops/compose-backend-image.override.yml.template`)
+- uses `.env.production` (values are never printed by the helper)
+- verifies local image ID + OCI revision label + (deploy mode) in-image file hashes
+- recreates **backend only** (`--no-deps --force-recreate`); never `--build`
+- does **not** select the `retry-command` profile, start workers, or run Alembic
+- does **not** retag `latest`
+- **hard-fails** unless resolved compose has safety flags false / `EXECUTION_BACKEND=none`
+  (scheduled, retry/claim/exec, WC/shadow, manual, stranded list/alert, Auto-Ack execution)
+- **hard-fails** after recreate unless runtime image ID, flags, `/health=200`, and
+  retry worker absence match
+
+See also `docs/IMMUTABLE_BACKEND_DEPLOYMENT.md`.
 
 ## Smoke checks
 
