@@ -41,11 +41,18 @@ from app.schemas.publish_alerts import (
     TelegramRecipientRemoveResponse,
     TelegramTestSendRequest,
 )
+from app.schemas.intentional_publication_request import (
+    IntentionalPublicationRequestCreate,
+    IntentionalPublicationRequestResponse,
+)
 from app.services.admin_rbac_service import CurrentAdminUser
 from app.services.publishing_account_service import PublishingAccountService
 from app.services.publishing_calendar_service import PublishingCalendarService
 from app.services.publishing_queue_service import PublishingQueueService
 from app.services.publish_attempt_ops_service import PublishAttemptOpsService
+from app.services.publish_intentional_publication_request_service import (
+    PublishIntentionalPublicationRequestService,
+)
 from app.services.publish_retry_command_service import (
     PublishRetryCommandService,
     serialize_retry_command,
@@ -160,6 +167,47 @@ def _actor_type(
     if admin is not None:
         return "platform_admin"
     return "tenant_user"
+
+
+@router.post(
+    "/intentional-publication-requests",
+    response_model=IntentionalPublicationRequestResponse,
+    status_code=201,
+)
+async def accept_intentional_publication_request(
+    data: IntentionalPublicationRequestCreate,
+    tenant_id: UUID | None = Query(
+        None, description="Tenant scope (required for admin)"
+    ),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentTenantUser | None = Depends(get_current_tenant_user_optional),
+    admin: CurrentAdminUser | None = Depends(get_current_admin_optional),
+):
+    """Accept a durable publication intention for one destination (I2b).
+
+    Mints ``publication_intent_id`` idempotently. Does **not** publish,
+    call providers, mutate the write-coordination registry, create attempts,
+    or enqueue retries. ``tenant_id`` is derived from auth — never trusted
+    from the request body.
+    """
+    PublishIntentionalPublicationRequestService.require_feature_enabled()
+    scope_tenant_id = _resolve_scope(user, admin, tenant_id)
+    result = await PublishIntentionalPublicationRequestService.accept(
+        db,
+        tenant_id=scope_tenant_id,
+        content_id=data.content_id,
+        platform=data.platform,
+        account_id=data.account_id,
+        operation=data.operation,
+        client_idempotency_key=data.client_idempotency_key,
+        expected_publish_version=data.expected_publish_version,
+        user=user,
+        admin=admin,
+    )
+    await db.commit()
+    payload = PublishIntentionalPublicationRequestService.serialize(result)
+    return IntentionalPublicationRequestResponse(**payload)
+
 
 @router.get("/accounts", response_model=PublishingAccountListResponse)
 async def list_publishing_accounts(

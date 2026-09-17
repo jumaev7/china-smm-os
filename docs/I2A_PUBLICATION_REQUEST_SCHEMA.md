@@ -1,7 +1,8 @@
 # I2a — Durable Publication Request Schema
 
-**Status:** `LOCAL SCHEMA / DORMANT` — not authorized for runtime activation,
-intent minting, provider write, or production migration.
+**Status:** `SCHEMA LANDED` — I2b may accept intents behind
+`PUBLISH_INTENTIONAL_PUBLICATION_REQUESTS_ENABLED` (default false).
+Not authorized for production migration, provider write, or registry authority.
 
 **Revision:** `20260928_publish_intentional_publication_requests`  
 **Down revision:** `20260927_publish_write_coordination_registry`

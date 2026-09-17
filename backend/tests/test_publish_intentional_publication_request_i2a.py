@@ -417,9 +417,19 @@ def test_model_import_creates_no_request_rows_side_effect():
 
 
 def test_dormancy_no_publish_service_wiring():
-    """Schema presence must not activate PublishService / API / retry paths."""
+    """I2a→I2b: PublishService / retry / workers must not wire PIPR execution.
+
+    I2b may reference the model only from the dedicated intent-acceptance
+    service and the intentional-publication-requests API route. Provider
+    execution paths remain unwired.
+    """
     repo = REPO_ROOT
     forbidden_hits: list[str] = []
+    # I2b allowlist — intent acceptance only (no provider execution).
+    allowed_relpaths = {
+        Path("backend/app/services/publish_intentional_publication_request_service.py"),
+        Path("backend/app/api/v1/publishing.py"),
+    }
     scan_roots = [
         repo / "backend" / "app" / "services",
         repo / "backend" / "app" / "api",
@@ -439,11 +449,21 @@ def test_dormancy_no_publish_service_wiring():
         else:
             continue
         for path in paths:
+            rel = path.relative_to(repo)
+            if rel in allowed_relpaths:
+                continue
             body = path.read_text(encoding="utf-8")
             for needle in needles:
                 if needle in body:
-                    forbidden_hits.append(f"{path.relative_to(repo)}:{needle}")
+                    forbidden_hits.append(f"{rel}:{needle}")
     assert forbidden_hits == []
+
+    # Explicit: PublishService still must not mint or reference PIPR.
+    publish_svc = (
+        repo / "backend" / "app" / "services" / "publish_service.py"
+    ).read_text(encoding="utf-8")
+    for needle in needles:
+        assert needle not in publish_svc, needle
 
 
 # ---------------------------------------------------------------------------
