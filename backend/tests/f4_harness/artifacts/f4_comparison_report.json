@@ -1,6 +1,16 @@
 {
-  "generated_at": "2026-09-17T13:22:32.959586+00:00",
+  "generated_at": "2026-09-17T13:58:40.918574+00:00",
   "pre_sha": "d1ccee82e3106ea469ac086ed99bd5f840b75fe0",
+  "historical_f1_f3_baseline_sha": "d1ccee82e3106ea469ac086ed99bd5f840b75fe0",
+  "f4_introduction_sha": "72d8ab8d879fa8afaf2d2e64669e41bc98236aa4",
+  "candidate_sha": "c04ed029df4905625f090b781bda57625c56cf5d",
+  "artifact_provenance": {
+    "old_source_sha": "338d3f966fa7c5fd2795201e555512f1eebcadc9",
+    "historical_f1_f3_baseline_sha": "d1ccee82e3106ea469ac086ed99bd5f840b75fe0",
+    "f4_introduction_sha": "72d8ab8d879fa8afaf2d2e64669e41bc98236aa4",
+    "candidate_sha": "c04ed029df4905625f090b781bda57625c56cf5d",
+    "note": "pre_sha / historical_f1_f3_baseline_sha remain the immutable F1\u2013F3 pin from harness introduction. candidate_sha is HEAD at report generation (may include I1+). Do not treat pre_sha as the code under test after F4 landed."
+  },
   "old_image_id": "sha256:34d2977e2d1de13fa8bf0ad2e79692e0f18c537609c6e66796dadbefafd8bff4",
   "old_source_sha": "338d3f966fa7c5fd2795201e555512f1eebcadc9",
   "old_image_evidence": {
@@ -8,7 +18,7 @@
     "source_equivalent_commit": "338d3f966fa7c5fd2795201e555512f1eebcadc9",
     "evidence": "R3.1 production preflight: docker image inspect matched sha256:34d2977e2d1de13fa8bf0ad2e79692e0f18c537609c6e66796dadbefafd8bff4; in-container sha256 of critical /app files matched git blobs at 338d3f966fa7c5fd2795201e555512f1eebcadc9 (multi-file hash pin). R1\u2013R3 modules absent from running image.",
     "local_image_required": false,
-    "note": "Harness compares behavior of source-equivalent old algorithms extracted from OLD_SOURCE_SHA against current HEAD. Full container re-execution is optional when the image is available."
+    "note": "Harness compares behavior of source-equivalent old algorithms extracted from OLD_SOURCE_SHA against the current candidate HEAD. Full container re-execution is optional when the image is available."
   },
   "old_critical_file_sha256": {
     "backend/app/services/publish_service.py": "c64ca9ea84bf973c2152eb6530b12b47e698875cbe6679b78dad4598dc4c1079",
@@ -52,7 +62,29 @@
       }
     },
     "ok": true,
-    "commit_resolves": true
+    "commit_resolves": true,
+    "historical_provenance": {
+      "old_source_sha": "338d3f966fa7c5fd2795201e555512f1eebcadc9",
+      "f1_f3_candidate_sha": "d1ccee82e3106ea469ac086ed99bd5f840b75fe0",
+      "f4_introduction_sha": "72d8ab8d879fa8afaf2d2e64669e41bc98236aa4",
+      "candidate_sha": "c04ed029df4905625f090b781bda57625c56cf5d",
+      "commits_exist": {
+        "old_source": true,
+        "f1_f3_candidate": true,
+        "f4_introduction": true,
+        "candidate": true
+      },
+      "ancestry": {
+        "old_source_is_ancestor_of_head": true,
+        "f1_f3_candidate_is_ancestor_of_head": true,
+        "f4_introduction_is_ancestor_of_head": true,
+        "f4_introduction_is_descendant_of_f1_f3": true
+      },
+      "f4_introduction_present": true,
+      "head_equals_f1_f3_baseline": false,
+      "note": "Historical F1\u2013F3 baseline is an immutable reference pin. Current candidate is HEAD and must be a descendant of that baseline (and of F4 introduction); equality is not required.",
+      "ok": true
+    }
   },
   "isolation": {
     "ok": true,
@@ -145,9 +177,9 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "858dab33-a1e6-4670-9e60-dd7f493666f7",
+          "account_id": "8704e9c5-5b84-4436-ae18-67785ca6c760",
           "account_name": "TG A",
-          "attempt_id": "ea28039e-73c6-40f0-a793-56f42a63dbfc",
+          "attempt_id": "468dce49-dc49-43ae-b610-cbf5bca0a71b",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -222,9 +254,9 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "ef4cb0e1-39ed-4f3b-9cdc-88663e12b2c7",
+          "account_id": "13c25e2c-a7e5-4146-8b38-84c2100ff581",
           "account_name": "TG A",
-          "attempt_id": "4626bbe1-0f21-4485-8823-77f954b0cf61",
+          "attempt_id": "cdfbee67-06b0-40be-914f-47ee58855aa9",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -305,9 +337,9 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "3d3715c2-e0b3-4df8-a06d-b999d751b72d",
+          "account_id": "0a2a9460-45a4-4a74-8ed1-fa7cdca082dc",
           "account_name": "TG A",
-          "attempt_id": "a90cb478-5ec9-4a33-ae45-689783392e8f",
+          "attempt_id": "dedcb125-5d59-455d-b362-625ae2db70c4",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -395,9 +427,9 @@
           "retryable": false,
           "operator_review": true,
           "message": "Provider identity conflict \u2014 duplicate suppressed; reconciliation required",
-          "account_id": "9d328274-0fd3-42e7-bb03-5590d0126071",
+          "account_id": "a46506b9-17b5-4ab6-986f-c6e4710df339",
           "account_name": "TG A",
-          "attempt_id": "886e0c23-9eb0-4132-9169-b932bb80fe8c",
+          "attempt_id": "3b40a92a-fd9b-4640-a2ed-5266cb5e25a2",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -825,7 +857,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 1,
         "provider_platform": "telegram",
-        "provider_account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
+        "provider_account_id": "ed3cde93-5301-4088-812c-2cc6da411424",
         "suppression_decision": "allow",
         "api_result": {
           "platform": "telegram",
@@ -833,7 +865,7 @@
           "platform_post_id": "old-out",
           "post_url": null,
           "mock": false,
-          "account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
+          "account_id": "ed3cde93-5301-4088-812c-2cc6da411424",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -858,7 +890,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 1,
         "provider_platform": "telegram",
-        "provider_account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
+        "provider_account_id": "ed3cde93-5301-4088-812c-2cc6da411424",
         "suppression_decision": "allow",
         "api_result": {
           "platform": "telegram",
@@ -866,7 +898,7 @@
           "platform_post_id": "new-out",
           "post_url": null,
           "mock": false,
-          "account_id": "383c85c7-66be-4b42-9c5b-a3b65e1d23a4",
+          "account_id": "ed3cde93-5301-4088-812c-2cc6da411424",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -905,7 +937,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "a3025175-9e8d-4f21-8628-df12150ece48",
+        "provider_account_id": "5f9d37c4-69a7-4df8-a56a-7b09adb63c0e",
         "suppression_decision": "suppress",
         "api_result": {
           "success": true,
@@ -936,7 +968,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "a3025175-9e8d-4f21-8628-df12150ece48",
+        "provider_account_id": "5f9d37c4-69a7-4df8-a56a-7b09adb63c0e",
         "suppression_decision": "suppress",
         "api_result": {
           "success": true,
@@ -947,9 +979,9 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "a3025175-9e8d-4f21-8628-df12150ece48",
+          "account_id": "5f9d37c4-69a7-4df8-a56a-7b09adb63c0e",
           "account_name": "TG A",
-          "attempt_id": "3f56a3df-2105-4469-b1bb-1c604dc63fe2",
+          "attempt_id": "a14d970d-7066-4dde-82aa-8525ba49902e",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -988,7 +1020,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
+        "provider_account_id": "5b825b84-a223-4300-9cdc-e3abd2efe809",
         "suppression_decision": "suppress",
         "api_result": {
           "platform": "telegram",
@@ -998,7 +1030,7 @@
           "mock": false,
           "deduplicated": true,
           "message": "Already published; duplicate suppressed",
-          "account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
+          "account_id": "5b825b84-a223-4300-9cdc-e3abd2efe809",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -1023,7 +1055,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
+        "provider_account_id": "5b825b84-a223-4300-9cdc-e3abd2efe809",
         "suppression_decision": "suppress",
         "api_result": {
           "platform": "telegram",
@@ -1034,9 +1066,9 @@
           "deduplicated": true,
           "identity_conflict": false,
           "message": "Already published; duplicate suppressed",
-          "account_id": "f0776cc0-e0d8-47c1-9990-a062ccfcd86c",
+          "account_id": "5b825b84-a223-4300-9cdc-e3abd2efe809",
           "account_name": "TG A",
-          "attempt_id": "ea9b660c-9ea9-4feb-9a59-7b7a3dd2777b",
+          "attempt_id": "7a59130d-d15f-428e-a13e-8296597cdd49",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -1075,7 +1107,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "77a39b63-38dd-4d9e-be75-abe870f76f33",
+        "provider_account_id": "38a6aa8c-0fbb-4f55-a3fd-fe5dc7a00c52",
         "suppression_decision": "suppress",
         "api_result": {
           "success": true,
@@ -1106,7 +1138,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "77a39b63-38dd-4d9e-be75-abe870f76f33",
+        "provider_account_id": "38a6aa8c-0fbb-4f55-a3fd-fe5dc7a00c52",
         "suppression_decision": "conflict",
         "api_result": {
           "platform": "telegram",
@@ -1124,9 +1156,9 @@
           "retryable": false,
           "operator_review": true,
           "message": "Provider identity conflict \u2014 duplicate suppressed; reconciliation required",
-          "account_id": "77a39b63-38dd-4d9e-be75-abe870f76f33",
+          "account_id": "38a6aa8c-0fbb-4f55-a3fd-fe5dc7a00c52",
           "account_name": "TG A",
-          "attempt_id": "8686aac4-33e1-478e-b3a3-1a94a7216a95",
+          "attempt_id": "7fd9765d-daf3-4e4a-935e-824dc51e4609",
           "destination_identity": "SAME_DESTINATION"
         },
         "publish_attempt_status": null,
@@ -1167,7 +1199,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 0,
         "provider_platform": "telegram",
-        "provider_account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
+        "provider_account_id": "8c151b4e-0b2e-4cd8-9a3c-ce9539b3cd5c",
         "suppression_decision": "suppress",
         "api_result": {
           "platform": "telegram",
@@ -1177,7 +1209,7 @@
           "mock": false,
           "deduplicated": true,
           "message": "Already published; duplicate suppressed",
-          "account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
+          "account_id": "8c151b4e-0b2e-4cd8-9a3c-ce9539b3cd5c",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -1202,7 +1234,7 @@
         "schema_mode": "C_new_on_r1",
         "provider_calls": 1,
         "provider_platform": "telegram",
-        "provider_account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
+        "provider_account_id": "8c151b4e-0b2e-4cd8-9a3c-ce9539b3cd5c",
         "suppression_decision": "allow",
         "api_result": {
           "platform": "telegram",
@@ -1210,7 +1242,7 @@
           "platform_post_id": "new-out",
           "post_url": null,
           "mock": false,
-          "account_id": "841b9669-ee8d-4cb4-8803-7155e66c0cac",
+          "account_id": "8c151b4e-0b2e-4cd8-9a3c-ce9539b3cd5c",
           "account_name": "TG A"
         },
         "publish_attempt_status": null,
@@ -1358,9 +1390,201 @@
       },
       "difference": "provider_calls: old=0 new=1; suppression_decision: old='suppress' new='allow'",
       "classification": "INTENDED",
-      "acceptance_criterion": "I1: proven-distinct account B is allowed after success on account A (old platform-keyed reader still suppresses).",
+      "acceptance_criterion": "I1: after Account A success, proven-distinct Account B is allowed (one provider call). Old platform-keyed reader still suppresses.",
       "evidence": [
         "provider_calls old=0 new=1"
+      ],
+      "verdict": "PASS",
+      "safety_concern": null
+    },
+    {
+      "scenario_id": "dest_alias_same_external",
+      "category": "destination_identity",
+      "old": {
+        "scenario_id": "dest_alias_same_external",
+        "schema_mode": "C_new_on_r1",
+        "provider_calls": 0,
+        "provider_platform": null,
+        "provider_account_id": null,
+        "suppression_decision": "suppress",
+        "api_result": null,
+        "publish_attempt_status": null,
+        "retry_command_status": null,
+        "content_status": null,
+        "external_post_id": null,
+        "response_provider_id": null,
+        "identity_conflict": null,
+        "registry_row_count": 0,
+        "shadow_reads": 0,
+        "shadow_audit_writes": 0,
+        "registry_inserts": 0,
+        "registry_updates": 0,
+        "authority_acquisitions": 0,
+        "audit_events": [],
+        "alert_events": [],
+        "flags": {},
+        "extras": {}
+      },
+      "new": {
+        "scenario_id": "dest_alias_same_external",
+        "schema_mode": "C_new_on_r1",
+        "provider_calls": 0,
+        "provider_platform": null,
+        "provider_account_id": null,
+        "suppression_decision": "suppress",
+        "api_result": null,
+        "publish_attempt_status": null,
+        "retry_command_status": null,
+        "content_status": null,
+        "external_post_id": null,
+        "response_provider_id": null,
+        "identity_conflict": null,
+        "registry_row_count": 0,
+        "shadow_reads": 0,
+        "shadow_audit_writes": 0,
+        "registry_inserts": 0,
+        "registry_updates": 0,
+        "authority_acquisitions": 0,
+        "audit_events": [],
+        "alert_events": [],
+        "flags": {},
+        "extras": {}
+      },
+      "difference": "none",
+      "classification": "EQUIVALENT",
+      "acceptance_criterion": "I1: same external destination under two PublishingAccount UUIDs suppresses (zero new provider calls).",
+      "evidence": [
+        "provider_calls=0 (same)"
+      ],
+      "verdict": "PASS",
+      "safety_concern": null
+    },
+    {
+      "scenario_id": "dest_unknown_external_fail_closed",
+      "category": "destination_identity",
+      "old": {
+        "scenario_id": "dest_unknown_external_fail_closed",
+        "schema_mode": "C_new_on_r1",
+        "provider_calls": 0,
+        "provider_platform": null,
+        "provider_account_id": null,
+        "suppression_decision": "suppress",
+        "api_result": null,
+        "publish_attempt_status": null,
+        "retry_command_status": null,
+        "content_status": null,
+        "external_post_id": null,
+        "response_provider_id": null,
+        "identity_conflict": null,
+        "registry_row_count": 0,
+        "shadow_reads": 0,
+        "shadow_audit_writes": 0,
+        "registry_inserts": 0,
+        "registry_updates": 0,
+        "authority_acquisitions": 0,
+        "audit_events": [],
+        "alert_events": [],
+        "flags": {},
+        "extras": {}
+      },
+      "new": {
+        "scenario_id": "dest_unknown_external_fail_closed",
+        "schema_mode": "C_new_on_r1",
+        "provider_calls": 0,
+        "provider_platform": null,
+        "provider_account_id": null,
+        "suppression_decision": "unresolved",
+        "api_result": {
+          "failure_code": "destination_identity_unresolved",
+          "success": false
+        },
+        "publish_attempt_status": null,
+        "retry_command_status": null,
+        "content_status": null,
+        "external_post_id": null,
+        "response_provider_id": null,
+        "identity_conflict": null,
+        "registry_row_count": 0,
+        "shadow_reads": 0,
+        "shadow_audit_writes": 0,
+        "registry_inserts": 0,
+        "registry_updates": 0,
+        "authority_acquisitions": 0,
+        "audit_events": [],
+        "alert_events": [],
+        "flags": {},
+        "extras": {}
+      },
+      "difference": "suppression_decision: old='suppress' new='unresolved'; api.failure_code: old=None new='destination_identity_unresolved'",
+      "classification": "INTENDED",
+      "acceptance_criterion": "I1: unknown external identity fail-closes with zero provider calls.",
+      "evidence": [
+        "provider_calls=0 (same)"
+      ],
+      "verdict": "PASS",
+      "safety_concern": null
+    },
+    {
+      "scenario_id": "dest_historical_null_fail_closed",
+      "category": "destination_identity",
+      "old": {
+        "scenario_id": "dest_historical_null_fail_closed",
+        "schema_mode": "C_new_on_r1",
+        "provider_calls": 0,
+        "provider_platform": null,
+        "provider_account_id": null,
+        "suppression_decision": "suppress",
+        "api_result": null,
+        "publish_attempt_status": null,
+        "retry_command_status": null,
+        "content_status": null,
+        "external_post_id": null,
+        "response_provider_id": null,
+        "identity_conflict": null,
+        "registry_row_count": 0,
+        "shadow_reads": 0,
+        "shadow_audit_writes": 0,
+        "registry_inserts": 0,
+        "registry_updates": 0,
+        "authority_acquisitions": 0,
+        "audit_events": [],
+        "alert_events": [],
+        "flags": {},
+        "extras": {}
+      },
+      "new": {
+        "scenario_id": "dest_historical_null_fail_closed",
+        "schema_mode": "C_new_on_r1",
+        "provider_calls": 0,
+        "provider_platform": null,
+        "provider_account_id": null,
+        "suppression_decision": "unresolved",
+        "api_result": {
+          "failure_code": "destination_identity_unresolved",
+          "success": false
+        },
+        "publish_attempt_status": null,
+        "retry_command_status": null,
+        "content_status": null,
+        "external_post_id": null,
+        "response_provider_id": null,
+        "identity_conflict": null,
+        "registry_row_count": 0,
+        "shadow_reads": 0,
+        "shadow_audit_writes": 0,
+        "registry_inserts": 0,
+        "registry_updates": 0,
+        "authority_acquisitions": 0,
+        "audit_events": [],
+        "alert_events": [],
+        "flags": {},
+        "extras": {}
+      },
+      "difference": "suppression_decision: old='suppress' new='unresolved'; api.failure_code: old=None new='destination_identity_unresolved'",
+      "classification": "INTENDED",
+      "acceptance_criterion": "I1: historical NULL account identity vs concrete intended fail-closes with zero provider calls (old platform-keyed still suppresses).",
+      "evidence": [
+        "provider_calls=0 (same)"
       ],
       "verdict": "PASS",
       "safety_concern": null
@@ -1753,6 +1977,8 @@
       "pub_conflict",
       "pub_mock_with_durable",
       "dest_cross_account_platform_keyed",
+      "dest_unknown_external_fail_closed",
+      "dest_historical_null_fail_closed",
       "api_stranded_default_off"
     ],
     "UNINTENDED": [],
@@ -1768,6 +1994,7 @@
       "pub_fresh_success",
       "pub_response_only_suppress",
       "dest_same_content_platform_account",
+      "dest_alias_same_external",
       "dest_different_platform",
       "registry_shadow_neutrality",
       "failure_injection_bundle",
@@ -1785,6 +2012,8 @@
     "pub_conflict",
     "pub_mock_with_durable",
     "dest_cross_account_platform_keyed",
+    "dest_unknown_external_fail_closed",
+    "dest_historical_null_fail_closed",
     "api_stranded_default_off"
   ],
   "unintended": [],
@@ -1800,6 +2029,7 @@
     "pub_fresh_success",
     "pub_response_only_suppress",
     "dest_same_content_platform_account",
+    "dest_alias_same_external",
     "dest_different_platform",
     "registry_shadow_neutrality",
     "failure_injection_bundle",
@@ -1930,6 +2160,27 @@
         "verdict": "PASS"
       },
       {
+        "id": "dest_alias_same_external",
+        "old_calls": 0,
+        "new_calls": 0,
+        "classification": "EQUIVALENT",
+        "verdict": "PASS"
+      },
+      {
+        "id": "dest_unknown_external_fail_closed",
+        "old_calls": 0,
+        "new_calls": 0,
+        "classification": "INTENDED",
+        "verdict": "PASS"
+      },
+      {
+        "id": "dest_historical_null_fail_closed",
+        "old_calls": 0,
+        "new_calls": 0,
+        "classification": "INTENDED",
+        "verdict": "PASS"
+      },
+      {
         "id": "dest_different_platform",
         "old_calls": 1,
         "new_calls": 1,
@@ -2048,10 +2299,10 @@
     ]
   },
   "suite_totals": {
-    "f4_scenarios_passed": 23,
+    "f4_scenarios_passed": 26,
     "f4_scenarios_failed": 0,
     "f4_scenarios_unresolved": 0,
-    "f4_scenarios_total": 23,
+    "f4_scenarios_total": 26,
     "note": "External suite totals merged from artifacts/suite_totals.json when present",
     "f1_f2_f3": {
       "passed": 60,
@@ -2104,6 +2355,9 @@
       "pub_mock_with_durable",
       "dest_same_content_platform_account",
       "dest_cross_account_platform_keyed",
+      "dest_alias_same_external",
+      "dest_unknown_external_fail_closed",
+      "dest_historical_null_fail_closed",
       "dest_different_platform",
       "dest_publish_version_change_platform_keyed",
       "registry_shadow_neutrality",

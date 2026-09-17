@@ -10,12 +10,15 @@ from typing import Any
 
 from .compare import Classification, ScenarioOutcome
 from .constants import (
+    F1_F3_CANDIDATE_SHA,
+    F4_INTRODUCTION_SHA,
     NEW_BASELINE_SHA,
     OLD_CRITICAL_FILE_SHA256,
     OLD_IMAGE_EVIDENCE,
     OLD_IMAGE_ID,
     OLD_SOURCE_SHA,
 )
+from .source_pin import current_candidate_sha
 
 
 def build_report(
@@ -65,10 +68,28 @@ def build_report(
         "zero_material_unresolved": len(unresolved) == 0,
     }
     f4_safety_go = all(gates.values()) and not failed and not unresolved
+    candidate_sha = current_candidate_sha()
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        # Immutable historical F1–F3 reference (not the revision under test).
         "pre_sha": NEW_BASELINE_SHA,
+        "historical_f1_f3_baseline_sha": F1_F3_CANDIDATE_SHA,
+        "f4_introduction_sha": F4_INTRODUCTION_SHA,
+        # Explicit revision whose behavior this report captures.
+        "candidate_sha": candidate_sha,
+        "artifact_provenance": {
+            "old_source_sha": OLD_SOURCE_SHA,
+            "historical_f1_f3_baseline_sha": F1_F3_CANDIDATE_SHA,
+            "f4_introduction_sha": F4_INTRODUCTION_SHA,
+            "candidate_sha": candidate_sha,
+            "note": (
+                "pre_sha / historical_f1_f3_baseline_sha remain the immutable "
+                "F1–F3 pin from harness introduction. candidate_sha is HEAD at "
+                "report generation (may include I1+). Do not treat pre_sha as "
+                "the code under test after F4 landed."
+            ),
+        },
         "old_image_id": OLD_IMAGE_ID,
         "old_source_sha": OLD_SOURCE_SHA,
         "old_image_evidence": OLD_IMAGE_EVIDENCE,
@@ -125,9 +146,14 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         "## Identities",
         "",
-        f"- Baseline (new): `{report['pre_sha']}`",
+        f"- Candidate under test (HEAD): `{report.get('candidate_sha', report['pre_sha'])}`",
+        f"- Historical F1–F3 baseline (immutable): `{report.get('historical_f1_f3_baseline_sha', report['pre_sha'])}`",
+        f"- F4 introduction: `{report.get('f4_introduction_sha', 'n/a')}`",
         f"- Old image: `{report['old_image_id']}`",
         f"- Old source-equivalent: `{report['old_source_sha']}`",
+        "",
+        "> `pre_sha` in JSON remains the historical F1–F3 pin for compatibility; "
+        "`candidate_sha` is the actual revision whose behavior is recorded.",
         "",
         "## Isolation",
         "",

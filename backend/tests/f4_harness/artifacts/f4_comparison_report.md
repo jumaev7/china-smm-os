@@ -1,12 +1,16 @@
 # F4 — Old vs New Backend Regression Report
 
-Generated: `2026-09-17T13:22:32.959586+00:00`
+Generated: `2026-09-17T13:58:40.918574+00:00`
 
 ## Identities
 
-- Baseline (new): `d1ccee82e3106ea469ac086ed99bd5f840b75fe0`
+- Candidate under test (HEAD): `c04ed029df4905625f090b781bda57625c56cf5d`
+- Historical F1–F3 baseline (immutable): `d1ccee82e3106ea469ac086ed99bd5f840b75fe0`
+- F4 introduction: `72d8ab8d879fa8afaf2d2e64669e41bc98236aa4`
 - Old image: `sha256:34d2977e2d1de13fa8bf0ad2e79692e0f18c537609c6e66796dadbefafd8bff4`
 - Old source-equivalent: `338d3f966fa7c5fd2795201e555512f1eebcadc9`
+
+> `pre_sha` in JSON remains the historical F1–F3 pin for compatibility; `candidate_sha` is the actual revision whose behavior is recorded.
 
 ## Isolation
 
@@ -79,6 +83,9 @@ Generated: `2026-09-17T13:22:32.959586+00:00`
 | `pub_mock_with_durable` | INTENDED | PASS | provider_calls: old=0 new=1; suppression_decision: old='suppress' new='allow' |
 | `dest_same_content_platform_account` | EQUIVALENT | PASS | none |
 | `dest_cross_account_platform_keyed` | INTENDED | PASS | provider_calls: old=0 new=1; suppression_decision: old='suppress' new='allow' |
+| `dest_alias_same_external` | EQUIVALENT | PASS | none |
+| `dest_unknown_external_fail_closed` | INTENDED | PASS | suppression_decision: old='suppress' new='unresolved'; api.failure_code: old=None new='destination_identity_unresolved' |
+| `dest_historical_null_fail_closed` | INTENDED | PASS | suppression_decision: old='suppress' new='unresolved'; api.failure_code: old=None new='destination_identity_unresolved' |
 | `dest_different_platform` | EQUIVALENT | PASS | none |
 | `dest_publish_version_change_platform_keyed` | COMMON_MODE_SAFETY | PASS | none |
 | `registry_shadow_neutrality` | EQUIVALENT | PASS | none |

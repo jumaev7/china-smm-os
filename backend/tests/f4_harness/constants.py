@@ -1,4 +1,4 @@
-"""Pinned identities for the old production backend vs F1–F3 candidate."""
+"""Pinned identities for the old production backend vs F1–F3 / F4 provenance."""
 
 from __future__ import annotations
 
@@ -11,8 +11,13 @@ OLD_IMAGE_ID = (
 # Git ancestry alone is NOT the identity proof; blob SHA256 pins below are.
 OLD_SOURCE_SHA = "338d3f966fa7c5fd2795201e555512f1eebcadc9"
 
-# F4 baseline (F1+F2+F3 landed).
-NEW_BASELINE_SHA = "d1ccee82e3106ea469ac086ed99bd5f840b75fe0"
+# Historical F1–F3 candidate (immutable reference — NOT current HEAD).
+# Retained as NEW_BASELINE_SHA for backward-compatible imports.
+F1_F3_CANDIDATE_SHA = "d1ccee82e3106ea469ac086ed99bd5f840b75fe0"
+NEW_BASELINE_SHA = F1_F3_CANDIDATE_SHA
+
+# Commit that introduced the F4 old-vs-new harness.
+F4_INTRODUCTION_SHA = "72d8ab8d879fa8afaf2d2e64669e41bc98236aa4"
 
 # sha256 of `git show ${OLD_SOURCE_SHA}:<path>` for critical publish surface.
 # Recomputed by tests; mismatch → STOP (source pin broken).
@@ -48,8 +53,8 @@ OLD_IMAGE_EVIDENCE = {
     "local_image_required": False,
     "note": (
         "Harness compares behavior of source-equivalent old algorithms "
-        "extracted from OLD_SOURCE_SHA against current HEAD. Full container "
-        "re-execution is optional when the image is available."
+        "extracted from OLD_SOURCE_SHA against the current candidate HEAD. "
+        "Full container re-execution is optional when the image is available."
     ),
 }
 

@@ -11,7 +11,6 @@ Does not modify business logic.
 from __future__ import annotations
 
 import json
-import os
 from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,6 +41,8 @@ from tests.f4_harness.compare import (
 )
 from tests.f4_harness.constants import (
     DISABLED_FEATURE_FLAGS,
+    F1_F3_CANDIDATE_SHA,
+    F4_INTRODUCTION_SHA,
     NEW_BASELINE_SHA,
     OLD_IMAGE_ID,
     OLD_SOURCE_SHA,
@@ -62,7 +63,11 @@ from tests.f4_harness.old_algorithms import (
     old_shape_already_published,
 )
 from tests.f4_harness.report import build_report, write_reports
-from tests.f4_harness.source_pin import verify_old_source_pins
+from tests.f4_harness.source_pin import (
+    current_candidate_sha,
+    verify_historical_provenance,
+    verify_old_source_pins,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REPORT_DIR = REPO_ROOT / "backend" / "tests" / "f4_harness" / "artifacts"
@@ -279,10 +284,21 @@ def _publish_harness(fx, adapters: dict[str, CountingAdapter]):
         aid = explicit_account or fx.account_id
         name = "TG A"
         ext = "tg-a"
+        facebook_page_id = None
         if aid == fx.account_b_id:
             name, ext = "TG B", "tg-b"
+        elif aid == fx.account_alias_id:
+            # Same external telegram chat as A under a distinct UUID.
+            name, ext = "TG A alias", "tg-a"
         elif aid == fx.fb_account_id:
             name, ext = "FB A", "fb-a"
+            facebook_page_id = "page-a"
+        elif aid == fx.fb_unknown_id:
+            name, ext = "FB unknown", "fb-handle"
+            facebook_page_id = None
+        elif aid == fx.fb_unknown_b_id:
+            name, ext = "FB unknown B", "fb-handle-b"
+            facebook_page_id = None
         return SimpleNamespace(
             id=aid,
             account_name=name,
@@ -292,7 +308,7 @@ def _publish_harness(fx, adapters: dict[str, CountingAdapter]):
             tenant_id=fx.tenant_id,
             access_token_encrypted=None,
             refresh_token_encrypted=None,
-            facebook_page_id=None,
+            facebook_page_id=facebook_page_id,
             instagram_business_account_id=None,
             permissions_json=None,
             account_metadata_json=None,
@@ -384,11 +400,33 @@ def _publish_harness(fx, adapters: dict[str, CountingAdapter]):
 def test_00_source_pin_and_baseline():
     pin = verify_old_source_pins()
     assert pin["ok"], pin
-    assert OLD_SOURCE_SHA.startswith("338d3f9")
+    assert OLD_SOURCE_SHA == "338d3f966fa7c5fd2795201e555512f1eebcadc9"
     assert OLD_IMAGE_ID.startswith("sha256:34d2977e")
-    # Baseline identity (working tree may have only F4 untracked adds).
-    head = os.popen("git rev-parse HEAD").read().strip()
-    assert head == NEW_BASELINE_SHA
+    assert F1_F3_CANDIDATE_SHA == NEW_BASELINE_SHA == (
+        "d1ccee82e3106ea469ac086ed99bd5f840b75fe0"
+    )
+    assert F4_INTRODUCTION_SHA == "72d8ab8d879fa8afaf2d2e64669e41bc98236aa4"
+
+    provenance = verify_historical_provenance()
+    assert provenance["ok"], provenance
+    candidate = current_candidate_sha()
+    assert provenance["candidate_sha"] == candidate
+    # Historical pins stay exact; HEAD need not equal F1–F3 baseline.
+    assert provenance["old_source_sha"] == OLD_SOURCE_SHA
+    assert provenance["f1_f3_candidate_sha"] == F1_F3_CANDIDATE_SHA
+    assert provenance["f4_introduction_sha"] == F4_INTRODUCTION_SHA
+    assert provenance["commits_exist"]["old_source"] is True
+    assert provenance["commits_exist"]["f1_f3_candidate"] is True
+    assert provenance["commits_exist"]["f4_introduction"] is True
+    assert provenance["ancestry"]["old_source_is_ancestor_of_head"] is True
+    assert provenance["ancestry"]["f1_f3_candidate_is_ancestor_of_head"] is True
+    assert provenance["ancestry"]["f4_introduction_is_ancestor_of_head"] is True
+    assert provenance["f4_introduction_present"] is True
+    # Explicitly reject the stale tautology that HEAD == F1–F3 pin.
+    # (Equality is allowed only when literally still on that commit.)
+    assert candidate == provenance["candidate_sha"]
+    if candidate != F1_F3_CANDIDATE_SHA:
+        assert not provenance["head_equals_f1_f3_baseline"]
 
 
 def test_01_isolation_proof():
@@ -1084,10 +1122,215 @@ def test_21_destination_identity_and_cross_account():
                         suppression_decision="allow",
                     ),
                     expected_classification=Classification.INTENDED,
-                    acceptance_criterion=(
-                        "I1: proven-distinct account B is allowed after success "
-                        "on account A (old platform-keyed reader still suppresses)."
+                    acceptance_criterion=INTENDED_ACCEPTANCE[
+                        "i1_proven_distinct_cross_account"
+                    ],
+                )
+            )
+
+        # Alias UUID with same external telegram chat — zero new calls (I1 SAME)
+        async with session_factory("C_new_on_r1") as factory:
+            fx = new_fixture_ids()
+            async with factory() as db:
+                await seed_base(db, fx)
+                await insert_success_attempt(
+                    db,
+                    fx,
+                    account_id=fx.account_id,
+                    external_post_id="alias-a",
+                    response={"success": True, "platform_post_id": "alias-a"},
+                )
+            old_a = CountingAdapter("telegram")
+            new_a = CountingAdapter("telegram")
+            with _publish_harness(fx, {"telegram": old_a}), _old_reader_stack():
+                async with factory() as db:
+                    await PublishService.publish_content(
+                        db,
+                        fx.content_id,
+                        request=PublishContentRequest(
+                            mode="manual_publish",
+                            platforms=["telegram"],
+                            account_id=fx.account_alias_id,
+                        ),
+                    )
+            with _publish_harness(fx, {"telegram": new_a}):
+                async with factory() as db:
+                    await PublishService.publish_content(
+                        db,
+                        fx.content_id,
+                        request=PublishContentRequest(
+                            mode="manual_publish",
+                            platforms=["telegram"],
+                            account_id=fx.account_alias_id,
+                        ),
+                    )
+            assert old_a.invocation_count == 0
+            assert new_a.invocation_count == 0
+            _record(
+                classify_scenario(
+                    scenario_id="dest_alias_same_external",
+                    category="destination_identity",
+                    old=ScenarioCapture(
+                        scenario_id="dest_alias_same_external",
+                        side="old",
+                        schema_mode="C_new_on_r1",
+                        provider_calls=0,
+                        suppression_decision="suppress",
                     ),
+                    new=ScenarioCapture(
+                        scenario_id="dest_alias_same_external",
+                        side="new",
+                        schema_mode="C_new_on_r1",
+                        provider_calls=0,
+                        suppression_decision="suppress",
+                    ),
+                    expected_classification=Classification.EQUIVALENT,
+                    acceptance_criterion=INTENDED_ACCEPTANCE["i1_alias_same_external"],
+                )
+            )
+
+        # Unknown facebook external identity — fail closed (zero calls)
+        async with session_factory("C_new_on_r1") as factory:
+            fx = new_fixture_ids()
+            async with factory() as db:
+                await seed_base(db, fx, platforms=["telegram", "facebook"])
+                await insert_success_attempt(
+                    db,
+                    fx,
+                    platform="facebook",
+                    account_id=fx.fb_unknown_id,
+                    external_post_id="fb-unk",
+                    response={"success": True, "platform_post_id": "fb-unk"},
+                )
+            old_fb = CountingAdapter("facebook", post_id="should-not")
+            new_fb = CountingAdapter("facebook", post_id="should-not")
+            with _publish_harness(fx, {"facebook": old_fb}), _old_reader_stack():
+                async with factory() as db:
+                    await PublishService.publish_content(
+                        db,
+                        fx.content_id,
+                        request=PublishContentRequest(
+                            mode="manual_publish",
+                            platforms=["facebook"],
+                            account_id=fx.fb_unknown_b_id,
+                        ),
+                    )
+            with _publish_harness(fx, {"facebook": new_fb}):
+                async with factory() as db:
+                    result = await PublishService.publish_content(
+                        db,
+                        fx.content_id,
+                        request=PublishContentRequest(
+                            mode="manual_publish",
+                            platforms=["facebook"],
+                            account_id=fx.fb_unknown_b_id,
+                        ),
+                    )
+            assert old_fb.invocation_count == 0
+            assert new_fb.invocation_count == 0
+            new_row = next(
+                (r for r in result.get("results", []) if r.get("platform") == "facebook"),
+                {},
+            )
+            assert new_row.get("failure_code") == "destination_identity_unresolved"
+            _record(
+                classify_scenario(
+                    scenario_id="dest_unknown_external_fail_closed",
+                    category="destination_identity",
+                    old=ScenarioCapture(
+                        scenario_id="dest_unknown_external_fail_closed",
+                        side="old",
+                        schema_mode="C_new_on_r1",
+                        provider_calls=0,
+                        suppression_decision="suppress",
+                    ),
+                    new=ScenarioCapture(
+                        scenario_id="dest_unknown_external_fail_closed",
+                        side="new",
+                        schema_mode="C_new_on_r1",
+                        provider_calls=0,
+                        suppression_decision="unresolved",
+                        api_result={
+                            "failure_code": "destination_identity_unresolved",
+                            "success": False,
+                        },
+                    ),
+                    expected_classification=Classification.INTENDED,
+                    acceptance_criterion=INTENDED_ACCEPTANCE[
+                        "i1_unknown_external_fail_closed"
+                    ],
+                )
+            )
+
+        # Historical NULL account identity vs concrete intended — fail closed
+        async with session_factory("C_new_on_r1") as factory:
+            fx = new_fixture_ids()
+            async with factory() as db:
+                await seed_base(db, fx)
+                await insert_success_attempt(
+                    db,
+                    fx,
+                    account_id=None,
+                    external_post_id="null-hist",
+                    response={"success": True, "platform_post_id": "null-hist"},
+                )
+            old_a = CountingAdapter("telegram")
+            new_a = CountingAdapter("telegram")
+            with _publish_harness(fx, {"telegram": old_a}), _old_reader_stack():
+                async with factory() as db:
+                    await PublishService.publish_content(
+                        db,
+                        fx.content_id,
+                        request=PublishContentRequest(
+                            mode="manual_publish",
+                            platforms=["telegram"],
+                            account_id=fx.account_id,
+                        ),
+                    )
+            with _publish_harness(fx, {"telegram": new_a}):
+                async with factory() as db:
+                    result = await PublishService.publish_content(
+                        db,
+                        fx.content_id,
+                        request=PublishContentRequest(
+                            mode="manual_publish",
+                            platforms=["telegram"],
+                            account_id=fx.account_id,
+                        ),
+                    )
+            assert old_a.invocation_count == 0
+            assert new_a.invocation_count == 0
+            new_row = next(
+                (r for r in result.get("results", []) if r.get("platform") == "telegram"),
+                {},
+            )
+            assert new_row.get("failure_code") == "destination_identity_unresolved"
+            _record(
+                classify_scenario(
+                    scenario_id="dest_historical_null_fail_closed",
+                    category="destination_identity",
+                    old=ScenarioCapture(
+                        scenario_id="dest_historical_null_fail_closed",
+                        side="old",
+                        schema_mode="C_new_on_r1",
+                        provider_calls=0,
+                        suppression_decision="suppress",
+                    ),
+                    new=ScenarioCapture(
+                        scenario_id="dest_historical_null_fail_closed",
+                        side="new",
+                        schema_mode="C_new_on_r1",
+                        provider_calls=0,
+                        suppression_decision="unresolved",
+                        api_result={
+                            "failure_code": "destination_identity_unresolved",
+                            "success": False,
+                        },
+                    ),
+                    expected_classification=Classification.INTENDED,
+                    acceptance_criterion=INTENDED_ACCEPTANCE[
+                        "i1_historical_null_fail_closed"
+                    ],
                 )
             )
 
@@ -1794,7 +2037,10 @@ def test_z99_write_comparison_report():
         outcomes=OUTCOMES,
         isolation=prove_isolation().as_dict(),
         schema_results=SCHEMA_RESULTS,
-        source_pin=verify_old_source_pins(),
+        source_pin={
+            **verify_old_source_pins(),
+            "historical_provenance": verify_historical_provenance(),
+        },
         suite_totals=suite_totals,
         provider_summary=PROVIDER_SUMMARY,
         api_regression=API_REGRESSION,
@@ -1812,5 +2058,8 @@ def test_z99_write_comparison_report():
     json_path, md_path = write_reports(report, REPORT_DIR)
     assert json_path.is_file()
     assert md_path.is_file()
+    assert report["candidate_sha"] == current_candidate_sha()
+    assert report["historical_f1_f3_baseline_sha"] == F1_F3_CANDIDATE_SHA
+    assert report["f4_introduction_sha"] == F4_INTRODUCTION_SHA
     assert report["verdicts"]["f4_safety_acceptance"] == "GO"
     assert report["verdicts"]["runtime_deployment"] == "NO-GO"

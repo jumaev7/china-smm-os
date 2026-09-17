@@ -62,6 +62,21 @@ INTENDED_ACCEPTANCE: dict[str, str] = {
         "F3: immutable deploy helper only — no publishing behavior change when "
         "shadow/WC/retry flags remain disabled."
     ),
+    "i1_proven_distinct_cross_account": (
+        "I1: after Account A success, proven-distinct Account B is allowed "
+        "(one provider call). Old platform-keyed reader still suppresses."
+    ),
+    "i1_alias_same_external": (
+        "I1: same external destination under two PublishingAccount UUIDs "
+        "suppresses (zero new provider calls)."
+    ),
+    "i1_unknown_external_fail_closed": (
+        "I1: unknown external identity fail-closes with zero provider calls."
+    ),
+    "i1_historical_null_fail_closed": (
+        "I1: historical NULL account identity vs concrete intended fail-closes "
+        "with zero provider calls (old platform-keyed still suppresses)."
+    ),
 }
 
 

@@ -376,7 +376,10 @@ class FixtureIds:
     content_id: Any
     account_id: Any
     account_b_id: Any
+    account_alias_id: Any
     fb_account_id: Any
+    fb_unknown_id: Any
+    fb_unknown_b_id: Any
     publish_version: str = "pv_f4_v1"
     platform: str = "telegram"
     platforms: list[str] | None = None
@@ -394,7 +397,10 @@ def new_fixture_ids() -> FixtureIds:
         content_id=uuid4(),
         account_id=uuid4(),
         account_b_id=uuid4(),
+        account_alias_id=uuid4(),
         fb_account_id=uuid4(),
+        fb_unknown_id=uuid4(),
+        fb_unknown_b_id=uuid4(),
     )
 
 
@@ -435,20 +441,33 @@ async def seed_base(
             "ts": datetime.now(timezone.utc),
         },
     )
-    for aid, plat, name, ext in (
-        (fx.account_id, "telegram", "TG A", "tg-a"),
-        (fx.account_b_id, "telegram", "TG B", "tg-b"),
-        (fx.fb_account_id, "facebook", "FB A", "fb-a"),
+    # Alias shares telegram chat id with A (same external destination, new UUID).
+    # FB unknown rows omit facebook_page_id so external identity is unresolved.
+    for aid, plat, name, ext, page in (
+        (fx.account_id, "telegram", "TG A", "tg-a", None),
+        (fx.account_b_id, "telegram", "TG B", "tg-b", None),
+        (fx.account_alias_id, "telegram", "TG A alias", "tg-a", None),
+        (fx.fb_account_id, "facebook", "FB A", "fb-a", "page-a"),
+        (fx.fb_unknown_id, "facebook", "FB unknown", "fb-handle", None),
+        (fx.fb_unknown_b_id, "facebook", "FB unknown B", "fb-handle-b", None),
     ):
         await db.execute(
             text(
                 """
                 INSERT INTO publishing_accounts
-                    (id, tenant_id, platform, account_name, account_id, status)
-                VALUES (:id, :tid, :p, :n, :ext, 'mock')
+                    (id, tenant_id, platform, account_name, account_id, status,
+                     facebook_page_id)
+                VALUES (:id, :tid, :p, :n, :ext, 'mock', :page)
                 """
             ),
-            {"id": aid, "tid": fx.tenant_id, "p": plat, "n": name, "ext": ext},
+            {
+                "id": aid,
+                "tid": fx.tenant_id,
+                "p": plat,
+                "n": name,
+                "ext": ext,
+                "page": page,
+            },
         )
     await db.commit()
 
@@ -458,13 +477,18 @@ async def insert_success_attempt(
     fx: FixtureIds,
     *,
     platform: str | None = None,
-    account_id=None,
+    account_id: Any = ...,
     external_post_id: str | None = None,
     response: dict | None = None,
     publication_intent_id=None,
     with_intent_column: bool = True,
     publish_version: str | None = None,
 ) -> Any:
+    """Insert a success attempt.
+
+    ``account_id=...`` (default) uses ``fx.account_id``.
+    Pass ``account_id=None`` explicitly for historical NULL identity rows.
+    """
     attempt_id = uuid4()
     plat = platform or fx.platform
     cols = [
@@ -491,7 +515,7 @@ async def insert_success_attempt(
         "id": attempt_id,
         "cid": fx.content_id,
         "p": plat,
-        "aid": account_id if account_id is not None else fx.account_id,
+        "aid": fx.account_id if account_id is ... else account_id,
         "resp": json.dumps(response) if response is not None else None,
         "ext": external_post_id,
         "ver": publish_version or fx.publish_version,

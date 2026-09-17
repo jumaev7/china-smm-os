@@ -5,17 +5,23 @@
 
 ## Purpose
 
-Reproducibly compare the **old production backend** against the **F1–F3 candidate**:
+Reproducibly compare the **old production backend** against the **current
+candidate HEAD**, while preserving immutable historical pins:
 
-| Pin | Value |
-|--|--|
-| Old image | `sha256:34d2977e2d1de13fa8bf0ad2e79692e0f18c537609c6e66796dadbefafd8bff4` |
-| Old source-equivalent | `338d3f966fa7c5fd2795201e555512f1eebcadc9` |
-| New baseline | `d1ccee82e3106ea469ac086ed99bd5f840b75fe0` |
+| Pin | Value | Role |
+|--|--|--|
+| Old image | `sha256:34d2977e2d1de13fa8bf0ad2e79692e0f18c537609c6e66796dadbefafd8bff4` | Production image evidence |
+| Old source-equivalent | `338d3f966fa7c5fd2795201e555512f1eebcadc9` | Blob-hash identity of old algorithms |
+| F1–F3 candidate (historical) | `d1ccee82e3106ea469ac086ed99bd5f840b75fe0` | Immutable baseline reference |
+| F4 introduction | `72d8ab8d879fa8afaf2d2e64669e41bc98236aa4` | Harness introduction commit |
+| Candidate under test | `git rev-parse HEAD` | Explicitly recorded in reports |
 
 Image identity is established by R3.1 multi-file in-image hash match to the
 source tip, plus git blob SHA256 pins in
 `backend/tests/f4_harness/constants.py`. Git ancestry alone is not proof.
+
+`test_00` verifies historical pins remain exact and that required commits are
+ancestors of HEAD. It does **not** require HEAD to equal the F1–F3 baseline.
 
 ## Isolation
 
@@ -43,6 +49,10 @@ Artifacts:
 
 - `backend/tests/f4_harness/artifacts/f4_comparison_report.json`
 - `backend/tests/f4_harness/artifacts/f4_comparison_report.md`
+
+Reports record both `candidate_sha` (HEAD under test) and
+`historical_f1_f3_baseline_sha` / `pre_sha` (immutable F1–F3 pin). Do not treat
+`pre_sha` as the code under test after later landings (e.g. I1).
 
 ## Classification
 
