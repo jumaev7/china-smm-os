@@ -1,0 +1,21 @@
+{
+  "f1_f2_f3": {
+    "passed": 60,
+    "failed": 0,
+    "skipped": 1
+  },
+  "r1_r2_r3": {
+    "passed": 54,
+    "failed": 0,
+    "skipped": 0
+  },
+  "publishing_resilience_retry_e2_tenant": {
+    "passed": 145,
+    "failed": 0,
+    "skipped": 0
+  },
+  "external_suite_passed": 259,
+  "external_suite_failed": 0,
+  "external_suite_skipped": 1,
+  "external_note": "Skipped/unexecuted scenarios are not counted as passing"
+}
