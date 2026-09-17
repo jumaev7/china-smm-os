@@ -113,9 +113,12 @@ async def _run_column_only_and_conflict() -> None:
     assert found["telegram"]["platform_post_id"] == "ext-column-only"
     assert found["telegram"]["post_url"] == "https://t.me/c/1/1"
     assert found["telegram"]["deduplicated"] is True
-    # Column wins on conflict; still suppresses (does not authorize another write).
-    assert found["facebook"]["platform_post_id"] == "fb-column"
+    # F1: conflicting IDs suppress without selecting an authoritative id.
+    assert found["facebook"]["identity_conflict"] is True
+    assert found["facebook"]["platform_post_id"] is None
     assert found["facebook"]["deduplicated"] is True
+    assert found["facebook"]["conflict_durable_external_post_id"] == "fb-column"
+    assert found["facebook"]["conflict_response_platform_post_id"] == "fb-response"
 
 
 def test_prior_live_successes_ignore_mock_and_test_attempts() -> None:

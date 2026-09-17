@@ -288,6 +288,124 @@ class PublishOperatorAlertService:
         return created
 
     @classmethod
+    async def upsert_provider_identity_conflict_alert(
+        cls,
+        db: AsyncSession,
+        attempt: PublishAttempt,
+    ) -> bool | None:
+        """F1: bounded operator_review alert for durable vs response ID conflict.
+
+        Reuses alert_type=operator_review (no migration / no new alert type).
+        Context carries integrity=provider_identity_conflict. Deduped per
+        attempt. Never includes raw provider IDs in metrics context — only
+        short fingerprints. Alert failure must not unblock a duplicate write
+        (callers already skip before invoking this).
+        """
+        import hashlib
+
+        attempt_id = getattr(attempt, "id", None)
+        content_id = getattr(attempt, "content_id", None)
+        platform = getattr(attempt, "platform", None)
+        account_id = getattr(attempt, "account_id", None)
+        if attempt_id is None or content_id is None:
+            return None
+
+        from app.services.publish_resilience import (
+            IDENTITY_CONFLICT_CONTEXT_MARKER,
+            PROVIDER_IDENTITY_CONFLICT_FAILURE_CODE,
+            evaluate_live_success_identity,
+        )
+
+        identity = evaluate_live_success_identity(attempt)
+        if not identity.identity_conflict:
+            return None
+
+        ctx = await cls._resolve_context(db, attempt)
+        tenant_id = ctx.get("tenant_id")
+        if tenant_id is None:
+            logger.warning(
+                "[PublishAlert] skip identity-conflict alert — missing tenant "
+                "attempt_id=%s",
+                attempt_id,
+            )
+            return None
+
+        def _fp(value: str | None) -> str | None:
+            if not value:
+                return None
+            return hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+
+        alert_type = "operator_review"
+        severity = "critical"
+        dedupe_key = (
+            f"{IDENTITY_CONFLICT_CONTEXT_MARKER}|{content_id}|"
+            f"{(platform or '-').lower()}|{account_id or '-'}|{attempt_id}"
+        )
+        title = "Publish provider identity conflict needs reconciliation"
+        if platform:
+            title = f"{title}: {platform}"
+        body = (
+            "Durable external_post_id and response platform_post_id disagree on "
+            f"attempt {attempt_id}. Duplicate provider write suppressed; neither "
+            "identity is authoritative until operator reconciliation."
+        )
+        safe_context = scrub_payload({
+            "integrity": IDENTITY_CONFLICT_CONTEXT_MARKER,
+            "requires_operator_action": True,
+            "safe_auto_recheck": False,
+            "auto_ack_eligible": False,
+            "alert_type": alert_type,
+            "authorizes_provider_write": False,
+            "identity_conflict": True,
+            "durable_id_fingerprint": _fp(identity.durable_post_id),
+            "response_id_fingerprint": _fp(identity.response_post_id),
+            "attempt_id": str(attempt_id),
+        })
+        urls = _action_urls(content_id, attempt_id)
+
+        alert, created = await cls._upsert(
+            db,
+            tenant_id=tenant_id,
+            dedupe_key=dedupe_key[:320],
+            alert_type=alert_type,
+            severity=severity,
+            title=title[:255],
+            body=body,
+            client_id=ctx.get("client_id"),
+            content_id=content_id,
+            account_id=account_id,
+            attempt_id=attempt_id,
+            platform=platform,
+            account_name=ctx.get("account_name"),
+            company_name=ctx.get("company_name"),
+            attempt_status=getattr(attempt, "status", None),
+            attempt_number=getattr(attempt, "attempt_number", None),
+            failure_code=PROVIDER_IDENTITY_CONFLICT_FAILURE_CODE,
+            failure_message=body,
+            next_retry_at=None,
+            action_url=urls.get("action_url"),
+            context=safe_context,
+        )
+        if created:
+            logger.info(
+                "[PublishAlert] identity-conflict alert created tenant=%s "
+                "attempt=%s dedupe=%s",
+                tenant_id,
+                attempt_id,
+                dedupe_key,
+            )
+            await cls._emit_and_deliver(db, alert, created=True)
+        else:
+            logger.info(
+                "[PublishAlert] identity-conflict alert deduped tenant=%s "
+                "attempt=%s occurrences=%s",
+                tenant_id,
+                attempt_id,
+                alert.occurrence_count,
+            )
+        return created
+
+    @classmethod
     async def upsert_failure_alert(
         cls,
         db: AsyncSession,

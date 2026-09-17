@@ -30,10 +30,13 @@ from app.services.publish_resilience import (
     STATUS_OPERATOR_REVIEW,
     STATUS_RETRYING,
     compute_publish_version,
+    evaluate_live_success_identity,
     is_ambiguous_meta_publish_outcome,
     is_meta_publish_platform,
+    notify_provider_identity_conflict,
     sanitize_error_message,
     scrub_publish_result,
+    shape_live_success_skip_result,
 )
 from app.services.publishing_account_service import PublishingAccountService
 from app.services.publishing_tenant_scope import tenant_id_for_content, tenant_id_for_content_optional
@@ -657,10 +660,15 @@ class PublishService:
         for attempt in result.scalars().all():
             extras = PublishService._parse_attempt_response(attempt.response)
             serialized = PublishResilienceService.serialize_attempt(attempt)
-            serialized["platform_post_id"] = (
-                attempt.external_post_id or extras.get("platform_post_id")
-            )
-            serialized["post_url"] = attempt.external_post_url or extras.get("post_url")
+            # Prefer serialize_attempt's fail-closed conflict / mock handling;
+            # only fill gaps from response extras when no conflict marker.
+            if not serialized.get("identity_conflict"):
+                if not serialized.get("platform_post_id"):
+                    serialized["platform_post_id"] = extras.get("platform_post_id")
+                if not serialized.get("post_url"):
+                    serialized["post_url"] = (
+                        attempt.external_post_url or extras.get("post_url")
+                    )
             serialized["account_name"] = (
                 attempt.account.account_name if attempt.account else None
             )
@@ -710,11 +718,12 @@ class PublishService:
         a platform that already succeeded. Mock and explicit test results are not
         live publications and therefore never suppress a later real publish.
 
-        Identity precedence mirrors ``PublishResilienceService.find_live_success``:
-        durable ``external_post_id`` wins; response ``platform_post_id`` is the
-        legacy fallback when the column is absent. When both are present and
-        disagree, the durable column still suppresses another write (conflict is
-        logged; the caller is not authorized to publish again).
+        Identity eligibility matches ``PublishResilienceService.find_live_success``
+        via ``evaluate_live_success_identity``: durable-only success suppresses;
+        response-only live id suppresses; matching IDs suppress; mock/test never
+        suppresses (even with a durable column); conflicting durable/response IDs
+        suppress another write but fail closed on exact identity (no authoritative
+        ``platform_post_id``) and raise a bounded operator integrity alert.
         """
         if not platforms:
             return {}
@@ -732,58 +741,46 @@ class PublishService:
             if attempt.platform in successes:
                 continue
 
-            column_post_id = (attempt.external_post_id or "").strip() or None
-            response_payload: dict = {}
-            response_post_id: str | None = None
-            response_mock_or_test = False
-            if attempt.response:
+            identity = evaluate_live_success_identity(attempt)
+            if not identity.suppresses:
+                continue
+
+            payload = shape_live_success_skip_result(
+                attempt,
+                identity,
+                platform=attempt.platform,
+                account_id=getattr(attempt, "account_id", None),
+                account_name=None,
+            )
+            # Preserve non-conflicting response fields (message, etc.) when present.
+            if attempt.response and not identity.identity_conflict:
                 try:
                     parsed = json.loads(attempt.response)
                 except (json.JSONDecodeError, TypeError):
                     parsed = None
                 if isinstance(parsed, dict):
-                    response_payload = parsed
-                    if (
-                        response_payload.get("mock") is True
-                        or response_payload.get("test") is True
-                    ):
-                        response_mock_or_test = True
-                    raw_response_id = response_payload.get("platform_post_id")
-                    if raw_response_id is not None and str(raw_response_id).strip():
-                        response_post_id = str(raw_response_id).strip()
+                    merged = dict(parsed)
+                    merged.update(payload)
+                    # Authoritative identity from shared evaluator, not response.
+                    merged["platform_post_id"] = identity.platform_post_id
+                    merged["success"] = True
+                    merged["mock"] = False
+                    merged["deduplicated"] = True
+                    if attempt.external_post_url and not merged.get("post_url"):
+                        merged["post_url"] = attempt.external_post_url
+                    payload = merged
 
-            # Prefer durable column (incl. E2-2 ack with response IS NULL).
-            if column_post_id:
-                post_id = column_post_id
-                if response_post_id and response_post_id != column_post_id:
-                    logger.warning(
-                        "[Publish] prior live success identity conflict: "
-                        "content=%s platform=%s attempt=%s "
-                        "external_post_id=%s response.platform_post_id=%s "
-                        "— suppressing publish using durable column",
-                        content_id,
-                        attempt.platform,
-                        attempt.id,
-                        column_post_id,
-                        response_post_id,
-                    )
-            elif response_mock_or_test or not response_post_id:
-                # Legacy path: response-only live id, excluding mock/test.
-                continue
-            else:
-                post_id = response_post_id
+            if identity.identity_conflict:
+                logger.warning(
+                    "[Publish] prior live success identity conflict: "
+                    "content=%s platform=%s attempt=%s — suppressing publish "
+                    "without selecting an authoritative provider identity",
+                    content_id,
+                    attempt.platform,
+                    attempt.id,
+                )
+                await notify_provider_identity_conflict(db, attempt)
 
-            payload = dict(response_payload) if response_payload else {}
-            payload["success"] = True
-            payload["platform"] = attempt.platform
-            payload["platform_post_id"] = post_id
-            if attempt.external_post_url and not payload.get("post_url"):
-                payload["post_url"] = attempt.external_post_url
-            payload["mock"] = False
-            payload["deduplicated"] = True
-            payload["message"] = (
-                payload.get("message") or "Already published; duplicate suppressed"
-            )
             successes[attempt.platform] = payload
         return successes
 
@@ -927,11 +924,14 @@ class PublishService:
                 prior_success = prior_live_successes.get(platform)
                 if prior_success:
                     results.append(prior_success)
+                    if not prior_success.get("success"):
+                        all_ok = False
                     logger.info(
-                        "[Publish] adapter skipped: content=%s platform=%s reason=prior_live_success post_id=%s",
+                        "[Publish] adapter skipped: content=%s platform=%s reason=prior_live_success post_id=%s identity_conflict=%s",
                         content_id,
                         platform,
                         prior_success.get("platform_post_id"),
+                        bool(prior_success.get("identity_conflict")),
                     )
                     if not test_mode:
                         await PublishService._observe_write_coordination_shadow(
@@ -942,7 +942,11 @@ class PublishService:
                             account_id=explicit_account,
                             publication_intent_id=None,
                             live_decision="block",
-                            live_reason="prior_live_success",
+                            live_reason=(
+                                "provider_identity_conflict"
+                                if prior_success.get("identity_conflict")
+                                else "prior_live_success"
+                            ),
                             live_prior_success=True,
                         )
                     continue
@@ -1016,7 +1020,7 @@ class PublishService:
                             live_decision="block",
                             live_reason=claim.reason,
                             live_prior_success=claim.reason
-                            == "already_published",
+                            in ("already_published", "provider_identity_conflict"),
                         )
                         continue
                     claimed_attempt = claim.attempt

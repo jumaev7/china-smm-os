@@ -743,7 +743,8 @@ def test_prior_live_successes_legacy_response_only_still_works():
     _run(body)
 
 
-def test_conflicting_column_and_response_suppresses_with_column_identity():
+def test_conflicting_column_and_response_suppresses_without_authoritative_id():
+    """F1: conflict suppresses duplicate writes; neither ID is authoritative."""
     fx = _Fixture()
 
     async def body():
@@ -781,8 +782,12 @@ def test_conflicting_column_and_response_suppresses_with_column_identity():
                 found = await PublishService._prior_live_successes(
                     db, fx.content_id, ["telegram"]
                 )
-                assert found["telegram"]["platform_post_id"] == "column-id"
+                # F1: conflict suppresses without authoritative platform_post_id.
+                assert found["telegram"]["identity_conflict"] is True
+                assert found["telegram"]["platform_post_id"] is None
                 assert found["telegram"]["deduplicated"] is True
+                assert found["telegram"]["conflict_durable_external_post_id"] == "column-id"
+                assert found["telegram"]["conflict_response_platform_post_id"] == "response-id"
 
     _run(body)
 

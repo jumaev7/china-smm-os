@@ -235,6 +235,200 @@ class ClaimResult:
     result: dict[str, Any] | None = None
 
 
+# F1 — success-reader identity / conflict markers (no new alert_type / schema).
+PROVIDER_IDENTITY_CONFLICT_REASON = "provider_identity_conflict"
+PROVIDER_IDENTITY_CONFLICT_FAILURE_CODE = "provider_identity_conflict"
+IDENTITY_CONFLICT_CONTEXT_MARKER = "provider_identity_conflict"
+
+
+@dataclass(frozen=True)
+class LiveSuccessIdentity:
+    """Shared live-success eligibility and exact-identity resolution.
+
+    A success may suppress a real provider write only when:
+      1. attempt status is success (when status is available),
+      2. response is not explicitly mock/test,
+      3. a non-empty durable or response provider identity exists.
+
+    Explicit mock/test markers always win over a durable column ID.
+    Conflicting durable vs response IDs still suppress another write, but
+    ``platform_post_id`` is None so exact-identity consumers fail closed.
+    """
+
+    suppresses: bool
+    identity_conflict: bool
+    mock_or_test: bool
+    durable_post_id: str | None
+    response_post_id: str | None
+    # Authoritative id for ordinary exact-identity use; None if ineligible/conflict.
+    platform_post_id: str | None
+
+
+def _parse_attempt_response_payload(response: Any) -> dict[str, Any]:
+    if response is None:
+        return {}
+    if isinstance(response, dict):
+        return response
+    if isinstance(response, str):
+        try:
+            parsed = json.loads(response)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def evaluate_live_success_identity(
+    attempt: Any,
+    *,
+    require_success_status: bool = True,
+) -> LiveSuccessIdentity:
+    """Evaluate whether an attempt is an eligible live success and resolve IDs."""
+    status = getattr(attempt, "status", None)
+    if require_success_status and status is not None and status != STATUS_SUCCESS:
+        return LiveSuccessIdentity(
+            suppresses=False,
+            identity_conflict=False,
+            mock_or_test=False,
+            durable_post_id=None,
+            response_post_id=None,
+            platform_post_id=None,
+        )
+
+    durable_raw = getattr(attempt, "external_post_id", None)
+    durable_post_id = (str(durable_raw).strip() if durable_raw is not None else "") or None
+
+    payload = _parse_attempt_response_payload(getattr(attempt, "response", None))
+    mock_or_test = payload.get("mock") is True or payload.get("test") is True
+    response_raw = payload.get("platform_post_id")
+    response_post_id = (
+        str(response_raw).strip()
+        if response_raw is not None and str(response_raw).strip()
+        else None
+    )
+
+    # Explicit mock/test never suppresses — durable ID must not override the marker.
+    if mock_or_test:
+        return LiveSuccessIdentity(
+            suppresses=False,
+            identity_conflict=False,
+            mock_or_test=True,
+            durable_post_id=durable_post_id,
+            response_post_id=response_post_id,
+            platform_post_id=None,
+        )
+
+    if not durable_post_id and not response_post_id:
+        return LiveSuccessIdentity(
+            suppresses=False,
+            identity_conflict=False,
+            mock_or_test=False,
+            durable_post_id=None,
+            response_post_id=None,
+            platform_post_id=None,
+        )
+
+    if (
+        durable_post_id
+        and response_post_id
+        and durable_post_id != response_post_id
+    ):
+        return LiveSuccessIdentity(
+            suppresses=True,
+            identity_conflict=True,
+            mock_or_test=False,
+            durable_post_id=durable_post_id,
+            response_post_id=response_post_id,
+            platform_post_id=None,
+        )
+
+    return LiveSuccessIdentity(
+        suppresses=True,
+        identity_conflict=False,
+        mock_or_test=False,
+        durable_post_id=durable_post_id,
+        response_post_id=response_post_id,
+        platform_post_id=durable_post_id or response_post_id,
+    )
+
+
+def shape_live_success_skip_result(
+    attempt: Any,
+    identity: LiveSuccessIdentity,
+    *,
+    platform: str,
+    account_id: UUID | None = None,
+    account_name: str | None = None,
+) -> dict[str, Any]:
+    """Build a skip payload for an eligible live success (ordinary or conflict)."""
+    attempt_id = getattr(attempt, "id", None)
+    if identity.identity_conflict:
+        return {
+            "platform": platform,
+            "success": False,
+            "error": (
+                "Provider identity conflict between durable external_post_id and "
+                "response platform_post_id; duplicate write suppressed pending "
+                "operator reconciliation"
+            ),
+            "platform_post_id": None,
+            "post_url": None,
+            "mock": False,
+            "deduplicated": True,
+            "identity_conflict": True,
+            # Non-authoritative forensic copies — not for exact-identity reuse.
+            "conflict_durable_external_post_id": identity.durable_post_id,
+            "conflict_response_platform_post_id": identity.response_post_id,
+            "failure_code": PROVIDER_IDENTITY_CONFLICT_FAILURE_CODE,
+            "failure_category": "integrity",
+            "retryable": False,
+            "operator_review": True,
+            "message": (
+                "Provider identity conflict — duplicate suppressed; "
+                "reconciliation required"
+            ),
+            "account_id": str(account_id) if account_id else None,
+            "account_name": account_name,
+            "attempt_id": str(attempt_id) if attempt_id else None,
+        }
+
+    post_url = getattr(attempt, "external_post_url", None)
+    if not post_url:
+        payload = _parse_attempt_response_payload(getattr(attempt, "response", None))
+        post_url = payload.get("post_url")
+    return {
+        "platform": platform,
+        "success": True,
+        "platform_post_id": identity.platform_post_id,
+        "post_url": post_url,
+        "mock": False,
+        "deduplicated": True,
+        "identity_conflict": False,
+        "message": "Already published; duplicate suppressed",
+        "account_id": str(account_id) if account_id else None,
+        "account_name": account_name,
+        "attempt_id": str(attempt_id) if attempt_id else None,
+    }
+
+
+async def notify_provider_identity_conflict(
+    db: AsyncSession,
+    attempt: Any,
+) -> None:
+    """Best-effort integrity alert; never authorizes another provider write."""
+    try:
+        from app.services.publish_operator_alert_service import PublishOperatorAlertService
+
+        await PublishOperatorAlertService.upsert_provider_identity_conflict_alert(
+            db, attempt,
+        )
+    except Exception:
+        logger.exception(
+            "[PublishResilience] identity-conflict alert failed attempt_id=%s",
+            getattr(attempt, "id", None),
+        )
+
+
 class PublishResilienceService:
     @staticmethod
     def max_attempts() -> int:
@@ -287,19 +481,38 @@ class PublishResilienceService:
                 query = query.where(PublishAttempt.account_id == account_id)
         result = await db.execute(query)
         for attempt in result.scalars().all():
-            post_id = attempt.external_post_id
-            if not post_id and attempt.response:
-                try:
-                    payload = json.loads(attempt.response)
-                except (json.JSONDecodeError, TypeError):
-                    payload = {}
-                if isinstance(payload, dict):
-                    if payload.get("mock") is True or payload.get("test") is True:
-                        continue
-                    post_id = payload.get("platform_post_id")
-            if post_id:
+            identity = evaluate_live_success_identity(attempt)
+            if identity.suppresses:
                 return attempt
         return None
+
+    @classmethod
+    def _already_published_claim(
+        cls,
+        prior: PublishAttempt,
+        *,
+        platform: str,
+        account_id: UUID | None,
+        account_name: str | None,
+    ) -> ClaimResult:
+        identity = evaluate_live_success_identity(prior)
+        reason = (
+            PROVIDER_IDENTITY_CONFLICT_REASON
+            if identity.identity_conflict
+            else "already_published"
+        )
+        return ClaimResult(
+            attempt=prior,
+            skip=True,
+            reason=reason,
+            result=shape_live_success_skip_result(
+                prior,
+                identity,
+                platform=platform,
+                account_id=account_id,
+                account_name=account_name,
+            ),
+        )
 
     @classmethod
     async def find_active_claim(
@@ -409,33 +622,15 @@ class PublishResilienceService:
                 account_id=account_id,
             )
         if prior is not None:
-            post_id = prior.external_post_id
-            post_url = prior.external_post_url
-            if not post_id and prior.response:
-                try:
-                    payload = json.loads(prior.response)
-                except (json.JSONDecodeError, TypeError):
-                    payload = {}
-                if isinstance(payload, dict):
-                    post_id = payload.get("platform_post_id")
-                    post_url = post_url or payload.get("post_url")
-            return ClaimResult(
-                attempt=prior,
-                skip=True,
-                reason="already_published",
-                result={
-                    "platform": platform,
-                    "success": True,
-                    "platform_post_id": post_id,
-                    "post_url": post_url,
-                    "mock": False,
-                    "deduplicated": True,
-                    "message": "Already published; duplicate suppressed",
-                    "account_id": str(account_id) if account_id else None,
-                    "account_name": account.account_name if account else None,
-                    "attempt_id": str(prior.id),
-                },
+            claim = cls._already_published_claim(
+                prior,
+                platform=platform,
+                account_id=account_id,
+                account_name=account.account_name if account else None,
             )
+            if claim.reason == PROVIDER_IDENTITY_CONFLICT_REASON:
+                await notify_provider_identity_conflict(db, prior)
+            return claim
 
         active = await cls.find_active_claim(db, key, now=now)
         if active is not None:
@@ -553,25 +748,15 @@ class PublishResilienceService:
             active = await cls.find_active_claim(db, key, now=utc_now())
             prior = await cls.find_live_success(db, idempotency_key=key)
             if prior is not None:
-                post_id = prior.external_post_id
-                post_url = prior.external_post_url
-                return ClaimResult(
-                    attempt=prior,
-                    skip=True,
-                    reason="already_published",
-                    result={
-                        "platform": platform,
-                        "success": True,
-                        "platform_post_id": post_id,
-                        "post_url": post_url,
-                        "mock": False,
-                        "deduplicated": True,
-                        "message": "Already published; duplicate suppressed",
-                        "account_id": str(account_id) if account_id else None,
-                        "account_name": account.account_name if account else None,
-                        "attempt_id": str(prior.id),
-                    },
+                claim = cls._already_published_claim(
+                    prior,
+                    platform=platform,
+                    account_id=account_id,
+                    account_name=account.account_name if account else None,
                 )
+                if claim.reason == PROVIDER_IDENTITY_CONFLICT_REASON:
+                    await notify_provider_identity_conflict(db, prior)
+                return claim
             return ClaimResult(
                 attempt=active,
                 skip=True,
@@ -640,10 +825,12 @@ class PublishResilienceService:
             return attempt
 
         if success:
-            # Mock/test success — record without blocking real publishes.
+            # Mock/test (or success without a live provider id): persist the
+            # forensic response, but never write durable real-publication identity.
+            # Historical rows are not rewritten; this only affects new finalizations.
             attempt.status = STATUS_SUCCESS
-            attempt.external_post_id = str(post_id) if post_id else None
-            attempt.external_post_url = str(post_url) if post_url else None
+            attempt.external_post_id = None
+            attempt.external_post_url = None
             attempt.retryable = False
             attempt.next_retry_at = None
             await db.flush()
@@ -884,7 +1071,30 @@ class PublishResilienceService:
 
     @classmethod
     def serialize_attempt(cls, attempt: PublishAttempt) -> dict[str, Any]:
-        return {
+        identity = evaluate_live_success_identity(
+            attempt, require_success_status=True,
+        )
+        # Exact-identity consumers must not receive an authoritative id on conflict.
+        if attempt.status == STATUS_SUCCESS:
+            if identity.identity_conflict:
+                platform_post_id = None
+                post_url = None
+            elif identity.suppresses:
+                platform_post_id = identity.platform_post_id
+                post_url = attempt.external_post_url
+            elif identity.mock_or_test:
+                # Mock/test: expose response id for forensics only; no durable id.
+                payload = _parse_attempt_response_payload(attempt.response)
+                platform_post_id = identity.response_post_id
+                post_url = payload.get("post_url")
+            else:
+                platform_post_id = attempt.external_post_id
+                post_url = attempt.external_post_url
+        else:
+            platform_post_id = attempt.external_post_id
+            post_url = attempt.external_post_url
+
+        payload = {
             "id": attempt.id,
             "content_id": attempt.content_id,
             "platform": attempt.platform,
@@ -904,12 +1114,17 @@ class PublishResilienceService:
             "finished_at": attempt.finished_at,
             "external_post_id": attempt.external_post_id,
             "external_post_url": attempt.external_post_url,
-            "platform_post_id": attempt.external_post_id,
-            "post_url": attempt.external_post_url,
+            "platform_post_id": platform_post_id,
+            "post_url": post_url,
             "created_at": attempt.created_at,
             "manual_retry_allowed": cls.manual_retry_allowed(attempt)[0],
             "manual_retry_blocked_reason": cls.manual_retry_allowed(attempt)[1],
         }
+        if attempt.status == STATUS_SUCCESS and identity.identity_conflict:
+            payload["identity_conflict"] = True
+            payload["conflict_durable_external_post_id"] = identity.durable_post_id
+            payload["conflict_response_platform_post_id"] = identity.response_post_id
+        return payload
 
     @classmethod
     def manual_retry_allowed(cls, attempt: PublishAttempt) -> tuple[bool, str | None]:
