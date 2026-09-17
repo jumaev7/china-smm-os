@@ -371,6 +371,13 @@ def test_detector_list_stranded_does_not_assign_command_fields():
 
 
 def test_config_flags_default_disabled():
+    assert (
+        type(settings).model_fields[
+            "PUBLISH_RETRY_STRANDED_LIST_API_ENABLED"
+        ].default
+        is False
+    )
+    assert settings.PUBLISH_RETRY_STRANDED_LIST_API_ENABLED is False
     assert settings.PUBLISH_RETRY_STRANDED_ALERT_SURFACING_ENABLED is False
     assert settings.PUBLISH_RETRY_STRANDED_SCANNER_ENABLED is False
     assert settings.PUBLISH_RETRY_COMMANDS_ENABLED is False
@@ -611,6 +618,7 @@ def test_api_list_stranded_commits_only_when_alert_writes_occurred():
         db = AsyncMock()
         db.commit = AsyncMock()
         with (
+            patch.object(settings, "PUBLISH_RETRY_STRANDED_LIST_API_ENABLED", True),
             patch.object(pub, "_resolve_scope", return_value=uuid.uuid4()),
             patch.object(
                 PublishRetryCommandStrandedDetector,
@@ -790,6 +798,7 @@ def test_alert_on_command_immutability_and_no_retry_creation():
     route_db.commit = AsyncMock()
     async def _route():
         with (
+            patch.object(settings, "PUBLISH_RETRY_STRANDED_LIST_API_ENABLED", True),
             patch.object(pub, "_resolve_scope", return_value=tenant_id),
             patch.object(
                 PublishRetryCommandStrandedDetector,

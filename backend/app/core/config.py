@@ -146,8 +146,11 @@ class Settings(BaseSettings):
     # quiet_period = max(LEASE, DRAIN) + PROVIDER_SLACK + SAFETY_BUFFER
     PUBLISH_RETRY_STRANDED_PROVIDER_SLACK_SECONDS: int = 300
     PUBLISH_RETRY_STRANDED_SAFETY_BUFFER_SECONDS: int = 120
+    # F2 — stranded list API exposure. Default off; GET /retry-commands/stranded
+    # returns 404 without detector/DB work when false. Independent of alert surfacing.
+    PUBLISH_RETRY_STRANDED_LIST_API_ENABLED: bool = False
     # Optional durable operator-alert surfacing for review candidates. Default off.
-    # Read API / detector remain available without this flag; no scheduler in E1.
+    # Independent of LIST_API; no scheduler in E1.
     PUBLISH_RETRY_STRANDED_ALERT_SURFACING_ENABLED: bool = False
     # Periodic E1 scanner — intentionally absent/disabled in first implementation.
     PUBLISH_RETRY_STRANDED_SCANNER_ENABLED: bool = False

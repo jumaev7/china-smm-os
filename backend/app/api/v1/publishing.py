@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.admin_access import get_current_admin_optional
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenant_access import get_current_tenant_user_optional
 from app.schemas.publishing import (
@@ -117,6 +118,17 @@ def _require_tenant_admin_for_settings(
 
 # E2-1 manual resolution — stronger than E1 read; matches Operator Workspace roles.
 _MANUAL_RESOLUTION_ROLES = ("owner", "manager", "operator")
+
+
+def _require_stranded_list_api_enabled() -> None:
+    """F2: stranded list GET is unavailable unless explicitly enabled.
+
+    Fail closed with HTTP 404 (route appears absent). Must run before
+    tenant scope resolution and detector work so disabled requests never
+    query stranded candidates, create alerts, or commit.
+    """
+    if not bool(getattr(settings, "PUBLISH_RETRY_STRANDED_LIST_API_ENABLED", False)):
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 def _require_manual_resolution_actor(
@@ -344,10 +356,14 @@ async def list_stranded_retry_commands(
 ):
     """Phase E1 stranded post-barrier observation (tenant-scoped).
 
+    F2 gate: PUBLISH_RETRY_STRANDED_LIST_API_ENABLED (default false) must be
+    on; otherwise this route returns HTTP 404 without detector or DB work.
+
     Detects provider_write_started commands for operator review. Does not
     claim, execute, finalize, call providers, or terminalize commands.
     Durable alert writes follow PUBLISH_RETRY_STRANDED_ALERT_SURFACING_ENABLED
-    only (default false) — no request-time override.
+    only (default false) — independent of the list-API flag; no request-time
+    override.
 
     When alert surfacing is disabled (default), this path performs SELECTs only
     and never commits. When enabled, alert upserts are flushed by the service
@@ -365,6 +381,7 @@ async def list_stranded_retry_commands(
     is intentionally omitted as brittle; counters + zero-mutation detector are
     the contract.
     """
+    _require_stranded_list_api_enabled()
     scope_tenant_id = _resolve_scope(user, admin, tenant_id)
     result = await PublishRetryCommandStrandedDetector.list_stranded(
         db,
