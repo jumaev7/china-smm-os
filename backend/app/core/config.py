@@ -168,6 +168,10 @@ class Settings(BaseSettings):
     # Default off. Never enables authority acquisition, registry mutation, or
     # live publish/retry enforcement. Shadow alone must never permit provider I/O.
     PUBLISH_WRITE_COORDINATION_SHADOW: bool = False
+    # I2a — durable intentional publication-request schema presence only.
+    # Default off. Unused for activation in I2a (no API/mint/provider wiring).
+    # Must not enable registry authority, retry execution, or provider I/O.
+    PUBLISH_INTENTIONAL_PUBLICATION_REQUESTS_ENABLED: bool = False
     PUBLISH_ALERT_TELEGRAM_ENABLED: bool = False
     PUBLISH_ALERT_EMAIL_ENABLED: bool = False
     PUBLISH_ALERT_DELIVERY_COOLDOWN_SECONDS: int = 300

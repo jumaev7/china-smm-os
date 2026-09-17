@@ -324,7 +324,8 @@ def test_orm_models_expose_publication_intent_id_and_registry_columns():
 
 def test_migration_upgrade_and_downgrade():
     url = asyncio.run(_recreate_database(DEFAULT_DB_NAME + "_mig"))
-    _alembic_upgrade(url, "head")
+    # Pin to R1 revision (not "head") so later additive heads do not break R1 asserts.
+    _alembic_upgrade(url, R1_REV)
 
     engine = create_async_engine(url, echo=False)
 
@@ -427,7 +428,7 @@ def test_migration_upgrade_and_downgrade():
     asyncio.run(engine2.dispose())
 
     # Re-upgrade proves forward migration is repeatable after downgrade.
-    _alembic_upgrade(url, "head")
+    _alembic_upgrade(url, R1_REV)
     engine3 = create_async_engine(url, echo=False)
 
     async def _assert_reupgraded():

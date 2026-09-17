@@ -43,6 +43,9 @@ from app.models.publish_retry_command import PublishRetryCommand
 from app.models.publish_write_coordination_registry import (
     PublishWriteCoordinationRegistry,
 )
+from app.models.publish_intentional_publication_request import (
+    PublishIntentionalPublicationRequest,
+)
 from app.models.publish_alert_telegram import (
     PublishAlertTelegramDelivery,
     PublishAlertTelegramEnrollment,
@@ -213,6 +216,7 @@ __all__ = [
     "PublishingAccount", "PublishAttempt", "PublishOperatorAlert",
     "PublishRetryCommand",
     "PublishWriteCoordinationRegistry",
+    "PublishIntentionalPublicationRequest",
     "PublishAlertTelegramDelivery", "PublishAlertTelegramEnrollment",
     "TenantPublishAlertTelegramSettings",
     "ContentPlan", "ContentPlanItem",
