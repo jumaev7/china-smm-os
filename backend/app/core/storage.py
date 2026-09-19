@@ -4,10 +4,19 @@ import aiofiles
 import mimetypes
 from pathlib import Path
 from app.core.config import settings
+from app.core.immutable_storage import (
+    get_immutable_vault,
+    refuse_mutable_vault_mutation,
+)
 
 
 class StorageService:
-    """Unified storage: local filesystem in dev, S3-compatible in prod."""
+    """Unified storage: local filesystem in dev, S3-compatible in prod.
+
+    Mutable media paths are unchanged. Vault objects under ``vault/v1/`` are
+    owned by :mod:`app.core.immutable_storage` and cannot be written or deleted
+    through these mutable APIs.
+    """
 
     def __init__(self):
         if not settings.USE_S3:
@@ -15,8 +24,16 @@ class StorageService:
             self.base_path.mkdir(parents=True, exist_ok=True)
             (self.base_path / "thumbnails").mkdir(exist_ok=True)
 
+    def immutable_vault(self, *, base_path: Path | str | None = None):
+        """Return the dormant immutable vault facade (local or fail-closed R2)."""
+        return get_immutable_vault(
+            base_path=base_path if base_path is not None else getattr(self, "base_path", None),
+            use_s3=settings.USE_S3,
+        )
+
     async def save_at_key(self, key: str, file_data: bytes) -> str:
         """Save bytes at an exact storage key (e.g. sibling subtitle next to video)."""
+        refuse_mutable_vault_mutation(key, "written")
         if settings.USE_S3:
             return await self._save_s3(file_data, key)
         return await self._save_local(file_data, key)
@@ -41,15 +58,18 @@ class StorageService:
 
     async def save_file(self, file_data: bytes, filename: str, folder: str = "") -> str:
         """Save file bytes and return its storage path (relative key)."""
+        refuse_mutable_vault_mutation(folder, "written")
         ext = Path(filename).suffix.lower() or ".bin"
         unique_name = f"{uuid.uuid4().hex}{ext}"
         key = f"{folder}/{unique_name}" if folder else unique_name
+        refuse_mutable_vault_mutation(key, "written")
 
         if settings.USE_S3:
             return await self._save_s3(file_data, key)
         return await self._save_local(file_data, key)
 
     async def _save_local(self, data: bytes, key: str) -> str:
+        refuse_mutable_vault_mutation(key, "written")
         dest = self.base_path / key
         dest.parent.mkdir(parents=True, exist_ok=True)
         async with aiofiles.open(dest, "wb") as f:
@@ -57,6 +77,7 @@ class StorageService:
         return key  # Return relative key, not absolute path
 
     async def _save_s3(self, data: bytes, key: str) -> str:
+        refuse_mutable_vault_mutation(key, "written")
         import boto3
         s3 = boto3.client(
             "s3",
@@ -112,6 +133,8 @@ class StorageService:
     async def delete_file(self, path: str) -> None:
         if not path:
             return
+        # Vault isolation: ordinary mutable delete must never remove vault objects.
+        refuse_mutable_vault_mutation(path, "deleted")
         if settings.USE_S3:
             import boto3
             s3 = boto3.client(
