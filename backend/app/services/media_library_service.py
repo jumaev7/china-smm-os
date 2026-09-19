@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
+from app.core.client_scope_guard import guard_resource_client_id, scope_select
 from app.core.storage import storage
 from app.models.campaign import Campaign
 from app.models.client import Client
@@ -163,9 +164,8 @@ class MediaLibraryService:
         )
         count_q = select(func.count()).select_from(MediaAsset)
 
-        if client_id:
-            q = q.where(MediaAsset.client_id == client_id)
-            count_q = count_q.where(MediaAsset.client_id == client_id)
+        q, count_q = scope_select(q, count_q, MediaAsset.client_id, client_id=client_id)
+
         if campaign_id:
             q = q.where(MediaAsset.campaign_id == campaign_id)
             count_q = count_q.where(MediaAsset.campaign_id == campaign_id)
@@ -211,6 +211,7 @@ class MediaLibraryService:
         asset = r.scalar_one_or_none()
         if not asset:
             raise HTTPException(status_code=404, detail="Media asset not found")
+        guard_resource_client_id(asset.client_id)
 
         usage_map = await MediaLibraryService._usage_counts(db, [asset.media_file_id])
         data = _serialize_asset(asset, usage_count=usage_map.get(asset.media_file_id, 0))
@@ -391,6 +392,8 @@ class MediaLibraryService:
         uploaded_by: str | None = None,
         run_ai_tagging: bool = True,
     ) -> dict[str, Any]:
+        # Tenant ownership before storage writes (covers document path too).
+        guard_resource_client_id(client_id)
         await MediaLibraryService._validate_campaign(db, campaign_id, client_id)
 
         mime = (file.content_type or "").lower()

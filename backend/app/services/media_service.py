@@ -6,6 +6,7 @@ from sqlalchemy import select
 from fastapi import HTTPException, UploadFile
 from app.models.media import MediaFile
 from app.models.client import Client
+from app.core.client_scope_guard import guard_resource_client_id
 from app.core.storage import storage
 from app.services.subtitle_service import all_subtitle_paths, all_burned_video_paths, all_dubbed_video_paths, all_final_video_paths
 
@@ -41,6 +42,9 @@ class MediaService:
 
     @staticmethod
     async def upload(db: AsyncSession, client_id: UUID, file: UploadFile) -> MediaFile:
+        # Tenant ownership before any storage write or DB insert.
+        guard_resource_client_id(client_id)
+
         # Verify client exists
         result = await db.execute(select(Client).where(Client.id == client_id))
         if not result.scalar_one_or_none():
@@ -145,6 +149,8 @@ class MediaService:
     async def list_for_client(
         db: AsyncSession, client_id: UUID, skip: int = 0, limit: int = 50
     ) -> list[MediaFile]:
+        # Ownership before query — never return foreign media metadata.
+        guard_resource_client_id(client_id)
         result = await db.execute(
             select(MediaFile)
             .where(MediaFile.client_id == client_id)
@@ -160,10 +166,13 @@ class MediaService:
         media = result.scalar_one_or_none()
         if not media:
             raise HTTPException(status_code=404, detail="Media file not found")
+        # Enforce tenant ownership after load (also covers delete).
+        guard_resource_client_id(media.client_id)
         return media
 
     @staticmethod
     async def delete(db: AsyncSession, media_id: UUID) -> None:
+        # Authz via get() — must fail before any storage/DB side effects.
         media = await MediaService.get(db, media_id)
         await storage.delete_file(media.storage_path)
         for sub_path in all_subtitle_paths(media.storage_path):
