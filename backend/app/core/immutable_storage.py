@@ -1,17 +1,17 @@
-"""Immutable Media Vault storage primitives (I2c.1b / V1).
+"""Immutable Media Vault storage primitives (I2c.1b / V1 + I2c.1c / V1-R2).
 
 Dormant content-addressed storage under the ``vault/v1/`` namespace.
 
-Capabilities (local backend):
+Capabilities (local + R2 PutObject adapters):
   - SHA-256 over actual media bytes (streaming; no whole-file load required)
   - Exclusive object creation with no in-place overwrite
-  - Safe concurrent creation (filesystem races, not an in-memory lock)
+  - Safe concurrent creation (FS no-replace / R2 If-None-Match: *)
   - Existing-object integrity verification before reuse
   - Explicit corruption / missing / invalid-key detection (fail closed)
 
 Not in V1:
   - Snapshot acceptance, provider execution, pinning, GC, or vault deletion
-  - Storage-enforced R2 bucket locks / Object Lock (separate ops authorization)
+  - Storage-enforced R2 bucket locks / Object Lock (R2 Object Lock ❌; ops auth)
 
 Filesystem trust assumptions
 ----------------------------
@@ -20,26 +20,50 @@ administrators, disk loss, external storage modification, or compromised
 hosts. Local atomic install relies on OS no-replace semantics
 (``os.link`` on POSIX; ``MoveFileW`` without replace on Windows).
 
-Cloudflare R2 status (V1): **UNVERIFIED**. When ``USE_S3`` is enabled, vault
-operations fail closed. Do not claim storage-enforced immutability.
+Cloudflare R2 (V1-R2)
+---------------------
+Documented (Cloudflare S3 API compatibility):
+  - PutObject conditional ops including ``If-None-Match``
+  - GetObject / HeadObject conditional reads
+  - Single-part PutObject max ~5 GiB (platform limit 4.995 GiB)
+  - SHA-256 checksum type supported as COMPOSITE (not used as sole proof)
+
+Not documented on R2 CompleteMultipartUpload feature table:
+  - Conditional ``If-None-Match`` on multipart finalization
+  → objects above the single PutObject limit are **rejected** (fail closed).
+
+Object Lock / bucket retention: ❌ unimplemented on R2 S3 API.
+
+Live Cloudflare R2 integration status: **UNVERIFIED** until exercised against
+an authorized non-production bucket. Do not claim production readiness or
+storage-enforced immutability from Object Lock.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import re
 import secrets
 import stat
+import tempfile
+import threading
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import BinaryIO, Iterator, Union
+from typing import Any, BinaryIO, Iterator, Union
 
 from app.core.config import settings
 
 VAULT_NAMESPACE = "vault/v1"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _DEFAULT_CHUNK = 1024 * 1024  # 1 MiB streaming chunks
+
+# Cloudflare R2: max single-request upload is 5 MiB less than 5 GiB (docs).
+# Multipart exclusive create is not documented on R2 → reject above this.
+R2_MAX_SINGLE_PUT_BYTES = (5 * 1024 * 1024 * 1024) - (5 * 1024 * 1024)
+
+_log = logging.getLogger(__name__)
 
 
 class VaultError(Exception):
@@ -59,7 +83,11 @@ class VaultMissingError(VaultError):
 
 
 class VaultUnsupportedBackendError(VaultError):
-    """Backend cannot prove safe exclusive create (e.g. R2 in V1)."""
+    """Backend cannot prove safe exclusive create."""
+
+
+class VaultObjectTooLargeError(VaultUnsupportedBackendError):
+    """Object exceeds single conditional PutObject size; multipart unsafe."""
 
 
 class VaultMutationForbidden(VaultError):
@@ -68,6 +96,14 @@ class VaultMutationForbidden(VaultError):
 
 class VaultObjectTypeError(VaultError):
     """Path exists but is not a regular file."""
+
+
+class VaultProviderError(VaultError):
+    """Provider I/O or protocol failure (no secrets / tenant payload in message)."""
+
+
+class VaultAmbiguousStateError(VaultProviderError):
+    """Timeout/network ambiguity; object state could not be confirmed."""
 
 
 class VerificationStatus(str, Enum):
@@ -564,15 +600,14 @@ class LocalImmutableVault:
 
 
 class UnsupportedImmutableVault:
-    """Fail-closed vault backend for unverified providers (R2 / S3)."""
+    """Fail-closed vault backend when exclusive create cannot be proven."""
 
     provider_status = "UNVERIFIED"
 
     def put(self, *args, **kwargs) -> VaultObjectDescriptor:
         raise VaultUnsupportedBackendError(
-            "Immutable vault R2/S3 backend is UNVERIFIED in V1; "
-            "refusing vault writes (fail closed). "
-            "Bucket locks / retention require separate authorization."
+            "Immutable vault backend cannot prove exclusive create; "
+            "refusing vault writes (fail closed)."
         )
 
     def verify_object(self, *args, **kwargs) -> VaultObjectDescriptor:
@@ -587,25 +622,499 @@ class UnsupportedImmutableVault:
     def path_for_key(self, storage_key: str) -> Path:
         parse_vault_key(storage_key)
         raise VaultUnsupportedBackendError(
-            "Immutable vault R2/S3 backend is UNVERIFIED in V1"
+            "Immutable vault backend cannot prove exclusive create"
+        )
+
+
+def _s3_error_code(exc: BaseException) -> str:
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        err = response.get("Error") or {}
+        code = err.get("Code") or ""
+        if code:
+            return str(code)
+        status = response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        if status is not None:
+            return str(status)
+    return type(exc).__name__
+
+
+def _is_precondition_failed(exc: BaseException) -> bool:
+    code = _s3_error_code(exc)
+    return code in {"PreconditionFailed", "412", "412 Precondition Failed"}
+
+
+def _is_conditional_conflict(exc: BaseException) -> bool:
+    code = _s3_error_code(exc)
+    return code in {
+        "ConditionalRequestConflict",
+        "409",
+        "Conflict",
+        "SlowDown",
+        "429",
+        "Throttling",
+        "ThrottlingException",
+        "ServiceUnavailable",
+        "503",
+    }
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    code = _s3_error_code(exc)
+    return code in {"404", "NoSuchKey", "NotFound", "404 Not Found"}
+
+
+def _is_timeout_or_transport(exc: BaseException) -> bool:
+    name = type(exc).__name__
+    if name in {
+        "ReadTimeoutError",
+        "ConnectTimeoutError",
+        "EndpointConnectionError",
+        "ConnectionClosedError",
+        "ConnectionError",
+        "TimeoutError",
+        "IncompleteReadError",
+    }:
+        return True
+    # botocore wraps some timeouts as ClientError with RequestTimeout
+    code = _s3_error_code(exc)
+    return code in {"RequestTimeout", "RequestTimeoutException", "504", "408"}
+
+
+def _client_supports_if_none_match(client: Any) -> bool:
+    try:
+        members = client.meta.service_model.operation_model("PutObject").input_shape.members
+        return "IfNoneMatch" in members
+    except Exception:  # noqa: BLE001 — fail closed on introspection errors
+        return False
+
+
+class R2ImmutableVault:
+    """Cloudflare R2 / S3-compatible vault using conditional PutObject.
+
+    Exclusive create: ``PutObject`` with ``IfNoneMatch='*'`` (documented on R2).
+    Integrity: SHA-256 over GetObject body bytes (never ETag-as-SHA256).
+    Large objects: rejected when above single-PutObject limit because R2's
+    CompleteMultipartUpload feature table does not document conditional ops.
+
+    Live provider validation status: UNVERIFIED (see module docstring).
+    No public deletion API.
+    """
+
+    provider_status = "DOCUMENTED_CONDITIONAL_PUT"
+    live_r2_status = "UNVERIFIED"
+    multipart_conditional_status = "UNSUPPORTED_UNDOCUMENTED"
+
+    def __init__(
+        self,
+        *,
+        client: Any | None = None,
+        bucket: str | None = None,
+        endpoint_url: str | None = None,
+        max_single_put_bytes: int = R2_MAX_SINGLE_PUT_BYTES,
+    ):
+        self._client = client
+        self.bucket = bucket if bucket is not None else settings.S3_BUCKET
+        self.endpoint_url = (
+            endpoint_url if endpoint_url is not None else (settings.S3_ENDPOINT_URL or None)
+        )
+        self.max_single_put_bytes = max_single_put_bytes
+        self._client_lock = threading.Lock()
+        self._if_none_match_checked = False
+        self._if_none_match_ok = False
+
+    def _get_client(self) -> Any:
+        if self._client is not None:
+            return self._client
+        with self._client_lock:
+            if self._client is not None:
+                return self._client
+            import boto3
+
+            self._client = boto3.client(
+                "s3",
+                endpoint_url=self.endpoint_url,
+                aws_access_key_id=settings.S3_ACCESS_KEY or None,
+                aws_secret_access_key=settings.S3_SECRET_KEY or None,
+                region_name="auto",
+            )
+            return self._client
+
+    def _require_conditional_put(self, client: Any) -> None:
+        if self._if_none_match_checked:
+            if not self._if_none_match_ok:
+                raise VaultUnsupportedBackendError(
+                    "S3 client lacks PutObject IfNoneMatch; refusing vault writes"
+                )
+            return
+        ok = _client_supports_if_none_match(client)
+        self._if_none_match_checked = True
+        self._if_none_match_ok = ok
+        if not ok:
+            raise VaultUnsupportedBackendError(
+                "S3 client lacks PutObject IfNoneMatch; refusing vault writes"
+            )
+
+    def path_for_key(self, storage_key: str) -> Path:
+        parse_vault_key(storage_key)
+        raise VaultUnsupportedBackendError(
+            "R2 vault objects have no local filesystem path"
+        )
+
+    def verify_object(
+        self,
+        *,
+        sha256: str | None = None,
+        storage_key: str | None = None,
+        expected_size: int | None = None,
+    ) -> VaultObjectDescriptor:
+        """Read and hash stored bytes. verified=True only after a real check."""
+        try:
+            if storage_key is not None:
+                digest = parse_vault_key(storage_key)
+            elif sha256 is not None:
+                digest = normalize_sha256(sha256)
+            else:
+                raise VaultInvalidKeyError("sha256 or storage_key required")
+        except VaultInvalidKeyError:
+            return VaultObjectDescriptor(
+                sha256=(sha256 or "").lower() if sha256 else "",
+                byte_size=0,
+                storage_key=storage_key or "",
+                verified=False,
+                status=VerificationStatus.INVALID_KEY,
+            )
+
+        key = canonical_vault_key(digest)
+        client = self._get_client()
+        try:
+            resp = client.get_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:  # noqa: BLE001 — map provider errors
+            if _is_not_found(exc):
+                return VaultObjectDescriptor(
+                    sha256=digest,
+                    byte_size=0,
+                    storage_key=key,
+                    verified=False,
+                    status=VerificationStatus.MISSING,
+                )
+            _log.warning(
+                "vault verify get_object failed code=%s",
+                _s3_error_code(exc),
+            )
+            raise VaultProviderError("Vault object verification download failed") from exc
+
+        body = resp.get("Body")
+        if body is None:
+            return VaultObjectDescriptor(
+                sha256=digest,
+                byte_size=0,
+                storage_key=key,
+                verified=False,
+                status=VerificationStatus.MISSING,
+            )
+        try:
+            actual_digest, actual_size = sha256_stream(body)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("vault verify stream failed type=%s", type(exc).__name__)
+            raise VaultProviderError("Vault object verification download failed") from exc
+        finally:
+            close = getattr(body, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        meta_size = resp.get("ContentLength")
+        if meta_size is not None and int(meta_size) != actual_size:
+            return VaultObjectDescriptor(
+                sha256=digest,
+                byte_size=actual_size,
+                storage_key=key,
+                verified=False,
+                status=VerificationStatus.SIZE_MISMATCH,
+            )
+        if expected_size is not None and actual_size != expected_size:
+            return VaultObjectDescriptor(
+                sha256=digest,
+                byte_size=actual_size,
+                storage_key=key,
+                verified=False,
+                status=VerificationStatus.SIZE_MISMATCH,
+            )
+        if actual_digest != digest:
+            return VaultObjectDescriptor(
+                sha256=digest,
+                byte_size=actual_size,
+                storage_key=key,
+                verified=False,
+                status=VerificationStatus.HASH_MISMATCH,
+            )
+        return VaultObjectDescriptor(
+            sha256=digest,
+            byte_size=actual_size,
+            storage_key=key,
+            verified=True,
+            status=VerificationStatus.VERIFIED,
+        )
+
+    def _reuse_existing(
+        self,
+        digest: str,
+        key: str,
+        expected_size: int,
+    ) -> VaultObjectDescriptor:
+        verified = self.verify_object(sha256=digest, expected_size=expected_size)
+        if not verified.verified:
+            raise VaultCorruptionError(
+                f"Existing vault object failed verification: {verified.status.value}"
+            )
+        return VaultObjectDescriptor(
+            sha256=digest,
+            byte_size=verified.byte_size,
+            storage_key=key,
+            verified=True,
+            status=VerificationStatus.VERIFIED,
+            reused=True,
+        )
+
+    def _materialize(
+        self,
+        source: BytesSource,
+    ) -> tuple[str, int, Path | None, BytesSource]:
+        """Return (digest, size, temp_path_or_None, body_for_put).
+
+        Large payloads are staged to a temp file so PutObject can stream without
+        holding the full object in memory. Caller must clean temp_path.
+        """
+        if isinstance(source, (bytes, bytearray, memoryview)):
+            digest, size = sha256_stream(source)
+            if size > self.max_single_put_bytes:
+                raise VaultObjectTooLargeError(
+                    "Object exceeds R2 single conditional PutObject limit; "
+                    "multipart exclusive create is undocumented on R2"
+                )
+            return digest, size, None, source
+
+        if isinstance(source, Path):
+            digest, size = sha256_stream(source)
+            if size > self.max_single_put_bytes:
+                raise VaultObjectTooLargeError(
+                    "Object exceeds R2 single conditional PutObject limit; "
+                    "multipart exclusive create is undocumented on R2"
+                )
+            return digest, size, None, source
+
+        # Single-pass stream → temp file while hashing.
+        fd, tmp_name = tempfile.mkstemp(prefix="vault-r2-", suffix=".bin")
+        tmp_path = Path(tmp_name)
+        hasher = hashlib.sha256()
+        total = 0
+        try:
+            with os.fdopen(fd, "wb") as out:
+                for chunk in _iter_chunks(source):
+                    out.write(chunk)
+                    hasher.update(chunk)
+                    total += len(chunk)
+                    if total > self.max_single_put_bytes:
+                        raise VaultObjectTooLargeError(
+                            "Object exceeds R2 single conditional PutObject limit; "
+                            "multipart exclusive create is undocumented on R2"
+                        )
+                out.flush()
+                try:
+                    os.fsync(out.fileno())
+                except OSError:
+                    pass
+            digest = hasher.hexdigest()
+            rehash, resize = sha256_stream(tmp_path)
+            if rehash != digest or resize != total:
+                raise VaultCorruptionError("Staged bytes failed checksum verification")
+            return digest, total, tmp_path, tmp_path
+        except Exception:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
+
+    def _put_body(self, client: Any, key: str, body: BytesSource, size: int) -> None:
+        """Exclusive conditional create. Never omits IfNoneMatch."""
+        self._require_conditional_put(client)
+        kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "Key": key,
+            "ContentType": "application/octet-stream",
+            "IfNoneMatch": "*",
+            "ContentLength": size,
+        }
+        # Do not set public CacheControl — vault objects need no public URL.
+        if isinstance(body, Path):
+            with body.open("rb") as fh:
+                client.put_object(Body=fh, **kwargs)
+            return
+        if isinstance(body, (bytes, bytearray, memoryview)):
+            client.put_object(Body=bytes(body), **kwargs)
+            return
+        client.put_object(Body=body, **kwargs)
+
+    def _inspect_after_ambiguity(
+        self,
+        digest: str,
+        key: str,
+        expected_size: int,
+    ) -> VaultObjectDescriptor:
+        """After timeout/ambiguous errors: inspect key; never overwrite."""
+        verified = self.verify_object(sha256=digest, expected_size=expected_size)
+        if verified.verified:
+            return VaultObjectDescriptor(
+                sha256=digest,
+                byte_size=verified.byte_size,
+                storage_key=key,
+                verified=True,
+                status=VerificationStatus.VERIFIED,
+                reused=True,
+            )
+        if verified.status == VerificationStatus.MISSING:
+            raise VaultAmbiguousStateError(
+                "Upload outcome ambiguous and vault object is still missing"
+            )
+        raise VaultCorruptionError(
+            f"Ambiguous upload left unverifiable object: {verified.status.value}"
+        )
+
+    def put(
+        self,
+        source: BytesSource,
+        *,
+        expected_sha256: str | None = None,
+        chunk_size: int = _DEFAULT_CHUNK,
+    ) -> VaultObjectDescriptor:
+        """Create or reuse a vault object via conditional PutObject."""
+        del chunk_size
+        temp_path: Path | None = None
+        try:
+            digest, size, temp_path, payload = self._materialize(source)
+            if expected_sha256 is not None and normalize_sha256(expected_sha256) != digest:
+                raise VaultCorruptionError("Input bytes do not match expected SHA-256")
+
+            key = canonical_vault_key(digest)
+            client = self._get_client()
+            self._require_conditional_put(client)
+
+            # Fast path: already present → verify before reuse (no PUT).
+            try:
+                existing = self.verify_object(sha256=digest, expected_size=size)
+                if existing.verified:
+                    return VaultObjectDescriptor(
+                        sha256=digest,
+                        byte_size=existing.byte_size,
+                        storage_key=key,
+                        verified=True,
+                        status=VerificationStatus.VERIFIED,
+                        reused=True,
+                    )
+                if existing.status in {
+                    VerificationStatus.HASH_MISMATCH,
+                    VerificationStatus.SIZE_MISMATCH,
+                    VerificationStatus.UNEXPECTED_TYPE,
+                }:
+                    # Fail closed — never overwrite corrupted objects.
+                    raise VaultCorruptionError(
+                        f"Existing vault object failed verification: {existing.status.value}"
+                    )
+            except VaultProviderError:
+                # Verification download failure before create: fail closed.
+                raise
+
+            try:
+                self._put_body(client, key, payload, size)
+            except VaultUnsupportedBackendError:
+                raise
+            except Exception as exc:  # noqa: BLE001 — classify provider outcomes
+                if _is_precondition_failed(exc):
+                    return self._reuse_existing(digest, key, size)
+                if _is_conditional_conflict(exc) or _is_timeout_or_transport(exc):
+                    # Timeout is not proof of failure — inspect content-addressed key.
+                    try:
+                        return self._inspect_after_ambiguity(digest, key, size)
+                    except VaultAmbiguousStateError:
+                        # One safe retry of conditional create if still missing.
+                        try:
+                            self._put_body(client, key, payload, size)
+                        except Exception as retry_exc:  # noqa: BLE001
+                            if _is_precondition_failed(retry_exc):
+                                return self._reuse_existing(digest, key, size)
+                            if _is_conditional_conflict(retry_exc) or _is_timeout_or_transport(
+                                retry_exc
+                            ):
+                                return self._inspect_after_ambiguity(digest, key, size)
+                            code = _s3_error_code(retry_exc)
+                            _log.warning("vault conditional put retry failed code=%s", code)
+                            if code in {"InvalidArgument", "NotImplemented", "400"}:
+                                raise VaultUnsupportedBackendError(
+                                    "Backend rejected conditional PutObject (fail closed)"
+                                ) from retry_exc
+                            raise VaultProviderError(
+                                "Vault conditional put failed"
+                            ) from retry_exc
+                        return self._finalize_created(digest, key, size)
+                code = _s3_error_code(exc)
+                _log.warning("vault conditional put failed code=%s", code)
+                if code in {"InvalidArgument", "NotImplemented", "400", "MethodNotAllowed"}:
+                    raise VaultUnsupportedBackendError(
+                        "Backend rejected conditional PutObject (fail closed)"
+                    ) from exc
+                raise VaultProviderError("Vault conditional put failed") from exc
+
+            return self._finalize_created(digest, key, size)
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def _finalize_created(
+        self,
+        digest: str,
+        key: str,
+        expected_size: int,
+    ) -> VaultObjectDescriptor:
+        verified = self.verify_object(sha256=digest, expected_size=expected_size)
+        if not verified.verified:
+            # Upload appeared to succeed but bytes do not verify — fail closed,
+            # never overwrite / reconstruct from mutable media.
+            raise VaultCorruptionError(
+                f"Final object verification failed: {verified.status.value}"
+            )
+        return VaultObjectDescriptor(
+            sha256=digest,
+            byte_size=verified.byte_size,
+            storage_key=key,
+            verified=True,
+            status=VerificationStatus.VERIFIED,
+            reused=False,
         )
 
 
 class ImmutableVault:
-    """Facade selecting local or fail-closed unsupported cloud backend."""
+    """Facade selecting local or R2 conditional-Put vault backend."""
 
     def __init__(
         self,
         *,
         base_path: Path | str | None = None,
         use_s3: bool | None = None,
+        s3_client: Any | None = None,
     ):
         self.use_s3 = settings.USE_S3 if use_s3 is None else use_s3
         if self.use_s3:
-            self._backend: LocalImmutableVault | UnsupportedImmutableVault = (
-                UnsupportedImmutableVault()
+            self._backend: LocalImmutableVault | R2ImmutableVault | UnsupportedImmutableVault = (
+                R2ImmutableVault(client=s3_client)
             )
-            self.backend_name = "r2_s3_unverified"
+            self.backend_name = "r2"
         else:
             root = Path(base_path if base_path is not None else settings.MEDIA_LOCAL_PATH)
             self._backend = LocalImmutableVault(root)
@@ -625,6 +1134,8 @@ def get_immutable_vault(
     *,
     base_path: Path | str | None = None,
     use_s3: bool | None = None,
+    s3_client: Any | None = None,
 ) -> ImmutableVault:
     """Factory for vault access (dormant; unused by publish/media paths in V1)."""
-    return ImmutableVault(base_path=base_path, use_s3=use_s3)
+    return ImmutableVault(base_path=base_path, use_s3=use_s3, s3_client=s3_client)
+

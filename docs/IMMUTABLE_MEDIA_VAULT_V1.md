@@ -1,4 +1,4 @@
-# Immutable Media Vault — V1 storage primitives
+# Immutable Media Vault — V1 storage primitives (+ V1-R2 adapter)
 
 Dormant content-addressed media storage. Not wired to acceptance, publish,
 or provider execution.
@@ -20,11 +20,23 @@ or provider execution.
 5. Final-object verification
 6. Temp cleanup (failed creators never delete another writer's final)
 
-## R2 / S3
+## Cloudflare R2 adapter (V1-R2)
 
-**UNVERIFIED** in V1. Vault ops fail closed when `USE_S3=True`.
-Bucket locks and retention require separate authorization. Do not claim
-storage-enforced immutability.
+| Capability | Status | Evidence |
+|---|---|---|
+| PutObject `If-None-Match: *` | Documented | [R2 S3 API compatibility](https://developers.cloudflare.com/r2/api/s3/api/) — PutObject conditional ops ✅ |
+| Concurrent conditional creates | Documented pattern | Winner creates; loser gets `412 PreconditionFailed` → verify + reuse |
+| GetObject byte readback | Documented | Used for SHA-256 verification (ETag is **not** SHA-256) |
+| CompleteMultipartUpload conditionals | **Not documented** on R2 feature table | Objects above single-Put limit **rejected** (fail closed) |
+| Single PutObject max | Documented | ~5 GiB (platform: 4.995 GiB) |
+| Object Lock / bucket retention | ❌ Unimplemented on R2 | Do not claim storage-enforced lock immutability |
+| Live R2 integration | **UNVERIFIED** | Requires authorized non-production bucket; not claimed here |
+
+Exclusive create uses **only** conditional `PutObject` with `IfNoneMatch="*"`.
+HEAD-then-unconditional-PUT is never used. Corrupted objects are never overwritten.
+
+Mutable `StorageService._save_s3` remains unconditional PutObject and must never
+be used as a vault fallback.
 
 ## Trust
 
@@ -33,4 +45,5 @@ disk loss, or external modification of storage.
 
 ## Out of scope (later)
 
-Vault delete, GC, media pinning, snapshots, provider adapters.
+Vault delete, GC, media pinning, snapshots, provider adapters, multipart
+exclusive create (pending documented R2 guarantees + live validation).

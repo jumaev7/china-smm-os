@@ -25,7 +25,7 @@ class StorageService:
             (self.base_path / "thumbnails").mkdir(exist_ok=True)
 
     def immutable_vault(self, *, base_path: Path | str | None = None):
-        """Return the dormant immutable vault facade (local or fail-closed R2)."""
+        """Return the dormant immutable vault facade (local or R2 conditional Put)."""
         return get_immutable_vault(
             base_path=base_path if base_path is not None else getattr(self, "base_path", None),
             use_s3=settings.USE_S3,

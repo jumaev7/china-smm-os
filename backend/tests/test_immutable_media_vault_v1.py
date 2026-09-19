@@ -393,15 +393,24 @@ def test_S_vault_objects_inaccessible_to_ordinary_delete(vault_root: Path, monke
 
 
 # ---------------------------------------------------------------------------
-# T: unsupported backend fails closed
+# T: R2 backend selected when USE_S3; unsupported class still fail-closed
 # ---------------------------------------------------------------------------
 
-def test_T_unsupported_backend_fails_closed(vault_root: Path):
+def test_T_r2_backend_selected_when_use_s3(vault_root: Path):
     v = ImmutableVault(base_path=vault_root, use_s3=True)
-    assert v.backend_name == "r2_s3_unverified"
+    assert v.backend_name == "r2"
+    from app.core.immutable_storage import R2ImmutableVault
+
+    assert isinstance(v._backend, R2ImmutableVault)
+    assert R2ImmutableVault.live_r2_status == "UNVERIFIED"
+    assert R2ImmutableVault.multipart_conditional_status == "UNSUPPORTED_UNDOCUMENTED"
+
+
+def test_T_unsupported_backend_class_still_fails_closed():
+    backend = UnsupportedImmutableVault()
     with pytest.raises(VaultUnsupportedBackendError):
-        v.put(b"cloud-bytes")
-    result = v.verify_object(sha256="a" * 64)
+        backend.put(b"cloud-bytes")
+    result = backend.verify_object(sha256="a" * 64)
     assert result.verified is False
     assert result.status == VerificationStatus.UNSUPPORTED_BACKEND
     assert UnsupportedImmutableVault.provider_status == "UNVERIFIED"
